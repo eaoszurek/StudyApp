@@ -6,22 +6,38 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ai:sample": "node scripts/ai-sample.mjs",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
+    "@stripe/stripe-js": "^8.6.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
+    "framer-motion": "^11.11.17",
+    "libsql": "^0.5.22",
+    "lottie-react": "^2.4.0",
+    "next": "16.0.1",
+    "openai": "^6.9.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "next": "16.0.1"
+    "stripe": "^20.1.0",
+    "zod": "^4.2.1"
   },
   "devDependencies": {
-    "babel-plugin-react-compiler": "1.0.0",
-    "typescript": "^5",
+    "@prisma/adapter-libsql": "^7.2.0",
+    "@prisma/client": "^7.2.0",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
+    "babel-plugin-react-compiler": "1.0.0",
+    "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9",
-    "eslint-config-next": "16.0.1"
+    "eslint-config-next": "16.0.1",
+    "prisma": "^7.2.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }

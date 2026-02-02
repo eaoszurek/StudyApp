@@ -1,0 +1,25 @@
+<svg viewBox="0 0 80 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Mountain Range -->
+  <path
+    d="M0 50 L15 35 L25 45 L35 30 L45 40 L55 25 L65 35 L80 20 L80 60 L0 60 Z"
+    fill="#000000"
+  />
+  <!-- Flag on Central Peak -->
+  <g transform="translate(45, 25)">
+    <!-- Flag Pole -->
+    <line
+      x1="0"
+      y1="0"
+      x2="0"
+      y2="8"
+      stroke="#000000"
+      stroke-width="1.5"
+    />
+    <!-- Flag -->
+    <path
+      d="M0 0 L6 2 L0 4 Z"
+      fill="#000000"
+    />
+  </g>
+</svg>
+
