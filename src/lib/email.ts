@@ -62,6 +62,12 @@ export async function sendMagicLink(email: string, token: string, isSignUp: bool
             <p style="color: #94a3b8; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
               This link will expire in 24 hours. If you didn't request this email, you can safely ignore it.
             </p>
+            <p style="color: #94a3b8; font-size: 11px; margin-top: 16px;">
+              Peak Prep &middot; <a href="${APP_URL}/privacy" style="color: #94a3b8;">Privacy Policy</a>
+              &middot; <a href="${APP_URL}/terms" style="color: #94a3b8;">Terms</a><br/>
+              You received this email because an action was requested for your Peak Prep account.
+              To stop receiving these emails, <a href="${APP_URL}/settings" style="color: #94a3b8;">delete your account</a>.
+            </p>
           </div>
         </body>
       </html>

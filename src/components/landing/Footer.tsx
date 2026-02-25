@@ -104,6 +104,10 @@ export default function Footer() {
           <p className="text-slate-600 text-xs font-medium">
             &copy; {new Date().getFullYear()} Peak Prep. All rights reserved.
           </p>
+          <p className="text-slate-400 text-[10px] text-center md:text-right max-w-md leading-relaxed">
+            SAT&reg; is a registered trademark of College Board, which is not
+            affiliated with and does not endorse Peak Prep.
+          </p>
         </div>
       </div>
     </footer>

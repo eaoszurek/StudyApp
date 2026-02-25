@@ -3,6 +3,7 @@ import { Geist_Mono, Montserrat, Oswald } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import DarkModeInit from "@/components/DarkModeInit";
+import CookieConsent from "@/components/ui/CookieConsent";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -55,6 +56,7 @@ export default function RootLayout({
       >
         <DarkModeInit />
         <LayoutWrapper>{children}</LayoutWrapper>
+        <CookieConsent />
       </body>
     </html>
   );
