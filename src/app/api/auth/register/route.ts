@@ -5,6 +5,7 @@ import { hashPassword, createSession, getOrCreateAnonymousSession } from "@/lib/
 import { migrateSessionToUser } from "@/lib/migrate-session";
 import { handleApiError } from "@/utils/apiHelpers";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/policy";
+import { rateLimit } from "@/lib/rate-limit";
 
 const RegisterSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -17,6 +18,16 @@ const RegisterSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+    const rl = rateLimit(`register:${ip}`, { limit: 5, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many registration attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
+    }
+
     const body = await req.json();
     const validationResult = RegisterSchema.safeParse(body);
 

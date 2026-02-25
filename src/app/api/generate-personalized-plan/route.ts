@@ -13,17 +13,17 @@ const openai = new OpenAI({
 // Zod schema for input validation
 const StudyPlanRequestSchema = z.object({
   answers: z.object({
-    targetScore: z.string().optional(),
-    testDate: z.string().optional(),
-    weakestSection: z.string().optional(),
-    hoursPerDay: z.string().optional(),
-    studyStyle: z.string().optional(),
-    notes: z.string().optional(),
+    targetScore: z.string().max(20).optional(),
+    testDate: z.string().max(50).optional(),
+    weakestSection: z.string().max(100).optional(),
+    hoursPerDay: z.string().max(20).optional(),
+    studyStyle: z.string().max(100).optional(),
+    notes: z.string().max(500).optional(),
   }),
   performanceData: z.object({
     averageScore: z.number().optional(),
     totalSessions: z.number().optional(),
-    weakestSection: z.string().optional(),
+    weakestSection: z.string().max(100).optional(),
   }).nullable().optional(),
 });
 

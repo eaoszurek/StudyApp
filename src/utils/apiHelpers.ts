@@ -113,9 +113,12 @@ export function validateApiKey(): NextResponse | null {
 }
 
 /**
- * Handles common API errors and returns appropriate responses
+ * Handles common API errors and returns appropriate responses.
+ * In production, internal details are hidden from the client.
  */
 export function handleApiError(error: any): NextResponse {
+  const isProd = process.env.NODE_ENV === "production";
+
   if (isTimeoutError(error)) {
     return errorResponse(
       "Request took too long. Please try again with a simpler request.",
@@ -125,7 +128,9 @@ export function handleApiError(error: any): NextResponse {
 
   if (error?.message?.includes("API key")) {
     return errorResponse(
-      "Invalid API key. Please check your configuration.",
+      isProd
+        ? "A service configuration error occurred. Please try again later."
+        : "Invalid API key. Please check your configuration.",
       500
     );
   }
@@ -152,7 +157,9 @@ export function handleApiError(error: any): NextResponse {
   }
 
   return errorResponse(
-    error?.message || "An unexpected error occurred. Please try again.",
+    isProd
+      ? "An unexpected error occurred. Please try again."
+      : error?.message || "An unexpected error occurred. Please try again.",
     500
   );
 }

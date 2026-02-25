@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSession, getOrCreateAnonymousSession } from "@/lib/auth";
 import { migrateSessionToUser } from "@/lib/migrate-session";
 import { handleApiError } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 
 const LoginSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -12,6 +13,16 @@ const LoginSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const forwarded = req.headers.get("x-forwarded-for");
+    const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+    const rl = rateLimit(`login:${ip}`, { limit: 10, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many login attempts. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
+    }
+
     const body = await req.json();
     const validationResult = LoginSchema.safeParse(body);
 
