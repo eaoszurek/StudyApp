@@ -109,8 +109,8 @@ Rules:
           q.options?.D || "",
         ].map((opt: string) => cleanMathNotation(cleanText(truncateText(opt, 250))));
         const correctAnswer = ["A", "B", "C", "D"].includes(q.correctAnswer) ? q.correctAnswer : "A";
-        const explanation = ensureBoldEmphasis(cleanText(truncateText(q.explanation || "", 500)), skillCategory);
         const skillCategory = ensureSingleSkill(q.skillCategory || topic, topic);
+        const explanation = ensureBoldEmphasis(cleanText(truncateText(q.explanation || "", 500)), skillCategory);
         const section = q.section || (/equation|function|algebra|geometry|percent|ratio|linear|quadratic|slope|circle|system|inequal|exponent|probability|graph/i.test(topic) ? "Math" : "Reading & Writing");
 
         const validation = validateQuestionFormat({
