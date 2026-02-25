@@ -60,42 +60,32 @@ function MountainClimberLoader({
 }: MountainClimberLoaderProps) {
   const [animationData, setAnimationData] = useState<any>(cachedAnimationData);
   const [isMounted, setIsMounted] = useState(false);
-  const [hasRendered, setHasRendered] = useState(false);
   const mountedRef = useRef(true);
-  const animationDataRef = useRef<any>(cachedAnimationData);
 
   useEffect(() => {
     setIsMounted(true);
     mountedRef.current = true;
-    
-    // Load animation data if not already cached
-    if (!animationData && !cachedAnimationData) {
+
+    if (!cachedAnimationData) {
       loadAnimationData()
         .then((data) => {
           if (mountedRef.current && data) {
-            animationDataRef.current = data;
             setAnimationData(data);
           }
         })
         .catch((err) => {
           console.error("Failed to load animation:", err);
         });
-    } else if (cachedAnimationData && !animationData) {
-      // Use cached data immediately
-      animationDataRef.current = cachedAnimationData;
+    } else if (!animationData) {
       setAnimationData(cachedAnimationData);
     }
-    
+
     return () => {
       mountedRef.current = false;
     };
-  }, []);
+  }, [animationData]);
 
-  // Use ref data if state is lost
-  const dataToRender = animationData || animationDataRef.current;
-
-  // Show fallback while loading
-  if (!isMounted || !dataToRender) {
+  if (!isMounted || !animationData) {
     return (
       <div 
         className={`flex items-center justify-center ${className}`}
@@ -104,11 +94,6 @@ function MountainClimberLoader({
         <div className="text-slate-400 animate-pulse text-4xl">⛰️</div>
       </div>
     );
-  }
-
-  // Mark as rendered once we have data
-  if (!hasRendered && dataToRender) {
-    setHasRendered(true);
   }
 
   return (

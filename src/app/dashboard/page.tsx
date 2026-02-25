@@ -73,24 +73,30 @@ function DashboardContent() {
   }, []);
 
   useEffect(() => {
-    // Check if we're returning from Stripe checkout
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
+    const load = async () => {
+      if (cancelled) return;
+      await fetchSubscription();
+    };
+
     const sessionId = searchParams?.get("session_id");
-    const canceled = searchParams?.get("canceled");
-    
+
     if (sessionId) {
-      // Just completed checkout - fetch subscription status
-      // The subscription-status endpoint automatically syncs with Stripe
-      // Also retry after delays in case webhook needs time
-      fetchSubscription();
+      load();
       const retries = [2000, 5000, 10000];
-      const timeouts = retries.map(delay => 
-        setTimeout(() => fetchSubscription(), delay)
-      );
-      return () => timeouts.forEach(clearTimeout);
+      retries.forEach(delay => {
+        timeouts.push(setTimeout(() => { if (!cancelled) fetchSubscription(); }, delay));
+      });
     } else {
-      // Normal page load or canceled
-      fetchSubscription();
+      load();
     }
+
+    return () => {
+      cancelled = true;
+      timeouts.forEach(clearTimeout);
+    };
   }, [fetchSubscription, searchParams]);
 
   useEffect(() => {
