@@ -213,9 +213,9 @@ export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolea
     return { card, valid: false, errors };
   }
 
-  const lines = rawBack.split("\n").map((line) => line.trim()).filter(Boolean);
-  const exampleLines = lines.filter((line) => line.startsWith("•"));
-  let definitionLine = lines.find((line) => line.includes("—")) || lines[0] || "";
+  const lines = rawBack.split("\n").map((line: string) => line.trim()).filter(Boolean);
+  const exampleLines = lines.filter((line: string) => line.startsWith("•"));
+  let definitionLine = lines.find((line: string) => line.includes("—")) || lines[0] || "";
 
   if (!definitionLine.includes("—")) {
     definitionLine = `${term || "Skill"} — ${definitionLine}`;

@@ -116,7 +116,7 @@ function MountainClimberLoader({
         }}
       >
         <Lottie
-          animationData={dataToRender}
+          animationData={animationData}
           loop={true}
           autoplay={true}
           rendererSettings={{
