@@ -1,15 +1,11 @@
 // src/app/api/generate-question/route.ts
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { handleApiError, validateApiKey, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export async function POST(req: Request) {
   try {
@@ -46,7 +42,7 @@ export async function POST(req: Request) {
     const completion = cachedResponse
       ? null
       : await withRetry(
-      () => openai.chat.completions.create({
+      () => getOpenAIClient().chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {

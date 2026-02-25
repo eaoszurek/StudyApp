@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
@@ -10,10 +10,6 @@ import { prisma } from "@/lib/prisma";
 if (!process.env.OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
 }
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 // Zod schema for input validation
 const PracticeRequestSchema = z.object({
@@ -181,7 +177,7 @@ CRITICAL SAT WRITING REQUIREMENTS:
     const getModelPayload = async (requestedCount: number) => {
       const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
       const completion = await withRetry(
-        () => openai.chat.completions.create({
+        () => getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {

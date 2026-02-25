@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
+import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { validateFlashcardFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, ensureFlashcardBackFormat, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 // Zod schema for input validation
 const FlashcardRequestSchema = z.object({
@@ -49,7 +45,7 @@ export async function POST(req: Request) {
     const completion = cachedResponse
       ? null
       : await withRetry(
-      () => openai.chat.completions.create({
+      () => getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
