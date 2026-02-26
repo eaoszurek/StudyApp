@@ -310,23 +310,25 @@ export default function Flashcards() {
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "Easy":
-        return "bg-[#4A90E2]/20 text-[#93c5fd] border-[#4A90E2]/30";
+        return "bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 border-green-300 dark:border-green-600 font-semibold";
       case "Hard":
-        return "bg-[#1E5532]/30 text-[#86efac] border-[#1E5532]/40";
+        return "bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 border-red-300 dark:border-red-600 font-semibold";
       default:
-        return "bg-[#F7E7D3]/20 text-[#F7E7D3] border-[#F7E7D3]/30";
+        return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-600 font-semibold";
     }
   };
 
   const currentCard = flashcards[currentIndex];
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 pb-6 sm:pb-8 md:pb-10 max-w-full overflow-x-hidden w-full">
-      <PageHeader
-        eyebrow="Flashcards"
-        title="Essential knowledge packs for your climb."
-        subtitle="Generate 10-15 card packs with SAT-accurate content and spaced repetition tracking."
-      />
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
+      {!loading && flashcards.length === 0 && (
+        <PageHeader
+          eyebrow="Flashcards"
+          title="Essential knowledge packs for your climb."
+          subtitle="Generate 10-15 card packs with SAT-accurate content and spaced repetition tracking."
+        />
+      )}
 
       {subscriptionStatus && !subscriptionStatus.hasSubscription && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
@@ -358,7 +360,7 @@ export default function Flashcards() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 dark:from-amber-400 dark:to-amber-500 dark:hover:from-amber-400 dark:hover:to-amber-600 text-slate-900 dark:text-slate-900 text-sm font-bold transition-all border-2 border-amber-600 dark:border-amber-600 shadow-[0_4px_0_rgba(217,119,6,0.3)] hover:shadow-[0_5px_0_rgba(217,119,6,0.4)] active:shadow-[0_2px_0_rgba(217,119,6,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade
             </button>
@@ -418,7 +420,7 @@ export default function Flashcards() {
                   Card {currentIndex + 1} / {flashcards.length}
                 </span>
                 {currentCard?.tag && (
-                  <span className="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-semibold">
+                  <span className="text-xs px-3 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-900 dark:text-sky-200 border border-sky-300 dark:border-sky-600 font-semibold">
                     {currentCard.tag}
                   </span>
                 )}
@@ -432,7 +434,7 @@ export default function Flashcards() {
                   </span>
                 )}
                 {currentCard?.category && (
-                  <span className="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 font-semibold">
+                  <span className="text-xs px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-600 font-semibold">
                     {currentCard.category}
                   </span>
                 )}
@@ -489,8 +491,15 @@ export default function Flashcards() {
                 className="absolute inset-0"
                 style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
               >
-                <div className="glass-panel-strong rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 h-full flex items-center justify-center border border-slate-200 dark:border-slate-700 text-center">
-                  <p className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white leading-relaxed px-2">
+                <div 
+                  className="rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 h-full flex items-center justify-center border-2 text-center shadow-lg"
+                  style={{
+                    backgroundColor: 'var(--flashcard-front-bg)',
+                    color: 'var(--flashcard-front-text)',
+                    borderColor: 'var(--border, #cbd5e1)'
+                  }}
+                >
+                  <p className="text-lg sm:text-xl font-bold leading-relaxed px-2">
                     {currentCard.front}
                   </p>
                 </div>
@@ -504,7 +513,14 @@ export default function Flashcards() {
                   transform: "rotateY(180deg)",
                 }}
               >
-                <div className="rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 h-full flex items-center justify-center border-2 border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-slate-800 text-slate-900 dark:text-white">
+                <div 
+                  className="rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 h-full flex items-center justify-center border-2 shadow-lg"
+                  style={{
+                    borderColor: '#38bdf8',
+                    background: 'var(--flashcard-back-bg)',
+                    color: 'var(--flashcard-back-text)'
+                  }}
+                >
                   <div className="text-lg sm:text-xl font-semibold leading-relaxed max-w-full px-2 overflow-y-auto w-full">
                     {(() => {
                       const raw = currentCard.back || "";
@@ -512,7 +528,17 @@ export default function Flashcards() {
                       const bulletLines = lines
                         .filter((line) => line.startsWith("•"))
                         .map((line) => line.replace(/^•\s*/, ""));
-                      let definitionLine = lines.find((line) => line.includes("—")) || lines[0] || "";
+                      const nonBulletLines = lines.filter((line) => !line.startsWith("•"));
+                      let definitionLine = nonBulletLines.find((line) => line.includes("—")) || nonBulletLines[0] || "";
+                      let detailLines = nonBulletLines.filter((line) => line !== definitionLine);
+
+                      // Backward-compatibility for older one-line pipe format.
+                      if (definitionLine.includes("|")) {
+                        const parts = definitionLine.split("|").map((part) => part.trim()).filter(Boolean);
+                        definitionLine = parts[0] || definitionLine;
+                        detailLines = [...parts.slice(1), ...detailLines];
+                      }
+
                       if (bulletLines.length === 0 && raw.includes("•")) {
                         const parts = raw.split("•").map((line) => line.trim()).filter(Boolean);
                         definitionLine = parts[0] || definitionLine;
@@ -532,10 +558,22 @@ export default function Flashcards() {
                               {renderBold(definitionLine)}
                             </p>
                           )}
+                          {detailLines.length > 0 && (
+                            <div className="space-y-2 text-left text-base sm:text-lg font-normal">
+                              {detailLines.map((line, idx) => (
+                                <p key={`detail-${idx}`} className="leading-relaxed">
+                                  {renderBold(line)}
+                                </p>
+                              ))}
+                            </div>
+                          )}
                           {bulletLines.length > 0 && (
-                            <ul className="list-disc list-inside text-left space-y-2 text-base sm:text-lg font-normal">
+                            <ul className="text-left space-y-2 text-base sm:text-lg font-normal">
                               {bulletLines.map((line, idx) => (
-                                <li key={`bullet-${idx}`}>{renderBold(line)}</li>
+                                <li key={`bullet-${idx}`} className="flex items-start gap-3">
+                                  <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
+                                  <span className="leading-relaxed">{renderBold(line)}</span>
+                                </li>
                               ))}
                             </ul>
                           )}
@@ -562,10 +600,10 @@ export default function Flashcards() {
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     onClick={() => handleRating("got-it")}
-                    className={`flex-1 px-4 py-3 rounded-xl border transition font-semibold ${
+                    className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "got-it"
-                        ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-200"
-                        : "border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800"
+                        ? "border-emerald-400 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-emerald-900/30 text-emerald-900 dark:text-emerald-200 shadow-[0_4px_0_rgba(34,197,94,0.2),0_6px_16px_rgba(34,197,94,0.15)] scale-[1.02]"
+                        : "border-slate-200 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:shadow-[0_3px_0_rgba(34,197,94,0.15),0_4px_12px_rgba(34,197,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
                     <span className="font-bold">✓ Got it</span>
@@ -582,10 +620,10 @@ export default function Flashcards() {
                   </button>
                   <button
                     onClick={() => handleRating("almost")}
-                    className={`flex-1 px-4 py-3 rounded-xl border transition font-semibold ${
+                    className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "almost"
-                        ? "border-amber-500 bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200"
-                        : "border-slate-200 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800"
+                        ? "border-amber-400 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-900/30 text-amber-900 dark:text-amber-200 shadow-[0_4px_0_rgba(245,158,11,0.2),0_6px_16px_rgba(245,158,11,0.15)] scale-[1.02]"
+                        : "border-slate-200 dark:border-slate-600 hover:border-amber-300 dark:hover:border-amber-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:shadow-[0_3px_0_rgba(245,158,11,0.15),0_4px_12px_rgba(245,158,11,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
                     <span className="font-bold">~ Almost</span>
@@ -602,10 +640,10 @@ export default function Flashcards() {
                   </button>
                   <button
                     onClick={() => handleRating("no-idea")}
-                    className={`flex-1 px-4 py-3 rounded-xl border transition font-semibold ${
+                    className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "no-idea"
-                        ? "border-rose-500 bg-rose-50 dark:bg-rose-900/30 text-rose-900 dark:text-rose-200"
-                        : "border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800"
+                        ? "border-rose-400 bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900/40 dark:to-rose-900/30 text-rose-900 dark:text-rose-200 shadow-[0_4px_0_rgba(244,63,94,0.2),0_6px_16px_rgba(244,63,94,0.15)] scale-[1.02]"
+                        : "border-slate-200 dark:border-slate-600 hover:border-rose-300 dark:hover:border-rose-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:shadow-[0_3px_0_rgba(244,63,94,0.15),0_4px_12px_rgba(244,63,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
                     <span className="font-bold">✗ No idea</span>

@@ -1,7 +1,7 @@
 export const landingContent = {
   hero: {
     variantA: {
-      headline: "Climb To Your Highest SAT Score, One Step At A Time.",
+      headline: "Climb to Your Highest SAT Score One Step at a Time",
       subhead: "Peak Prep is an AI-powered SAT coach designed for students who feel overwhelmed and want a clear, daily path forward.",
       ctaPrimary: "Start your climb",
       ctaSecondary: "See how it works",
@@ -58,9 +58,16 @@ export const landingContent = {
         price: "$0",
         period: "forever",
         features: [
+<<<<<<< Updated upstream
           "1 free use across all features",
           "Practice tests, flashcards, study plans",
           "Micro-lessons with practice questions",
+=======
+          "1 free practice checkpoint",
+          "1 free Route Map study plan",
+          "1 free flashcard pack",
+          "1 free micro-lesson",
+>>>>>>> Stashed changes
           "Progress tracking",
           "Anonymous session support",
         ],
@@ -70,7 +77,7 @@ export const landingContent = {
       {
         id: "pro",
         name: "Peak",
-        price: "$12",
+        price: "$5",
         period: "month",
         features: [
           "Unlimited practice checkpoints",

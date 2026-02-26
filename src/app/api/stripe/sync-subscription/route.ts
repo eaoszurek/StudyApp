@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import Stripe from "stripe";
 
 function mapSubscriptionStatus(
   stripeStatus: string
@@ -25,6 +26,16 @@ function mapSubscriptionStatus(
     default:
       return null;
   }
+}
+
+function pickBestSubscription(subscriptions: Stripe.Subscription[]): Stripe.Subscription | null {
+  if (!subscriptions.length) return null;
+  const priority = ["active", "trialing", "past_due", "unpaid", "canceled"] as const;
+  for (const status of priority) {
+    const match = subscriptions.find((sub) => sub.status === status);
+    if (match) return match;
+  }
+  return subscriptions[0] ?? null;
 }
 
 export async function POST() {
@@ -56,17 +67,17 @@ export async function POST() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // If user has a Stripe customer ID but no subscription ID, check for subscriptions
-    if (user.stripeCustomerId && !user.stripeSubscriptionId) {
+    // If user has a Stripe customer ID, always check subscriptions and choose best current state.
+    if (user.stripeCustomerId) {
       try {
         const subscriptions = await stripe.subscriptions.list({
           customer: user.stripeCustomerId,
           status: "all",
-          limit: 1,
+          limit: 10,
         });
 
-        if (subscriptions.data.length > 0) {
-          const subscription = subscriptions.data[0];
+        const subscription = pickBestSubscription(subscriptions.data);
+        if (subscription) {
           const newStatus = mapSubscriptionStatus(subscription.status);
           
           await prisma.user.update({

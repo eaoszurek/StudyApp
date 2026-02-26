@@ -118,12 +118,16 @@ RULES (Tutor-like, encouraging approach):
 - Separate Reading & Writing and Math tasks explicitly.
 - Each task should reference a specific SAT skill category (not vague topics).
 - Keep sessions short (15–30 minutes) and realistic.
+- Only recommend actions that exist inside this app: Practice Tests, Flashcards, Micro-Lessons, Study Plans, Progress tracking.
+- Do NOT include tasks like taking notes, watching videos, or using external materials.
 - Use app-specific language like "Complete a Practice Test", "Review Flashcards", "Do a Micro-Lesson", "Check Progress".
 - Use the user's input: test date, current score, target score, hours per day, strengths, weaknesses, preferred study style.
+- Use ALL provided answers to shape the plan; do not ignore any configuration inputs.
 - If performance data is provided, use ACTUAL performance metrics (current score, weakest section from practice) instead of user estimates.
 - Overview: Give an encouraging summary (2-3 sentences). Acknowledge their goal, mention current progress if available, and express confidence in their ability to improve. If current score is known, frame the gap positively (e.g., "You're currently at X, and with focused practice, reaching Y is absolutely achievable").
 - WeeklyPlan: 4-8 weeks depending on timeline. Each week has a main focus (1 short phrase) and 4-6 specific, actionable tasks. Make tasks feel achievable and explain their purpose briefly.
 - DailyPlan: Create realistic daily tasks based on time available. Include 7 days (Monday-Sunday) with 2-4 tasks per day. Vary the tasks to keep it engaging.
+- Each task must start with "Reading & Writing:" or "Math:" so it is easy to scan.
 - PracticeTests: Schedule full-length tests (every 1-2 weeks). List as strings like "Week 2: Full-length practice test", "Week 4: Full-length practice test". Explain why these checkpoints matter.
 - Strategies: Give encouraging, practical improvement strategies for weak areas (3-5 strategies). Frame them positively (e.g., "Focus on..." rather than "You're weak at..."). Make them specific and actionable.
 - Be concise, structured, and encouraging - never use long paragraphs.
@@ -169,20 +173,79 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       }
     }
 
+    const enforceFeatureTask = (task: string): string => {
+      const lower = task.toLowerCase();
+      const hasFeature =
+        lower.includes("practice test") ||
+        lower.includes("flashcard") ||
+        lower.includes("micro-lesson") ||
+        lower.includes("study plan") ||
+        lower.includes("progress");
+      if (hasFeature) return task;
+      return `15–20 min: Micro-Lessons on ${actualWeakestSection || "priority SAT skills"}`;
+    };
+
+    const getTaskCap = (hours?: string, planType: "daily" | "weekly" = "daily") => {
+      const normalized = (hours || "").toLowerCase();
+      if (normalized.includes("30 min")) return planType === "daily" ? 2 : 3;
+      if (normalized.includes("1 hour")) return planType === "daily" ? 3 : 4;
+      if (normalized.includes("2 hours")) return planType === "daily" ? 4 : 5;
+      if (normalized.includes("3+")) return planType === "daily" ? 5 : 6;
+      return planType === "daily" ? 3 : 4;
+    };
+
+    const clampTasks = (tasks: string[], planType: "daily" | "weekly") => {
+      const cap = getTaskCap(hoursPerDay, planType);
+      return tasks.slice(0, cap);
+    };
+
+    const addTaskSectionPrefix = (task: string): string => {
+      if (!task || typeof task !== "string") return task;
+      if (/^Reading\s*&\s*Writing:/i.test(task) || /^Math:/i.test(task)) return task;
+      const lower = task.toLowerCase();
+      const isMath = /math|algebra|equation|linear|quadratic|function|geometry|percent|ratio|statistics|probability|graph|slope|circle|inequal|exponent|radical|system/i.test(lower);
+      const isRW = /reading|writing|grammar|punctuation|transition|evidence|vocabulary|syntax|boundary|rhetorical|concision|agreement|modifier/i.test(lower);
+      if (isMath && !isRW) return `Math: ${task}`;
+      if (isRW && !isMath) return `Reading & Writing: ${task}`;
+      return `Reading & Writing: ${task}`;
+    };
+
     // Clean and validate plan data
     const cleanedPlan = {
       overview: ensureBoldEmphasis(cleanText(truncateText(planJSON.overview || "", 500))),
       weeklyPlan: (planJSON.weeklyPlan || []).map((week: any) => ({
         week: week.week || 1,
         focus: ensureBoldEmphasis(cleanText(truncateText(week.focus || "", 100))),
-        tasks: (week.tasks || []).map((task: string) => ensureBoldEmphasis(ensureTaskDuration(cleanText(truncateText(task, 200))))),
+        tasks: clampTasks(
+          (week.tasks || []).map((task: string) =>
+            ensureBoldEmphasis(
+              addTaskSectionPrefix(
+                ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(task, 200))))
+              )
+            )
+          ),
+          "weekly"
+        ),
       })),
       dailyPlan: (planJSON.dailyPlan || []).map((day: any) => ({
         day: ensureBoldEmphasis(cleanText(truncateText(day.day || "", 50))),
-        tasks: (day.tasks || []).map((task: string) => ensureBoldEmphasis(ensureTaskDuration(cleanText(truncateText(task, 200))))),
+        tasks: clampTasks(
+          (day.tasks || []).map((task: string) =>
+            ensureBoldEmphasis(
+              addTaskSectionPrefix(
+                ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(task, 200))))
+              )
+            )
+          ),
+          "daily"
+        ),
       })),
-      practiceTests: (planJSON.practiceTests || []).map((test: string) => ensureBoldEmphasis(ensureTaskDuration(cleanText(truncateText(test, 150))))),
-      strategies: (planJSON.strategies || []).map((strategy: string) => ensureBoldEmphasis(ensureTaskDuration(cleanText(truncateText(strategy, 200))))),
+      practiceTests: (planJSON.practiceTests || []).map((test: string) =>
+        ensureBoldEmphasis(ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(test, 150)))))
+      ),
+      strategies: (planJSON.strategies || []).map((strategy: string) =>
+        ensureBoldEmphasis(cleanText(truncateText(strategy, 200)))
+      ),
     };
 
     // Transform to match frontend format while preserving new format

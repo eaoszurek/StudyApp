@@ -37,7 +37,10 @@ export default function LayoutWrapper({
     staticNoNavPrefixes.some((prefix) => pathname.startsWith(prefix));
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden text-slate-900 dark:text-slate-100">
+    <div
+      className="relative min-h-screen overflow-x-hidden text-slate-900 dark:text-slate-100"
+      data-app-ui={hideNav ? undefined : "true"}
+    >
       {/* Mountain-themed background - only for non-landing pages */}
       {!hideNav && (
         <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">

@@ -22,9 +22,9 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto px-6 py-12">
         {/* Header */}
         <div className="mb-8">
-          <Link href="/" className="inline-block mb-6">
+          <div className="mb-6">
             <Logo size="md" showText={true} href="/" />
-          </Link>
+          </div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             Privacy Policy
           </h1>

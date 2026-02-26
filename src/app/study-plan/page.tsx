@@ -6,10 +6,12 @@ import InputField from "@/components/ui/InputField";
 import PageHeader from "@/components/ui/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import { motion } from "framer-motion";
 import { getScoreHistory, getSectionPerformance } from "@/utils/scoreTracking";
 
 const STORAGE_KEY = "sat_study_plan";
+const REMAINING_WEEKS_KEY = "sat_study_plan_remaining_weeks";
 
 interface QuestionnaireAnswer {
   targetScore?: string;
@@ -60,7 +62,7 @@ const questionnaire = [
     type: "button",
     id: "weakestSection",
     question: "Which trail section needs the most training?",
-    options: ["Reading & Writing", "Math No Calculator", "Math Calculator"],
+    options: ["Reading & Writing", "Math", "Math + Reading & Writing"],
   },
   {
     type: "button",
@@ -90,6 +92,37 @@ const renderBoldText = (text: string) => {
   });
 };
 
+const groupTasksBySection = (tasks: string[]) => {
+  const groups = {
+    reading: [] as { task: string; index: number }[],
+    math: [] as { task: string; index: number }[],
+    other: [] as { task: string; index: number }[],
+  };
+
+  tasks.forEach((task, index) => {
+    const lower = task.toLowerCase();
+    if (lower.startsWith("reading & writing:") || lower.startsWith("reading:") || lower.startsWith("writing:")) {
+      groups.reading.push({ task, index });
+      return;
+    }
+    if (lower.startsWith("math:")) {
+      groups.math.push({ task, index });
+      return;
+    }
+    if (/reading|writing|grammar|punctuation|transition|evidence|vocabulary|syntax|boundary|rhetorical|concision|agreement|modifier/i.test(lower)) {
+      groups.reading.push({ task, index });
+      return;
+    }
+    if (/math|algebra|equation|linear|quadratic|function|geometry|percent|ratio|statistics|probability|graph|slope|circle|inequal|exponent|radical|system/i.test(lower)) {
+      groups.math.push({ task, index });
+      return;
+    }
+    groups.other.push({ task, index });
+  });
+
+  return groups;
+};
+
 export default function StudyPlanPage() {
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<QuestionnaireAnswer>({});
@@ -102,6 +135,8 @@ export default function StudyPlanPage() {
     hasSubscription: boolean;
   } | null>(null);
   const [freeUsageCount, setFreeUsageCount] = useState(0);
+  const [collapsedCards, setCollapsedCards] = useState<Record<string, boolean>>({});
+  const [showRemainingWeeks, setShowRemainingWeeks] = useState(false);
   const [performanceData, setPerformanceData] = useState<{
     weakestSection: string | null;
     averageScore: number;
@@ -137,6 +172,7 @@ export default function StudyPlanPage() {
     try {
       const savedPlan = localStorage.getItem(STORAGE_KEY);
       const savedTasks = localStorage.getItem(`${STORAGE_KEY}_tasks`);
+      const savedRemainingWeeks = localStorage.getItem(REMAINING_WEEKS_KEY);
       if (savedPlan) {
         const parsedPlan = JSON.parse(savedPlan) as PersonalizedPlan;
         setPlan(parsedPlan);
@@ -144,6 +180,9 @@ export default function StudyPlanPage() {
       if (savedTasks) {
         const parsedTasks = JSON.parse(savedTasks) as string[];
         setCompletedTasks(new Set(parsedTasks));
+      }
+      if (savedRemainingWeeks) {
+        setShowRemainingWeeks(savedRemainingWeeks === "true");
       }
     } catch (error) {
       console.error("Failed to load study plan:", error);
@@ -170,6 +209,14 @@ export default function StudyPlanPage() {
       }
     }
   }, [completedTasks]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(REMAINING_WEEKS_KEY, String(showRemainingWeeks));
+    } catch (error) {
+      console.error("Failed to save remaining weeks state:", error);
+    }
+  }, [showRemainingWeeks]);
 
   // Load performance data to inform study plan
   useEffect(() => {
@@ -202,7 +249,7 @@ export default function StudyPlanPage() {
           // Pre-fill weakest section if not already answered
           if (!answers.weakestSection && weakest.name) {
             const sectionMap: Record<string, string> = {
-              "Math": "Math Calculator",
+              "Math": "Math",
               "Reading": "Reading & Writing",
               "Writing": "Reading & Writing",
             };
@@ -316,8 +363,10 @@ export default function StudyPlanPage() {
     setPlan(null);
     setError(null);
     setCompletedTasks(new Set());
+    setShowRemainingWeeks(false);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(`${STORAGE_KEY}_tasks`);
+    localStorage.removeItem(REMAINING_WEEKS_KEY);
   };
 
   const toggleTask = (taskId: string) => {
@@ -349,17 +398,6 @@ export default function StudyPlanPage() {
     let total = 0;
     let completed = 0;
 
-    // Count weekly plan tasks
-    if (plan.weeklyPlan) {
-      plan.weeklyPlan.forEach((week, idx) => {
-        week.tasks.forEach((_, taskIdx) => {
-          total++;
-          const taskId = getTaskId("weekly", idx, taskIdx);
-          if (completedTasks.has(taskId)) completed++;
-        });
-      });
-    }
-
     // Count daily plan tasks
     (plan.dailyPlan || plan.days || []).forEach((day, idx) => {
       day.tasks.forEach((_, taskIdx) => {
@@ -369,24 +407,6 @@ export default function StudyPlanPage() {
       });
     });
 
-    // Count practice tests
-    if (plan.practiceTests) {
-      plan.practiceTests.forEach((_, idx) => {
-        total++;
-        const taskId = getTaskId("practice", idx);
-        if (completedTasks.has(taskId)) completed++;
-      });
-    }
-
-    // Count strategies
-    if (plan.strategies) {
-      plan.strategies.forEach((_, idx) => {
-        total++;
-        const taskId = getTaskId("strategy", idx);
-        if (completedTasks.has(taskId)) completed++;
-      });
-    }
-
     return {
       total,
       completed,
@@ -394,16 +414,83 @@ export default function StudyPlanPage() {
     };
   };
 
+  const getActiveWeekIndex = () => {
+    if (!plan?.weeklyPlan || plan.weeklyPlan.length === 0) return 0;
+    const daily = plan.dailyPlan || plan.days || [];
+    if (daily.length === 0) return 0;
+    const daysPerWeek = 7;
+    for (let weekIdx = 0; weekIdx < plan.weeklyPlan.length; weekIdx += 1) {
+      const start = weekIdx * daysPerWeek;
+      const end = start + daysPerWeek;
+      const weekDays = daily.slice(start, end);
+      if (weekDays.length === 0) return weekIdx;
+      const weekComplete = weekDays.every((day, dayOffset) =>
+        day.tasks.every((_, taskIdx) => completedTasks.has(getTaskId("daily", start + dayOffset, taskIdx)))
+      );
+      if (!weekComplete) return weekIdx;
+    }
+    return Math.max(0, plan.weeklyPlan.length - 1);
+  };
+
+  const getActiveDayIndex = () => {
+    const daily = plan?.dailyPlan || plan?.days || [];
+    if (daily.length === 0) return 0;
+    const firstIncomplete = daily.findIndex((day, dayIdx) =>
+      day.tasks.some((_, taskIdx) => !completedTasks.has(getTaskId("daily", dayIdx, taskIdx)))
+    );
+    if (firstIncomplete === -1) return Math.max(0, daily.length - 1);
+    return firstIncomplete;
+  };
+
+  const getCurrentDailyTargets = () => {
+    const daily = plan?.dailyPlan || plan?.days || [];
+    if (daily.length === 0) {
+      return {
+        dayLabel: "",
+        firstTarget: [] as { task: string; taskId: string }[],
+        secondTarget: [] as { task: string; taskId: string }[],
+        firstTargetComplete: false,
+      };
+    }
+    const activeDayIndex = getActiveDayIndex();
+    const activeDay = daily[activeDayIndex];
+    const firstTarget = activeDay.tasks.slice(0, 2).map((task, idx) => ({
+      task,
+      taskId: getTaskId("daily", activeDayIndex, idx),
+    }));
+    const secondTarget = activeDay.tasks.slice(2, 4).map((task, idx) => ({
+      task,
+      taskId: getTaskId("daily", activeDayIndex, idx + 2),
+    }));
+    const firstTargetComplete = firstTarget.length > 0 && firstTarget.every((item) => completedTasks.has(item.taskId));
+
+    return {
+      dayLabel: activeDay.day,
+      firstTarget,
+      secondTarget,
+      firstTargetComplete,
+    };
+  };
+
+  const toggleCard = (key: string) => {
+    setCollapsedCards((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   const currentQ = questionnaire[currentQuestion];
   const progress = ((currentQuestion + 1) / questionnaire.length) * 100;
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 pb-6 sm:pb-8 md:pb-10 max-w-full overflow-x-hidden w-full">
-      <PageHeader
-        eyebrow="Study Plans"
-        title="Chart your path to the peak."
-        subtitle="Answer a few questions to get a personalized expedition route with waypoints and milestones."
-      />
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
+      {!loading && !plan && (
+        <PageHeader
+          eyebrow="Study Plans"
+          title="Chart your path to the peak."
+          subtitle="Answer a few questions to get a personalized expedition route with waypoints and milestones."
+        />
+      )}
 
       {subscriptionStatus && !subscriptionStatus.hasSubscription && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
@@ -451,15 +538,10 @@ export default function StudyPlanPage() {
               <span>
                 Question {currentQuestion + 1} of {questionnaire.length}
               </span>
-              <span>{Math.round(progress)}% complete</span>
-            </div>
-            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full brand-gradient"
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
-              />
+              <div className="flex items-center gap-3">
+                <span>{Math.round(progress)}% complete</span>
+                <SubtleProgressCircle progress={progress} />
+              </div>
             </div>
           </GlassPanel>
 
@@ -490,10 +572,10 @@ export default function StudyPlanPage() {
                       <button
                         key={option}
                         onClick={() => handleAnswer(currentQ.id, option)}
-                        className={`p-4 rounded-xl border transition text-left ${
+                        className={`p-4 rounded-2xl border-2 transition-all text-left font-medium ${
                           isSelected
-                            ? "border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100"
-                            : "ai-config-option border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900"
+                            ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.02]"
+                            : "ai-config-option border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-600 dark:text-slate-100 dark:hover:text-white bg-white dark:bg-slate-900/90"
                         }`}
                       >
                         <span className="font-medium">{option}</span>
@@ -571,59 +653,91 @@ export default function StudyPlanPage() {
               </PrimaryButton>
             </div>
 
-            {/* Weekly Plan */}
-            {plan.weeklyPlan && plan.weeklyPlan.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Weekly Plan</h3>
-                <div className="space-y-4">
-                  {plan.weeklyPlan.map((week, idx) => (
-                    <motion.div
-                      key={week.week}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+            {(() => {
+              const dailyTarget = getCurrentDailyTargets();
+              if (!dailyTarget.dayLabel) return null;
+              const showSecondTarget = dailyTarget.firstTargetComplete || showRemainingWeeks;
+              return (
+                <div className="mb-6 ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-slate-50 dark:bg-slate-900/70">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300 font-semibold">
+                      Daily Target
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowRemainingWeeks((prev) => !prev)}
+                      className="text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:border-sky-300 dark:hover:border-sky-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow-md dark:hover:shadow-[0_8px_18px_rgba(56,189,248,0.25)]"
                     >
-                      <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                        <div className="flex items-center gap-3 mb-3">
-                          <h4 className="text-xl font-semibold text-slate-900 dark:text-white">Week {week.week}</h4>
-                          <span className="text-sm text-sky-700 dark:text-sky-200 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-600">
-                            {renderBoldText(week.focus)}
-                          </span>
-                        </div>
-                        <ul className="space-y-2">
-                          {week.tasks.map((task, taskIdx) => {
-                            const taskId = getTaskId("weekly", idx, taskIdx);
-                            const isCompleted = completedTasks.has(taskId);
-                            return (
-                              <li
-                                key={taskIdx}
-                                className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isCompleted}
-                                  onChange={() => toggleTask(taskId)}
-                                  className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                                />
-                                <span className={isCompleted ? "line-through opacity-60" : ""}>{renderBoldText(task)}</span>
-                              </li>
-                            );
-                          })}
-                        </ul>
+                      {showRemainingWeeks ? "Hide Preview" : "Show in Advance"}
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-3">
+                    {renderBoldText(dailyTarget.dayLabel)}
+                  </p>
+                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mb-2">
+                    Target 1
+                  </div>
+                  <ul className="space-y-2">
+                    {dailyTarget.firstTarget.map(({ task, taskId }, idx) => (
+                      <li key={idx} className="flex items-start gap-3 text-slate-700 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={completedTasks.has(taskId)}
+                          onChange={() => toggleTask(taskId)}
+                          className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
+                        />
+                        <span className={completedTasks.has(taskId) ? "line-through opacity-60" : ""}>
+                          {renderBoldText(task)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {showSecondTarget && dailyTarget.secondTarget.length > 0 && (
+                    <>
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mt-4 mb-2">
+                        Target 2
                       </div>
-                    </motion.div>
-                  ))}
+                      <ul className="space-y-2">
+                        {dailyTarget.secondTarget.map(({ task, taskId }, idx) => (
+                          <li key={idx} className="flex items-start gap-3 text-slate-700 dark:text-slate-200">
+                            <input
+                              type="checkbox"
+                              checked={completedTasks.has(taskId)}
+                              onChange={() => toggleTask(taskId)}
+                              className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
+                            />
+                            <span className={completedTasks.has(taskId) ? "line-through opacity-60" : ""}>
+                              {renderBoldText(task)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Current Week Focus */}
+            {plan.weeklyPlan && plan.weeklyPlan.length > 0 && (
+              <div className="mb-6 ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Week {plan.weeklyPlan[getActiveWeekIndex()]?.week}</h3>
+                  <span className="text-sm text-sky-700 dark:text-sky-200 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-600">
+                    {renderBoldText(plan.weeklyPlan[getActiveWeekIndex()]?.focus || "")}
+                  </span>
                 </div>
               </div>
             )}
 
-            {/* Daily Plan */}
+            {/* Daily Plan (preview only) */}
+            {showRemainingWeeks && (
             <div className="mb-6">
               <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">
                 {(plan.timeframe === "daily" || !plan.timeframe) ? "Daily Trail Log" : "Daily Schedule"}
               </h3>
               <div className="space-y-4">
-                {(plan.dailyPlan || plan.days || []).map((day, idx) => (
+                {(plan.dailyPlan || plan.days || []).slice(getActiveDayIndex(), getActiveDayIndex() + 1).map((day, idx) => (
                   <motion.div
                     key={day.day}
                     initial={{ opacity: 0, y: 20 }}
@@ -632,85 +746,125 @@ export default function StudyPlanPage() {
                   >
                     <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
                     <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">{renderBoldText(day.day)}</h3>
-                    <ul className="space-y-2">
-                      {day.tasks.map((task, taskIdx) => {
-                        const taskId = getTaskId("daily", idx, taskIdx);
-                        const isCompleted = completedTasks.has(taskId);
+                    {(() => {
+                      const groups = groupTasksBySection(day.tasks);
+                      const actualDayIndex = getActiveDayIndex() + idx;
+                      const sectionKey = `daily-${actualDayIndex}`;
+                      const isCollapsed = collapsedCards[sectionKey];
+                      const renderGroup = (
+                        label: string,
+                        items: { task: string; index: number }[]
+                      ) => {
+                        if (items.length === 0) return null;
                         return (
-                          <li
-                            key={taskIdx}
-                            className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isCompleted}
-                              onChange={() => toggleTask(taskId)}
-                              className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                            />
-                            <span className={isCompleted ? "line-through opacity-60" : ""}>{renderBoldText(task)}</span>
-                          </li>
+                          <div className="mb-3 last:mb-0">
+                            <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mb-2">
+                              {label}
+                            </div>
+                            <ul className="space-y-2">
+                              {items.map(({ task, index }) => {
+                                const taskId = getTaskId("daily", actualDayIndex, index);
+                                const isCompleted = completedTasks.has(taskId);
+                                return (
+                                  <li
+                                    key={index}
+                                    className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isCompleted}
+                                      onChange={() => toggleTask(taskId)}
+                                      className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
+                                    />
+                                    <span className={isCompleted ? "line-through opacity-60" : ""}>
+                                      {renderBoldText(task)}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
                         );
-                      })}
-                    </ul>
+                      };
+
+                      return (
+                        <div>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold">
+                              Tasks
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleCard(sectionKey)}
+                              className="text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:border-sky-300 dark:hover:border-sky-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow-md dark:hover:shadow-[0_8px_18px_rgba(56,189,248,0.25)]"
+                            >
+                              {isCollapsed ? "Show Tasks" : "Hide Tasks"}
+                            </button>
+                          </div>
+                          {!isCollapsed && (
+                            <>
+                              {renderGroup("Reading & Writing", groups.reading)}
+                              {renderGroup("Math", groups.math)}
+                              {renderGroup("Other", groups.other)}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
                     </div>
                   </motion.div>
                 ))}
               </div>
             </div>
+            )}
 
-            {/* Practice Tests */}
-            {plan.practiceTests && plan.practiceTests.length > 0 && (
+            {/* Remaining Weeks */}
+            {showRemainingWeeks && plan.weeklyPlan && plan.weeklyPlan.length > 1 && (
               <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Practice Test Schedule</h3>
-                <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                  <ul className="space-y-2">
-                    {plan.practiceTests.map((test, idx) => {
-                      const taskId = getTaskId("practice", idx);
-                      const isCompleted = completedTasks.has(taskId);
+                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Remaining Weeks</h3>
+                  <div className="space-y-4">
+                    {plan.weeklyPlan.slice(getActiveWeekIndex() + 1).map((week, idx) => {
+                      const actualIndex = getActiveWeekIndex() + idx + 1;
                       return (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
+                        <motion.div
+                          key={week.week}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.05 }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isCompleted}
-                            onChange={() => toggleTask(taskId)}
-                            className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                          />
-                          <span className={isCompleted ? "line-through opacity-60" : ""}>{renderBoldText(test)}</span>
-                        </li>
+                          <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
+                            <div className="flex items-center gap-3 mb-3">
+                              <h4 className="text-xl font-semibold text-slate-900 dark:text-white">Week {week.week}</h4>
+                              <span className="text-sm text-sky-700 dark:text-sky-200 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-600">
+                                {renderBoldText(week.focus)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">
+                              This week unlocks after you complete the current week’s daily targets.
+                            </p>
+                          </div>
+                        </motion.div>
                       );
                     })}
-                  </ul>
-                </div>
+                  </div>
               </div>
             )}
 
             {/* Strategies */}
-            {plan.strategies && plan.strategies.length > 0 && (
+            {showRemainingWeeks && plan.strategies && plan.strategies.length > 0 && (
               <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Improvement Strategies</h3>
+                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Quick Tips</h3>
                 <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                  <ul className="space-y-2">
-                    {plan.strategies.map((strategy, idx) => {
-                      const taskId = getTaskId("strategy", idx);
-                      const isCompleted = completedTasks.has(taskId);
-                      return (
-                        <li
-                          key={idx}
-                          className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isCompleted}
-                            onChange={() => toggleTask(taskId)}
-                            className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                          />
-                          <span className={isCompleted ? "line-through opacity-60" : ""}>{renderBoldText(strategy)}</span>
-                        </li>
-                      );
-                    })}
+                  <ul className="space-y-3">
+                    {plan.strategies.map((strategy, idx) => (
+                      <li
+                        key={idx}
+                        className="flex items-start gap-3 text-slate-700 dark:text-slate-200"
+                      >
+                        <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
+                        <span className="leading-relaxed">{renderBoldText(strategy)}</span>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               </div>

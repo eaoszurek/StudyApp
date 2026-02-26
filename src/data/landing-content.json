@@ -47,13 +47,14 @@
     "tiers": [
       {
         "id": "free",
-        "name": "Free",
+        "name": "Base Camp",
         "price": "$0",
         "period": "forever",
         "features": [
-          "5 practice checkpoints per month",
-          "Basic Route Map generator",
-          "50 flashcards per pack",
+          "1 free practice checkpoint",
+          "1 free Route Map study plan",
+          "1 free flashcard pack",
+          "1 free micro-lesson",
           "Progress tracking"
         ],
         "cta": "Start Free",
@@ -62,7 +63,7 @@
       {
         "id": "pro",
         "name": "Pro",
-        "price": "$19",
+        "price": "$5",
         "period": "month",
         "features": [
           "Unlimited practice checkpoints",

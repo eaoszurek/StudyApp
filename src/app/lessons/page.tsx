@@ -53,8 +53,8 @@ const renderFormattedText = (text: string) => {
     <ul className="space-y-2">
       {bullets.map((line, idx) => (
         <li key={idx} className="flex items-start gap-3 text-slate-600 dark:text-slate-300">
-          <span className="text-sky-500 dark:text-sky-400 mt-1 font-semibold">•</span>
-          <span className="font-normal">{renderBoldText(line)}</span>
+          <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
+          <span className="font-normal leading-relaxed">{renderBoldText(line)}</span>
         </li>
       ))}
     </ul>
@@ -242,12 +242,14 @@ export default function Lessons() {
   };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 pb-6 sm:pb-8 md:pb-10 max-w-full overflow-x-hidden">
-      <PageHeader
-        eyebrow="Micro-Lessons"
-        title="Quick knowledge checkpoints for your climb."
-        subtitle="Generate 1–2 minute SAT lessons with explanations, examples, and practice questions."
-      />
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden">
+      {!loading && !lesson && (
+        <PageHeader
+          eyebrow="Micro-Lessons"
+          title="Quick knowledge checkpoints for your climb."
+          subtitle="Generate 1–2 minute SAT lessons with explanations, examples, and practice questions."
+        />
+      )}
 
       {subscriptionStatus && !subscriptionStatus.hasSubscription && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
@@ -279,7 +281,7 @@ export default function Lessons() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 dark:from-amber-400 dark:to-amber-500 dark:hover:from-amber-400 dark:hover:to-amber-600 text-slate-900 dark:text-slate-900 text-sm font-bold transition-all border-2 border-amber-600 dark:border-amber-600 shadow-[0_4px_0_rgba(217,119,6,0.3)] hover:shadow-[0_5px_0_rgba(217,119,6,0.4)] active:shadow-[0_2px_0_rgba(217,119,6,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade
             </button>
@@ -315,7 +317,7 @@ export default function Lessons() {
                   </div>
 
                   {/* Suggested Topics - Dropdowns */}
-                  <div ref={dropdownRef} className="relative z-10">
+                  <div ref={dropdownRef} className="relative" style={{ zIndex: 9999 }}>
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
                       Suggested Topics
                     </p>
@@ -349,7 +351,7 @@ export default function Lessons() {
                             </svg>
                           </button>
                           {openDropdown === category && (
-                            <div className="lessons-dropdown absolute z-[100] w-full mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg dark:shadow-black/50 max-h-60 overflow-y-auto overflow-x-hidden">
+                            <div className="lessons-dropdown absolute w-full mt-1 bg-white dark:bg-slate-950 border-2 border-slate-300 dark:border-slate-600 rounded-lg shadow-xl dark:shadow-black/50 max-h-60 overflow-hidden" style={{ zIndex: 10000 }}>
                               <div className="dropdown-scroll h-full max-h-60">
                                 {SAT_TOPICS[category as keyof typeof SAT_TOPICS].map((topicName) => (
                                   <button
@@ -418,10 +420,10 @@ export default function Lessons() {
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: idx * 0.1 }}
-                  className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
+                  className="flex items-start gap-3 text-slate-700 dark:text-slate-200"
                 >
-                  <span className="text-sky-500 dark:text-sky-400 mt-1 font-bold">•</span>
-                  <span className="font-medium">{point}</span>
+                  <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
+                  <span className="font-medium leading-relaxed">{renderBoldText(point)}</span>
                 </motion.li>
               ))}
             </ul>
@@ -430,7 +432,7 @@ export default function Lessons() {
           {/* Example */}
           <GlassPanel className="mb-6">
             <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Example</h3>
-            <div className="border border-sky-200 dark:border-sky-700 rounded-xl bg-sky-100 dark:bg-sky-900/30 p-5">
+            <div className="border-2 border-sky-300 dark:border-sky-500 rounded-xl bg-sky-50 dark:bg-slate-900/70 p-5 shadow-sm">
               {renderFormattedText(lesson.example)}
             </div>
           </GlassPanel>
@@ -473,7 +475,7 @@ export default function Lessons() {
                           </span>
                         )}
                       </div>
-                      <p className="text-base sm:text-lg font-medium text-slate-900 dark:text-white mb-4 leading-relaxed">{q.question}</p>
+                      <p className="text-base sm:text-lg font-medium text-slate-900 dark:text-white mb-4 leading-relaxed whitespace-pre-line">{q.question}</p>
                       <div className="space-y-3 mb-4">
                         {q.options.map((option, optIdx) => {
                           const optionLetter = String.fromCharCode(65 + optIdx) as "A" | "B" | "C" | "D";
@@ -485,12 +487,12 @@ export default function Lessons() {
                               key={optIdx}
                               onClick={() => handleAnswerSelect(idx, optionLetter)}
                               disabled={showAnswer}
-                              className={`w-full text-left p-3 sm:p-4 rounded-xl border-2 transition-all font-medium ${
+                              className={`w-full text-left p-3 sm:p-4 rounded-2xl border-2 transition-all font-medium ${
                                 showAnswer && isCorrectOption
-                                  ? "border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-100 shadow-sm"
+                                  ? "border-green-400 dark:border-green-400 bg-gradient-to-br from-green-100 to-green-50 dark:from-green-900/40 dark:to-green-900/30 text-green-900 dark:text-green-100 shadow-[0_4px_0_rgba(34,197,94,0.15),0_6px_16px_rgba(34,197,94,0.1)] scale-[1.02]"
                                   : isSelected
-                                  ? "border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100 shadow-sm"
-                                  : "border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:shadow-sm"
+                                  ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
+                                  : "border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
                               }`}
                             >
                               <span className="font-bold mr-3">{optionLetter})</span>

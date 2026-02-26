@@ -3,7 +3,11 @@ import { Geist_Mono, Montserrat, Oswald } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import DarkModeInit from "@/components/DarkModeInit";
+<<<<<<< Updated upstream
 import CookieConsent from "@/components/ui/CookieConsent";
+=======
+import { absoluteUrl, siteUrl } from "@/lib/seo";
+>>>>>>> Stashed changes
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -22,21 +26,41 @@ const oswald = Oswald({
 });
 
 export const metadata: Metadata = {
-  title: "PeakPrep — Mountain-themed SAT prep app",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "PeakPrep | AI SAT Prep App",
+    template: "%s | PeakPrep",
+  },
   description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
+  alternates: {
+    canonical: absoluteUrl("/"),
+  },
+  keywords: [
+    "SAT prep",
+    "SAT practice tests",
+    "SAT study plan",
+    "SAT flashcards",
+    "SAT reading practice",
+    "SAT writing practice",
+    "SAT math practice",
+  ],
   icons: {
-    icon: "/logo.png",
-    apple: "/logo.png",
+    icon: [{ url: "/favicon.svg" }],
+    apple: [{ url: "/favicon.svg" }],
   },
   openGraph: {
-    title: "PeakPrep — Mountain-themed SAT prep app",
+    title: "PeakPrep | AI SAT Prep App",
     description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
+    url: absoluteUrl("/"),
     type: "website",
+    siteName: "PeakPrep",
+    images: [absoluteUrl("/opengraph-image")],
   },
   twitter: {
     card: "summary_large_image",
-    title: "PeakPrep — Mountain-themed SAT prep app",
+    title: "PeakPrep | AI SAT Prep App",
     description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, and checkpoint practice tests.",
+    images: [absoluteUrl("/twitter-image")],
   },
 };
 

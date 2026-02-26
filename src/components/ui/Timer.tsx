@@ -7,6 +7,7 @@ interface TimerProps {
   onTimeUp: () => void;
   onWarning?: () => void;
   warningMinutes?: number;
+  paused?: boolean;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export default function Timer({
   onTimeUp,
   onWarning,
   warningMinutes = 5,
+  paused = false,
   className = "",
 }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(initialMinutes * 60); // Convert to seconds
@@ -23,6 +25,14 @@ export default function Timer({
   const warningTriggered = useRef(false);
 
   useEffect(() => {
+    if (paused) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
     intervalRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 0) {
@@ -52,7 +62,7 @@ export default function Timer({
         clearInterval(intervalRef.current);
       }
     };
-  }, [onTimeUp, onWarning, warningMinutes]);
+  }, [onTimeUp, onWarning, warningMinutes, paused]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -72,6 +82,11 @@ export default function Timer({
       <span className={`text-lg font-bold ${getTimeColor()}`}>
         {formatTime(timeLeft)}
       </span>
+      {paused && (
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Paused
+        </span>
+      )}
       {isWarning && timeLeft > 0 && null}
     </div>
   );

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
-import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
+import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
@@ -96,6 +96,8 @@ RULES (Tutor-like approach):
 - If the user does not give difficulty, default to easy.
 - If the topic is not SAT-related, redirect by giving a simple SAT-relevant version of it.
 - Generate 1-2 practice questions that reinforce the lesson.
+- If generating 2 practice questions, make them different in format and avoid repeating stems.
+- If the topic is Math, include at least one word problem in the practice questions.
 - Related flashcards should be 2-4 relevant terms/concepts that connect to this lesson.
 - Make explanations encouraging and educational - help students understand, not just memorize.
 - Format all text cleanly - no unbroken blobs of text, use proper line breaks where needed.
@@ -176,7 +178,7 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
           }
           
           // Clean question and options
-          const questionText = cleanMathNotation(cleanText(truncateText(q.question || "", 600)));
+          const questionText = formatEquationLineBreaks(cleanMathNotation(cleanText(truncateText(q.question || "", 600))));
           const cleanedOptions = optionsArray.map(opt => cleanMathNotation(cleanText(truncateText(opt, 250))));
           
           // Ensure correctAnswer is A, B, C, or D

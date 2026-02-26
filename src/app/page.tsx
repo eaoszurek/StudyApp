@@ -14,6 +14,27 @@ import { landingContent } from "@/data/landing-content";
 
 // Use variant A by default (can be changed to "B" for A/B testing)
 const HERO_VARIANT: "A" | "B" = "A";
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "PeakPrep",
+  url: "https://peakprep.app",
+  description:
+    "PeakPrep personalizes SAT prep with AI study plans, practice tests, lessons, and flashcards.",
+  potentialAction: {
+    "@type": "SearchAction",
+    target: "https://peakprep.app/lessons",
+    "query-input": "required name=search_term_string",
+  },
+};
+
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "PeakPrep",
+  url: "https://peakprep.app",
+  email: "help.peakprep.app@gmail.com",
+};
 
 export default function Home() {
   const [heroVariant] = useState<"A" | "B">(HERO_VARIANT);
@@ -37,6 +58,14 @@ export default function Home() {
 
   return (
     <main className="relative overflow-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
       {/* Navigation Bar */}
       <LandingNavbar />
 

@@ -318,11 +318,11 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
                     </div>
                   ) : subscriptionStatus?.hasSubscription ? (
                     <div className="space-y-3">
-                      <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700">
-                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/30 dark:to-green-900/30 border-2 border-emerald-400 dark:border-emerald-600 shadow-sm">
+                        <p className="text-sm font-bold text-emerald-800 dark:text-emerald-100">
                           ✓ Premium Active
                         </p>
-                        <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1 font-medium">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1 font-semibold">
                           {subscriptionStatus.subscriptionStatus === "ACTIVE"
                             ? "Your subscription is active"
                             : subscriptionStatus.subscriptionStatus === "TRIALING"

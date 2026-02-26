@@ -72,6 +72,16 @@ function DashboardContent() {
     }
   }, []);
 
+  const syncAndFetchSubscription = useCallback(async () => {
+    try {
+      await fetch("/api/stripe/sync-subscription", { method: "POST" });
+    } catch (error) {
+      console.error("Failed to sync subscription:", error);
+    } finally {
+      await fetchSubscription();
+    }
+  }, [fetchSubscription]);
+
   useEffect(() => {
     let cancelled = false;
     const timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -84,20 +94,36 @@ function DashboardContent() {
     const sessionId = searchParams?.get("session_id");
 
     if (sessionId) {
+<<<<<<< Updated upstream
       load();
       const retries = [2000, 5000, 10000];
       retries.forEach(delay => {
         timeouts.push(setTimeout(() => { if (!cancelled) fetchSubscription(); }, delay));
       });
+=======
+      // Just completed checkout - fetch subscription status
+      // The subscription-status endpoint automatically syncs with Stripe
+      // Also retry after delays in case webhook needs time
+      syncAndFetchSubscription();
+      const retries = [2000, 5000, 10000];
+      const timeouts = retries.map(delay => 
+        setTimeout(() => syncAndFetchSubscription(), delay)
+      );
+      return () => timeouts.forEach(clearTimeout);
+>>>>>>> Stashed changes
     } else {
       load();
     }
+<<<<<<< Updated upstream
 
     return () => {
       cancelled = true;
       timeouts.forEach(clearTimeout);
     };
   }, [fetchSubscription, searchParams]);
+=======
+  }, [fetchSubscription, searchParams, syncAndFetchSubscription]);
+>>>>>>> Stashed changes
 
   useEffect(() => {
     const loadStats = async () => {
@@ -157,7 +183,7 @@ function DashboardContent() {
   }, []);
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 max-w-full overflow-x-hidden w-full">
+    <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full">
       <PageHeader
         eyebrow="Base Camp"
         title="Welcome to Peak Prep."
@@ -200,7 +226,7 @@ function DashboardContent() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 text-white font-semibold transition-colors whitespace-nowrap"
+              className="px-6 py-3 rounded-2xl bg-gradient-to-b from-sky-400 to-sky-500 hover:from-sky-400 hover:to-sky-600 dark:from-sky-400 dark:to-sky-500 dark:hover:from-sky-400 dark:hover:to-sky-600 text-slate-900 dark:text-slate-900 font-bold transition-all border-3 border-sky-600 dark:border-sky-600 shadow-[0_4px_0_rgba(14,165,233,0.3),0_6px_16px_rgba(14,165,233,0.15)] hover:shadow-[0_5px_0_rgba(14,165,233,0.4),0_8px_20px_rgba(14,165,233,0.2)] active:shadow-[0_2px_0_rgba(14,165,233,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade Now
             </button>
@@ -208,26 +234,6 @@ function DashboardContent() {
         </div>
       )}
       
-      {/* Compact subscription status badges */}
-      <div className="flex justify-end mb-4">
-        {subscriptionStatus && subscriptionStatus.hasSubscription && (
-          <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-emerald-600 text-white border border-emerald-600 dark:bg-emerald-700/70 dark:border-emerald-500">
-            <span className="text-xs">✨</span>
-            <span className="text-xs font-medium">
-              Premium
-            </span>
-          </div>
-        )}
-        
-        {subscriptionStatus && !subscriptionStatus.hasSubscription && (
-          <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700">
-            <span className="text-xs text-slate-700 dark:text-amber-200">
-              {subscriptionStatus.subscriptionStatus || "Free"}
-            </span>
-          </div>
-        )}
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 mb-10">
         {stats.map((stat, idx) => (
           <GlassPanel key={stat.label} delay={idx * 0.05}>
@@ -274,7 +280,7 @@ function DashboardContent() {
 export default function Dashboard() {
   return (
     <Suspense fallback={
-      <div className="px-3 sm:px-4 md:px-6 lg:px-10 max-w-full overflow-x-hidden w-full">
+      <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full">
         <PageHeader
           eyebrow="Base Camp"
           title="Welcome to Peak Prep."

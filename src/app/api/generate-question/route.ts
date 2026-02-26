@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { handleApiError, validateApiKey, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
-import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
+import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
 
 export async function POST(req: Request) {
   try {
@@ -74,6 +74,9 @@ Rules:
 - Make distractor choices plausible.
 - Explanations must briefly justify the correct answer.
 - Avoid non-SAT topics; reinterpret them into SAT-relevant content if needed.
+- Across the five questions, avoid repeating stems or near-identical scenarios.
+- If Math: include at least one word problem and one non-word problem; vary contexts and representations.
+- If Reading/Writing: vary question types (evidence, vocab-in-context, inference, transitions, boundaries).
 - No markdown, no commentary—just the JSON object.
             `,
           },
@@ -97,7 +100,7 @@ Rules:
 
     const cleanedQuestions = data.questions
       .map((q: any, index: number) => {
-        const questionText = cleanMathNotation(cleanText(truncateText(q.question || "", 600)));
+        const questionText = formatEquationLineBreaks(cleanMathNotation(cleanText(truncateText(q.question || "", 600))));
         const options = [
           q.options?.A || "",
           q.options?.B || "",

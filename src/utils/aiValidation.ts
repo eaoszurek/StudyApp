@@ -92,7 +92,14 @@ export function validateQuestionFormat(question: any): { valid: boolean; errors:
  * Cleans math notation - replaces ^ with superscripts
  */
 export function cleanMathNotation(text: string): string {
-  if (!text || typeof text !== "string") return text;
+  if (text === null || text === undefined) return "";
+  if (typeof text !== "string") {
+    if (typeof text === "number" || typeof text === "boolean") {
+      text = String(text);
+    } else {
+      return "";
+    }
+  }
 
   // Replace x^2 with x², x^3 with x³, etc.
   const cleaned = text
@@ -115,11 +122,37 @@ export function cleanMathNotation(text: string): string {
   return cleaned;
 }
 
+export function formatEquationLineBreaks(text: string): string {
+  if (text === null || text === undefined) return "";
+  if (typeof text !== "string") return "";
+
+  let updated = text;
+
+  updated = updated.replace(
+    /\b(Solve(?:\s+for\s+\w+)?|Find|Determine|Calculate|Evaluate|Simplify)\s*:\s*/gi,
+    (match, verb) => `${verb}:\n`
+  );
+
+  updated = updated.replace(
+    /([^\n])\s*([A-Za-z0-9][A-Za-z0-9\s]*[=≤≥≠<>][A-Za-z0-9\s]+)/g,
+    (match, prefix, expression) => `${prefix}\n${expression.trim()}`
+  );
+
+  return updated;
+}
+
 /**
  * Truncates text to maximum length
  */
 export function truncateText(text: string, maxLength: number): string {
-  if (!text || typeof text !== "string") return text;
+  if (text === null || text === undefined) return "";
+  if (typeof text !== "string") {
+    if (typeof text === "number" || typeof text === "boolean") {
+      text = String(text);
+    } else {
+      return "";
+    }
+  }
   if (text.length <= maxLength) return text;
   return text.substring(0, maxLength - 3) + "...";
 }
@@ -146,7 +179,14 @@ export function removeDuplicates<T>(items: T[], keyFn: (item: T) => string): T[]
  * Cleans text - removes extra whitespace, fixes line breaks
  */
 export function cleanText(text: string): string {
-  if (!text || typeof text !== "string") return text;
+  if (text === null || text === undefined) return "";
+  if (typeof text !== "string") {
+    if (typeof text === "number" || typeof text === "boolean") {
+      text = String(text);
+    } else {
+      return "";
+    }
+  }
 
   return text
     .replace(/\s+/g, " ") // Multiple spaces to single space
@@ -179,25 +219,24 @@ export function ensureSingleSkill(skillCategory: string, fallback: string): stri
 
 export function applyBoldToMarkedTarget(text: string): { text: string; valid: boolean } {
   if (!text || typeof text !== "string") return { text, valid: false };
-  if (text.includes("**")) return { text, valid: true };
+  if (text.includes("**")) {
+    return { text: text.replace(/\*\*(.+?)\*\*/g, "[$1]"), valid: true };
+  }
   const bracketMatch = text.match(/\[(.+?)\]/);
   if (bracketMatch) {
-    return {
-      text: text.replace(bracketMatch[0], `**${bracketMatch[1]}**`),
-      valid: true,
-    };
+    return { text, valid: true };
   }
   const angleMatch = text.match(/<(.+?)>/);
   if (angleMatch) {
     return {
-      text: text.replace(angleMatch[0], `**${angleMatch[1]}**`),
+      text: text.replace(angleMatch[0], `[${angleMatch[1]}]`),
       valid: true,
     };
   }
   const underscoreMatch = text.match(/__(.+?)__/);
   if (underscoreMatch) {
     return {
-      text: text.replace(underscoreMatch[0], `**${underscoreMatch[1]}**`),
+      text: text.replace(underscoreMatch[0], `[${underscoreMatch[1]}]`),
       valid: true,
     };
   }
@@ -213,22 +252,57 @@ export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolea
     return { card, valid: false, errors };
   }
 
+<<<<<<< Updated upstream
   const lines = rawBack.split("\n").map((line: string) => line.trim()).filter(Boolean);
   const exampleLines = lines.filter((line: string) => line.startsWith("•"));
   let definitionLine = lines.find((line: string) => line.includes("—")) || lines[0] || "";
+=======
+  const lines: string[] = rawBack
+    .split("\n")
+    .map((line: string) => line.trim())
+    .filter((line: string) => Boolean(line));
+  const exampleLines = lines.filter((line: string) => line.startsWith("•"));
+  const contentLines = lines.filter((line: string) => !line.startsWith("•"));
+  let definitionLine = contentLines.find((line: string) => line.includes("—")) || contentLines[0] || "";
+>>>>>>> Stashed changes
 
   if (!definitionLine.includes("—")) {
     definitionLine = `${term || "Skill"} — ${definitionLine}`;
   }
 
-  if (!/SAT tests:/i.test(definitionLine) || !/How it appears:/i.test(definitionLine) || !/Tip:/i.test(definitionLine)) {
-    const def = definitionLine.split("—")[1]?.trim() || "identifying the key rule";
-    const how = exampleLines[0]?.replace(/^•\s*/, "") || "short SAT-style prompt";
-    const tip = "Tip: spot the key wording";
-    definitionLine = `${term || "Skill"} — SAT tests: ${def} | How it appears: ${how} | Tip: ${tip}`;
-  }
+  const defBody = definitionLine.split("—")[1]?.trim() || "";
+  const pipeParts = defBody
+    .split("|")
+    .map((part: string) => part.trim())
+    .filter((part: string) => Boolean(part));
 
-  const rebuilt = [definitionLine, ...exampleLines].join("\n");
+  const fromLine = (regex: RegExp, source: string) => source.match(regex)?.[1]?.trim() || "";
+  const joinedContent = contentLines.join(" | ");
+
+  const whatTests =
+    fromLine(/(?:SAT tests|What this tests):\s*([^|]+)/i, joinedContent) ||
+    fromLine(/(?:tests?)\s*:\s*([^|]+)/i, joinedContent) ||
+    pipeParts[0] ||
+    defBody ||
+    "the exact SAT skill and decision point";
+
+  const howAppears =
+    fromLine(/How it appears:\s*([^|]+)/i, joinedContent) ||
+    pipeParts[1] ||
+    "in short passages, equations, or answer-choice comparisons";
+
+  const quickTip =
+    fromLine(/(?:Quick )?Tip:\s*([^|]+)/i, joinedContent) ||
+    pipeParts[2] ||
+    "identify the tested rule before evaluating choices";
+
+  const rebuiltLines = [
+    `${term || "Skill"} — **What this tests:** ${whatTests}`,
+    `**How it appears:** ${howAppears}`,
+    `**Quick tip:** ${quickTip}`,
+  ];
+
+  const rebuilt = [...rebuiltLines, ...exampleLines].join("\n");
   card.back = rebuilt;
   return { card, valid: true, errors };
 }

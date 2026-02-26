@@ -28,13 +28,13 @@ export default function GlassPanel({
       className={[
         "glass-panel relative",
         overflow === "visible" ? "overflow-visible" : "overflow-hidden",
-        padding ? "p-4 sm:p-6 md:p-8" : "",
+        padding ? "p-4 sm:p-5 md:p-6" : "",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <Tag>{children}</Tag>
+      <Tag className="max-w-3xl mx-auto">{children}</Tag>
       {overflow === "hidden" && (
         <div className="pointer-events-none absolute inset-0 rounded-[inherit] border border-white/5" />
       )}

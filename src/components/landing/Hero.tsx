@@ -62,7 +62,7 @@ export default function Hero({
               >
                 {headline.split(",").map((line, idx) => (
                   <span key={idx} className="block">
-                    {line.trim()}{idx === 0 ? "," : ""}
+                    {line.trim()}
                   </span>
                 ))}
               </motion.h1>

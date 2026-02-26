@@ -16,9 +16,9 @@ export default function SupportPage() {
           transition={{ duration: 0.5 }}
           className="mb-12 text-center"
         >
-          <Link href="/" className="inline-block mb-8">
+          <div className="inline-block mb-8">
             <Logo size="md" showText={true} href="/" />
-          </Link>
+          </div>
           <h1 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-4">
             We're Here to Help You Climb
           </h1>

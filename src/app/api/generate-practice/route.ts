@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
-import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
-import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
+import { validateApiKey, handleApiError, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
+
+// Allow longer-running generations in hosted environments (best effort; platform limits still apply)
+export const maxDuration = 300;
 
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
@@ -19,6 +22,7 @@ const PracticeRequestSchema = z.object({
   questionCount: z.number().int().min(1).max(50).default(5),
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
+  existingTestId: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -38,15 +42,34 @@ export async function POST(req: Request) {
       );
     }
 
-    const { section, questionCount = 5, topic, difficulty } = validationResult.data;
+    const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
 
     const accessContext = await getAccessContext();
-    const gate = await checkPremiumGate(accessContext);
-    if (!gate.allowed) {
-      return NextResponse.json(
-        { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
-        { status: 402 }
-      );
+    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+
+    if (existingTestId) {
+      const whereOwnership = accessContext.user?.id
+        ? { id: existingTestId, userId: accessContext.user.id }
+        : { id: existingTestId, sessionId: accessContext.sessionId };
+      existingPracticeTest = await prisma.practiceTest.findFirst({
+        where: whereOwnership,
+        select: { id: true, questions: true, passage: true },
+      });
+
+      if (!existingPracticeTest) {
+        return NextResponse.json(
+          { error: "Existing practice test not found for this user/session." },
+          { status: 404 }
+        );
+      }
+    } else {
+      const gate = await checkPremiumGate(accessContext);
+      if (!gate.allowed) {
+        return NextResponse.json(
+          { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+          { status: 402 }
+        );
+      }
     }
 
     const sectionGuidelines = {
@@ -89,6 +112,10 @@ CRITICAL SAT MATH REQUIREMENTS:
 - Match real SAT question style: clear, concise, unambiguous wording
 - Include questions that test conceptual understanding, not just computation
 - Avoid repetitive stems like "What is the value of x?" (use varied, SAT-style phrasing)
+- Vary question formats within a set: equation solving, word problems, data interpretation, geometry, functions
+- Avoid near-duplicate setups that only swap numbers; change context and structure
+- Include at least 1 word problem in each 5-question chunk of a math set
+- For each SAT Math subcategory included, include at least one word problem that fits that subcategory
 - One-step equations should be rare and only appear early in the set
 - For MIXED difficulty math sets, order questions to progress: early Easy→Medium, middle Medium, late Medium→Hard`,
       reading: `[READING SECTION - Official SAT Skill Domains]
@@ -129,7 +156,8 @@ CRITICAL SAT READING REQUIREMENTS:
 - Include "best evidence" questions that reference previous answers
 - Vocabulary questions should test context clues, not memorization
 - Questions should test reasoning, not just recall
-- Match real SAT question style: clear, specific, evidence-based`,
+- Match real SAT question style: clear, specific, evidence-based
+- Vary question types within a set (vocab-in-context, evidence, inference, structure, purpose, data) and avoid repeating stems`,
       writing: `[WRITING SECTION - Official SAT Skill Domains]
 Generate questions aligned with these SAT Writing skill domains:
 
@@ -167,18 +195,30 @@ CRITICAL SAT WRITING REQUIREMENTS:
 - Test common SAT grammar errors, not obscure rules
 - Questions should test editing skills, not just identification
 - Match real SAT question style: clear, unambiguous, test practical editing skills
-- Include questions that test both correctness and effectiveness`,
+- Include questions that test both correctness and effectiveness
+- Vary question types within a set (transitions, boundaries, concision, precision, synthesis) and avoid repeating stems`,
     };
 
     // Create completion with timeout
+    const shouldUseCache = !existingTestId;
     const cacheKey = `generate-practice:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
-    const cachedResponse = getCachedValue<any>(cacheKey);
+    const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
+<<<<<<< Updated upstream
     const getModelPayload = async (requestedCount: number) => {
       const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
       const completion = await withRetry(
         () => getOpenAIClient().chat.completions.create({
+=======
+    const MAX_BLOCK_ATTEMPTS = 4;
+    const MAX_SET_ATTEMPTS = 3;
+
+    const getModelPayload = async (requestedCount: number, extraInstructions = "") => {
+      const completion = await openai.chat.completions.create({
+>>>>>>> Stashed changes
       model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_tokens: Math.min(3600, Math.max(900, requestedCount * 360)),
       messages: [
         {
           role: "system",
@@ -194,9 +234,10 @@ Your explanations should:
 Output MUST be valid JSON using this exact structure:
 
 {
-  "passage": "string (REQUIRED for reading section only - 3-6 sentences that all questions reference. Omit this field for math and writing sections.)",
+  "passage": "string (OPTIONAL for reading. For reading, you may include a root passage OR include a 'passage' field per question.)",
   "questions": [
     {
+      "passage": "string (OPTIONAL for reading questions only - 3-6 sentences). If present, the question must reference this passage.",
       "question": "string (for reading: ONLY the question text, never include the passage. The passage is shown separately above all questions.)",
       "options": ["string", "string", "string", "string"],
       "section": "Reading & Writing" | "Math",
@@ -224,18 +265,10 @@ CRITICAL RULES:
 - Each question must target exactly ONE SAT skill category.
 - Do NOT reuse or closely mimic official SAT wording or passages. All content must be original but SAT-style.
 - Each question MUST include a "difficulty" field ("Easy", "Medium", or "Hard") that matches the actual complexity.
-- For READING sections: You MUST provide a "passage" field at the root level with 3-6 sentences that all questions reference. Each question's "question" field should ONLY contain the question text itself (e.g., "What is the main idea?" or "As used in line 3, 'elaborate' most nearly means..."). NEVER include the passage text in the question field - the passage is displayed separately above all questions.
-- explanation_correct: Detailed, tutor-like explanation (3-5 sentences) that:
-  * For MATH: Walk through each step clearly, explain WHY each step works, mention key formulas/concepts, and help the student understand the approach
-  * For READING: Cite specific passage evidence, explain the reasoning process, connect to question type, and show how to find the answer
-  * For WRITING: Name the grammar rule/concept clearly, explain why it's correct with examples, show the fix, and help them recognize similar patterns
-  * Use encouraging language like "Here's how to approach this..." or "The key insight here is..."
-- explanation_incorrect: Object with explanations for EACH wrong answer (A, B, C, D) explaining:
-  * Why students might choose this answer (common mistake)
-  * What misconception leads to this choice
-  * How to avoid this mistake in the future
-  * Only include the wrong ones
-- strategy_tip: One helpful, encouraging tip (1-2 sentences) that feels like a tutor's advice for tackling similar questions. Be specific and actionable.
+- For READING sections: Provide passages and keep them separate from the question text. Use either a root "passage" for all questions OR include a "passage" field on each question. If using per-question passages, ensure a NEW passage every 5 questions.
+- explanation_correct: Keep concise (1-2 short sentences). Explain the key reason the correct answer works.
+- explanation_incorrect: For each wrong option, write one short sentence naming the mistake.
+- strategy_tip: One short actionable sentence.
 
 DIFFICULTY LEVELS (must change complexity):
 - EASY: 
@@ -259,27 +292,32 @@ ${difficulty && difficulty !== "Mixed"
   : "- Use realistic SAT distribution: 20% Easy, 60% Medium, 20% Hard. Tag each question with the correct difficulty and make sure the hard questions are genuinely challenging SAT-level items."}
 
 FORMATTING REQUIREMENTS:
-- For READING questions ONLY: You MUST provide a separate "passage" field in the root JSON object (not in each question). The passage should be 3-6 sentences that all questions in this set reference.
+- For READING questions ONLY: Provide a separate passage that questions reference. Either use the root "passage" or a per-question "passage" field. If using per-question passages, provide a NEW passage every 5 questions.
 - question: 
   * MATH: The question text with any necessary context or word problem setup
   * READING: ONLY the question text itself (e.g., "What is the main idea of the passage?" or "As used in line 5, 'elaborate' most nearly means..."). DO NOT repeat the passage in the question field.
-  * WRITING: A short passage with the revision target **bolded** inside the passage (example: "The committee **decide** to meet weekly.").
+  * WRITING: A short passage with the revision target wrapped in [brackets] inside the passage (example: "The committee [decide] to meet weekly."). Provide a NEW passage every 5 questions.
 - options: array of exactly four answer choices as strings ["A text", "B text", "C text", "D text"].
   * For WRITING: Include "NO CHANGE" as an option when the underlined portion is already correct
 - correctAnswer: one of "A", "B", "C", "D".
-- explanation_correct: Detailed 2-4 sentence explanation with step-by-step reasoning.
-- explanation_incorrect: Object with keys for wrong answers (e.g., {"B": "reason", "C": "reason", "D": "reason"}) - only include wrong ones.
-- strategy_tip: One helpful tip for tackling similar questions.
+- explanation_correct: 1-2 short sentences.
+- explanation_incorrect: object with short 1-sentence reasons for wrong answers only.
+- strategy_tip: one short actionable sentence.
 
 DIFFICULTY ENFORCEMENT:
 - Hard questions must not be simple plug-and-chug. Include a non-obvious setup, multiple steps, or conceptual traps.
 - Easy questions must remain truly basic, not medium in disguise.
 - If you cannot produce the requested difficulty, rework the question until it matches.
 
+VARIETY REQUIREMENTS (all sections):
+- Avoid repeating question stems or near-identical scenarios within a set.
+- Math: include at least one word problem per 5 questions, plus non-word problems; vary domains and representations (equations, graphs, tables).
+- Reading/Writing: vary question types across official SAT domains and avoid identical phrasing.
+
 CRITICAL FOR READING: 
-- Put the passage in a separate "passage" field at the root level of your JSON response
+- Put the passage in a separate field (root "passage" or per-question "passage")
 - Each question's "question" field should ONLY contain the question text, never the passage
-- The passage will be displayed once above all questions, so never repeat it in individual questions
+- If using per-question passages, rotate to a NEW passage every 5 questions
 
 SAT AUTHENTICITY REQUIREMENTS:
 - Questions must feel like real SAT questions, not generic test questions
@@ -290,12 +328,10 @@ SAT AUTHENTICITY REQUIREMENTS:
 - Writing: Test practical editing skills, not obscure grammar rules
  - Reading questions must target a specific claim, inference, or detail (avoid generic main-idea prompts)
 
-EXPLANATION QUALITY REQUIREMENTS (Tutor-like approach):
-- MATH: Brief, SAT-style explanation (2-4 sentences). Focus on why the correct answer works and ONE common mistake. Use step-by-step only for Hard questions.
-- READING: Guide them through finding the answer. Say "Let's look at the passage..." Quote specific evidence and explain HOW it supports the answer. Connect to question type and show the thinking process.
-- WRITING: Teach the grammar rule clearly. Say "This is testing..." Explain the rule, show why the correct answer works, and help them recognize similar patterns. Make it feel like a mini-lesson.
-- For wrong answers: Be empathetic. Say "Students often choose this because..." Explain the common mistake, what misconception leads to it, and how to avoid it. Help them learn from the mistake.
-- Use **bold** sparingly to highlight key rule names or critical steps.
+EXPLANATION QUALITY REQUIREMENTS (Concise but useful):
+- Keep all explanation fields short and direct to reduce verbosity.
+- Prioritize the key reason each answer is right/wrong over long walkthroughs.
+- Use **bold** sparingly for only one key phrase if needed.
 
 Make questions as similar as possible to actual SAT questions in style, wording, and format.
 Do not output anything except the JSON.`,
@@ -304,14 +340,13 @@ Do not output anything except the JSON.`,
           role: "user",
           content: `Generate ${requestedCount} SAT ${section} questions.${
             topic ? ` Focus on: ${topic}.` : ""
-          }${difficulty && difficulty !== "Mixed" ? ` All questions must be ${difficulty.toUpperCase()} difficulty.` : ""}`,
+          }${difficulty && difficulty !== "Mixed" ? ` All questions must be ${difficulty.toUpperCase()} difficulty.` : ""}${
+            extraInstructions ? ` ${extraInstructions}` : ""
+          }`,
         },
       ],
-        response_format: { type: "json_object" },
-        }),
-        2,
-        timeoutMs
-      );
+      response_format: { type: "json_object" },
+      });
       const responseText = completion.choices[0].message?.content || "{}";
       let data;
       
@@ -339,21 +374,27 @@ Do not output anything except the JSON.`,
       return data;
     };
 
-    const transformQuestions = (rawQuestions: any[], passage?: string) => {
-      return rawQuestions
+    const transformQuestions = (rawQuestions: any[], passage?: string): Record<string, any>[] => {
+      const transformed: Array<Record<string, any> | null> = rawQuestions
         .map((q: any, index: number) => {
+          const passageForQuestion =
+            typeof q.passage === "string" && q.passage.trim().length > 0 ? q.passage.trim() : passage;
+
           // Clean and validate question
           let questionText = cleanMathNotation(cleanText(q.question || ""));
+          if (section === "math") {
+            questionText = formatEquationLineBreaks(questionText);
+          }
           
           // For reading questions, remove passage text from question if it's duplicated
-          if (section === "reading" && passage && questionText) {
+          if (section === "reading" && passageForQuestion && questionText) {
             // Check if question text contains passage (indicating duplication)
-            const passageFirst50 = passage.substring(0, 50).trim();
+            const passageFirst50 = passageForQuestion.substring(0, 50).trim();
             if (questionText.includes(passageFirst50)) {
               // If question contains passage text, try to remove it
-              questionText = questionText.replace(passage, "").trim();
+              questionText = questionText.replace(passageForQuestion, "").trim();
               // Also handle case where passage might be at the start followed by question
-              const passageStart = passage.split(/[.!?]/)[0]?.trim();
+              const passageStart = passageForQuestion.split(/[.!?]/)[0]?.trim();
               if (passageStart && questionText.startsWith(passageStart)) {
                 questionText = questionText.substring(passageStart.length).trim();
               }
@@ -371,11 +412,9 @@ Do not output anything except the JSON.`,
           questionText = truncateText(questionText, 500);
 
           if (section === "writing") {
-            const bolded = applyBoldToMarkedTarget(questionText);
-            questionText = bolded.text;
-            if (!bolded.valid) {
-              return null;
-            }
+            const withTargetMarkup = ensureWritingTargetMarkup(questionText);
+            const bolded = applyBoldToMarkedTarget(withTargetMarkup);
+            questionText = bolded.valid ? bolded.text : withTargetMarkup;
           }
           
           // Clean options
@@ -383,28 +422,42 @@ Do not output anything except the JSON.`,
           if (Array.isArray(q.options)) {
             q.options.forEach((opt: string, i: number) => {
               const letter = String.fromCharCode(65 + i);
-              cleanedOptions[letter] = cleanMathNotation(cleanText(truncateText(opt, 200)));
+              const normalized = cleanMathNotation(cleanText(truncateText(opt, 200)))
+                .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+                .replace(/^\s*[A-D]\s+/i, "");
+              cleanedOptions[letter] = normalized;
             });
           } else {
             // Fallback if already in object format
-            cleanedOptions.A = cleanMathNotation(cleanText(truncateText(q.options.A || q.options[0] || "", 200)));
-            cleanedOptions.B = cleanMathNotation(cleanText(truncateText(q.options.B || q.options[1] || "", 200)));
-            cleanedOptions.C = cleanMathNotation(cleanText(truncateText(q.options.C || q.options[2] || "", 200)));
-            cleanedOptions.D = cleanMathNotation(cleanText(truncateText(q.options.D || q.options[3] || "", 200)));
+            cleanedOptions.A = cleanMathNotation(cleanText(truncateText(q.options.A || q.options[0] || "", 200)))
+              .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+              .replace(/^\s*[A-D]\s+/i, "");
+            cleanedOptions.B = cleanMathNotation(cleanText(truncateText(q.options.B || q.options[1] || "", 200)))
+              .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+              .replace(/^\s*[A-D]\s+/i, "");
+            cleanedOptions.C = cleanMathNotation(cleanText(truncateText(q.options.C || q.options[2] || "", 200)))
+              .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+              .replace(/^\s*[A-D]\s+/i, "");
+            cleanedOptions.D = cleanMathNotation(cleanText(truncateText(q.options.D || q.options[3] || "", 200)))
+              .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+              .replace(/^\s*[A-D]\s+/i, "");
           }
           
-          // Clean explanations (increased limits for better quality)
-          let explanationCorrect = cleanText(truncateText(q.explanation_correct || q.explanation || "", 500));
+          // Keep explanations concise for faster generation and rendering
+          let explanationCorrect = cleanText(truncateText(q.explanation_correct || q.explanation || "", 220));
           const explanationIncorrect: Record<string, string> = {};
           if (q.explanation_incorrect && typeof q.explanation_incorrect === "object") {
             Object.entries(q.explanation_incorrect).forEach(([letter, reason]) => {
               if (letter !== q.correctAnswer && reason) {
-                explanationIncorrect[letter] = cleanText(truncateText(reason as string, 300));
+                explanationIncorrect[letter] = cleanText(truncateText(reason as string, 140));
               }
             });
           }
           
-          let strategyTip = cleanText(truncateText(q.strategy_tip || "", 200));
+          let strategyTip = cleanText(truncateText(q.strategy_tip || "", 120));
+          if (!explanationCorrect) {
+            explanationCorrect = "The correct option best matches the SAT skill tested in this question.";
+          }
           
           // Validate question format
           const validation = validateQuestionFormat({
@@ -455,6 +508,7 @@ Do not output anything except the JSON.`,
           strategyTip = ensureBoldEmphasis(strategyTip, skillCategory);
     
           return {
+            passage: passageForQuestion,
             question: questionText,
             options: cleanedOptions,
             correctAnswer: q.correctAnswer,
@@ -467,8 +521,140 @@ Do not output anything except the JSON.`,
             skillCategory,
             section: section === "math" ? "Math" : "Reading & Writing",
           };
-        })
-        .filter((q: any) => q !== null);
+        });
+
+      return transformed.flatMap((q) => (q ? [q] : []));
+    };
+
+    const normalizeMathStem = (text: string) => {
+      return text
+        .toLowerCase()
+        .replace(/\d+(?:\.\d+)?/g, "#")
+        .replace(/\b[xyz]\b/g, "x")
+        .replace(/\s+/g, " ")
+        .trim();
+    };
+
+    const getPassageSignature = (text: string) => {
+      return text
+        .replace(/\[([^\]]+)\]/g, "$1")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase()
+        .slice(0, 140);
+    };
+
+    const ensureWritingTargetMarkup = (text: string) => {
+      if (!text) return text;
+      const normalized = text
+        .replace(/\*\*(.+?)\*\*/g, "[$1]")
+        .replace(/__(.+?)__/g, "[$1]")
+        .replace(/<([^>]+)>/g, "[$1]");
+
+      if (/\[[^\]]+\]/.test(normalized)) {
+        return normalized;
+      }
+
+      const phraseMatch = normalized.match(/([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){1,5})/);
+      if (!phraseMatch) {
+        return normalized;
+      }
+
+      return normalized.replace(phraseMatch[1], `[${phraseMatch[1]}]`);
+    };
+
+    const isWordProblem = (text: string) => {
+      return /percent|ratio|rate|speed|distance|time|hours|minutes|miles|cost|price|profit|loss|revenue|tickets|students|people|population|temperature|degrees|area|volume|length|width|height|mi|km|dollars|\$|per\s+hour|per\s+minute|per\s+day/i.test(text);
+    };
+
+    const getMathDomain = (skill: string) => {
+      const normalized = skill.toLowerCase();
+      if (/linear|system|inequal|slope|intercept|function|graph/i.test(normalized)) {
+        return "Heart of Algebra";
+      }
+      if (/ratio|percent|stat|data|probab|scatter|table|chart|mean|median|mode|range/i.test(normalized)) {
+        return "Problem Solving & Data Analysis";
+      }
+      if (/quadratic|polynomial|exponent|radical|rational|nonlinear|function/i.test(normalized)) {
+        return "Passport to Advanced Math";
+      }
+      if (/geometry|circle|trig|triangle|angle|complex|coordinate/i.test(normalized)) {
+        return "Additional Topics";
+      }
+      return "Unknown";
+    };
+
+    const passesPassageRotation = (questions: any[]) => {
+      if (section !== "reading" && section !== "writing") return true;
+      const blockSize = 5;
+      let lastSignature = "";
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        if (block.length === 0) continue;
+        const sourceText =
+          section === "reading"
+            ? block[0]?.passage
+            : block[0]?.question;
+        if (!sourceText || typeof sourceText !== "string") {
+          return false;
+        }
+        const signature = getPassageSignature(sourceText);
+        if (!signature || signature === lastSignature) {
+          return false;
+        }
+        lastSignature = signature;
+      }
+      return true;
+    };
+
+    const passesMathVariety = (questions: any[]) => {
+      if (section !== "math") return true;
+      const domainWordProblem: Record<string, boolean> = {};
+      const domainsPresent = new Set<string>();
+      questions.forEach((q) => {
+        const skill = String(q.skillCategory || q.skillFocus || "");
+        const domain = getMathDomain(skill);
+        if (domain !== "Unknown") {
+          domainsPresent.add(domain);
+        }
+        if (isWordProblem(String(q.question || ""))) {
+          domainWordProblem[domain] = true;
+        }
+      });
+      for (const domain of domainsPresent) {
+        if (!domainWordProblem[domain]) return false;
+      }
+      return true;
+    };
+
+    const passesMathWordProblemQuota = (questions: any[]) => {
+      if (section !== "math") return true;
+      const blockSize = 5;
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        if (block.length === 0) continue;
+        const wordProblemCount = block.filter((q) => isWordProblem(String(q.question || ""))).length;
+        if (wordProblemCount < 1) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const passesSetConstraints = (questions: any[]) => {
+      return (
+        passesPassageRotation(questions) &&
+        passesMathVariety(questions) &&
+        passesMathWordProblemQuota(questions)
+      );
+    };
+
+    const getDedupKey = (question: any) => {
+      const base = String(question?.question || "").toLowerCase().trim();
+      if (section === "math") {
+        return normalizeMathStem(base);
+      }
+      return base;
     };
 
     let passage: string | undefined = undefined;
@@ -483,74 +669,243 @@ Do not output anything except the JSON.`,
       passage = cachedResponse.passage;
       transformedAll = cachedResponse.questions;
     } else {
-      const maxAttempts = 3;
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        const remaining = questionCount - transformedAll.length;
-        if (remaining <= 0) break;
-        const requestedCount = section === "reading" ? remaining : Math.min(10, remaining);
-        const data = await getModelPayload(requestedCount);
-        const localPassage = data.passage;
-        if (section === "reading") {
-          passage = localPassage;
-          transformedAll = transformQuestions(data.questions, passage);
-          break;
+      const blockSize = 5;
+      const blockCounts: number[] = [];
+      let remaining = questionCount;
+      while (remaining > 0) {
+        const count = Math.min(blockSize, remaining);
+        blockCounts.push(count);
+        remaining -= count;
+      }
+
+      const buildRwBlock = async (
+        blockIndex: number,
+        count: number
+      ): Promise<{ questions: any[]; passage?: string; signature: string }> => {
+        let bestQuestions: any[] = [];
+        let bestPassage: string | undefined = undefined;
+        for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
+          const data = await getModelPayload(
+            count,
+            `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`
+          );
+          const blockPassage = data.passage;
+          const transformed = transformQuestions(data.questions, blockPassage);
+          const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+          if (unique.length > bestQuestions.length) {
+            bestQuestions = unique;
+            bestPassage = blockPassage;
+          }
+          if (unique.length < count) continue;
+
+          const signatureSource = section === "reading"
+            ? String(unique[0]?.passage || "")
+            : String(unique[0]?.question || "");
+          const signature = getPassageSignature(signatureSource);
+          if (!signature) continue;
+
+          if (section === "reading" && unique.some((q) => !q.passage)) {
+            continue;
+          }
+
+          return { questions: unique, passage: blockPassage, signature };
         }
-        passage = passage || localPassage;
-        transformedAll = transformedAll.concat(transformQuestions(data.questions, passage));
-        const unique = removeDuplicates(transformedAll, (q: any) => q.question.toLowerCase().trim());
-        if (unique.length >= questionCount) {
-          transformedAll = unique;
-          break;
+
+        if (bestQuestions.length >= count) {
+          const signatureSource = section === "reading"
+            ? String(bestQuestions[0]?.passage || "")
+            : String(bestQuestions[0]?.question || "");
+          const signature = getPassageSignature(signatureSource) || `block-${blockIndex}-${Date.now()}`;
+          return { questions: bestQuestions.slice(0, count), passage: bestPassage, signature };
         }
+
+        throw new Error(`Failed to generate enough valid questions for block ${blockIndex + 1}.`);
+      };
+
+      const buildMathBlock = async (blockIndex: number, count: number): Promise<any[]> => {
+        let bestQuestions: any[] = [];
+        for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
+          const data = await getModelPayload(
+            count,
+            `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} varied SAT Math questions for this block. Include at least one word problem in this block of ${count} questions (target exactly one unless the prompt naturally requires more).`
+          );
+          const transformed = transformQuestions(data.questions, data.passage);
+          const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+          if (unique.length > bestQuestions.length) {
+            bestQuestions = unique;
+          }
+          if (unique.length < count) continue;
+          return unique;
+        }
+
+        if (bestQuestions.length >= count) {
+          return bestQuestions.slice(0, count);
+        }
+
+        throw new Error(`Failed to generate enough valid math questions for block ${blockIndex + 1}.`);
+      };
+
+      for (let setAttempt = 0; setAttempt < MAX_SET_ATTEMPTS; setAttempt += 1) {
+        passage = undefined;
+        transformedAll = [];
+
+        if (section === "math") {
+          const mathBlocks = await Promise.all(
+            blockCounts.map((count, idx) => buildMathBlock(idx, count))
+          );
+          transformedAll = removeDuplicates(mathBlocks.flat(), (q: any) => getDedupKey(q)).slice(0, questionCount);
+        } else {
+          const rwBlocks: Array<{ questions: any[]; passage?: string; signature: string } | null> = Array.from(
+            { length: blockCounts.length },
+            () => null
+          );
+
+          while (true) {
+            const missingIndexes = rwBlocks
+              .map((block, idx) => (block === null ? idx : -1))
+              .filter((idx) => idx >= 0);
+
+            if (missingIndexes.length > 0) {
+              const generated = await Promise.all(
+                missingIndexes.map((idx) => buildRwBlock(idx, blockCounts[idx]))
+              );
+              generated.forEach((block, i) => {
+                rwBlocks[missingIndexes[i]] = block;
+              });
+            }
+
+            const invalidIndexes = new Set<number>();
+            let previousSignature = "";
+            for (let i = 0; i < rwBlocks.length; i += 1) {
+              const block = rwBlocks[i];
+              if (!block) {
+                invalidIndexes.add(i);
+                continue;
+              }
+              if (block.questions.length < blockCounts[i]) {
+                invalidIndexes.add(i);
+                continue;
+              }
+              if (section === "reading" && block.questions.some((q) => !q.passage)) {
+                invalidIndexes.add(i);
+                continue;
+              }
+              if (!block.signature || block.signature === previousSignature) {
+                invalidIndexes.add(i);
+                continue;
+              }
+              previousSignature = block.signature;
+            }
+
+            if (invalidIndexes.size === 0) {
+              break;
+            }
+
+            invalidIndexes.forEach((idx) => {
+              rwBlocks[idx] = null;
+            });
+          }
+
+          const orderedBlocks = rwBlocks.filter(Boolean) as Array<{ questions: any[]; passage?: string; signature: string }>;
+          if (orderedBlocks[0]?.passage) {
+            passage = orderedBlocks[0].passage;
+          }
+          transformedAll = orderedBlocks.flatMap((block) => block.questions);
+          transformedAll = removeDuplicates(transformedAll, (q: any) => getDedupKey(q)).slice(0, questionCount);
+        }
+
+        if (transformedAll.length < questionCount) {
+          continue;
+        }
+        if (!passesSetConstraints(transformedAll) && setAttempt < MAX_SET_ATTEMPTS - 1) {
+          continue;
+        }
+        break;
       }
     }
     
     // Remove duplicate questions based on question text
-    const uniqueQuestions = removeDuplicates(transformedAll, (q: any) => q.question.toLowerCase().trim());
+    const uniqueQuestions = removeDuplicates(transformedAll, (q: any) => getDedupKey(q));
 
     const finalQuestions = uniqueQuestions.length >= questionCount
       ? uniqueQuestions.slice(0, questionCount)
       : transformedAll.slice(0, questionCount);
 
-    if (finalQuestions.length < questionCount) {
+    if (finalQuestions.length < questionCount || !passesSetConstraints(finalQuestions)) {
       throw new Error("Failed to generate enough valid questions.");
     }
 
-    if (section === "reading" && !passage) {
+    if (section === "reading" && !passage && finalQuestions.every((q: any) => !q.passage)) {
       throw new Error("Reading passage is required for reading questions.");
     }
 
     const normalizedQuestions = finalQuestions.map((q: any, idx: number) => ({ ...q, id: idx + 1 }));
 
-    if (!cacheIsValid && normalizedQuestions.length === questionCount) {
+    if (shouldUseCache && !cacheIsValid && normalizedQuestions.length === questionCount) {
       setCachedValue(cacheKey, { passage, questions: normalizedQuestions });
     }
 
     // Get userId or sessionId for saving
     const { user, sessionId } = accessContext;
 
-    // Save to database
-    const practiceTest = await prisma.practiceTest.create({
-      data: {
-        userId: user?.id,
-        sessionId,
-        section: section,
-        topic: topic || null,
-        difficulty: difficulty || null,
-        questions: JSON.stringify(normalizedQuestions),
-        passage: passage || null,
-      },
-    });
+    let practiceTestId = existingPracticeTest?.id;
+    let responseQuestions = normalizedQuestions;
+    let responsePassage = passage;
+
+    if (existingPracticeTest) {
+      const existingQuestions: any[] = (() => {
+        try {
+          if (!existingPracticeTest?.questions) return [];
+          const parsed = JSON.parse(existingPracticeTest.questions);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      })();
+
+      const offset = existingQuestions.length;
+      const appended = normalizedQuestions.map((q: any, idx: number) => ({
+        ...q,
+        id: offset + idx + 1,
+      }));
+      const mergedQuestions = [...existingQuestions, ...appended];
+      const mergedPassage = existingPracticeTest.passage || passage || null;
+
+      await prisma.practiceTest.update({
+        where: { id: existingPracticeTest.id },
+        data: {
+          questions: JSON.stringify(mergedQuestions),
+          passage: mergedPassage,
+        },
+      });
+      practiceTestId = existingPracticeTest.id;
+      responseQuestions = appended;
+      responsePassage = mergedPassage || undefined;
+    } else {
+      // Save to database for a new test
+      const practiceTest = await prisma.practiceTest.create({
+        data: {
+          userId: user?.id,
+          sessionId,
+          section: section,
+          topic: topic || null,
+          difficulty: difficulty || null,
+          questions: JSON.stringify(normalizedQuestions),
+          passage: passage || null,
+        },
+      });
+      practiceTestId = practiceTest.id;
+    }
 
     const responseBody = cachedResponse
       ? { passage: cachedResponse.passage, questions: normalizedQuestions }
       : { passage, questions: normalizedQuestions };
 
     return NextResponse.json({
-      id: practiceTest.id, // Return test ID so we can update score later
+      id: practiceTestId, // Return test ID so we can update score later
       section: section,
-      passage: responseBody.passage,
-      questions: responseBody.questions,
+      passage: existingPracticeTest ? responsePassage : responseBody.passage,
+      questions: existingPracticeTest ? responseQuestions : responseBody.questions,
     });
   } catch (error: any) {
     return handleApiError(error);

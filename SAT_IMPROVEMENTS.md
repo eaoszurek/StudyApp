@@ -29,8 +29,7 @@
 - Break into sections with proper timing:
   - Reading: 64 minutes, 54 questions
   - Writing: 35 minutes, 44 questions  
-  - Math No Calculator: 25 minutes, 20 questions
-  - Math Calculator: 55 minutes, 38 questions
+- Math: 80 minutes, 58 questions
 - Add break timers
 - Save progress and allow resume
 

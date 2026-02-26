@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
-import { validateFlashcardFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, ensureFlashcardBackFormat, ensureSingleSkill, ensureBoldEmphasis } from "@/utils/aiValidation";
+import { validateFlashcardFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, ensureFlashcardBackFormat, ensureSingleSkill } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
@@ -53,34 +53,43 @@ export async function POST(req: Request) {
           content: `You are an expert SAT tutor creating flashcards to help students master key concepts. Your explanations should be clear, educational, and supportive - like a tutor explaining concepts to a student. Make the definitions helpful and memorable, not just technical.
 
 CRITICAL FORMAT RULES:
-- Each flashcard must follow this EXACT format: TERM — SAT tests: ... | How it appears: ... | Tip: ...
+- Each flashcard must follow this EXACT structure with line breaks:
+  TERM — **What this tests:** ...
+  **How it appears:** ...
+  **Quick tip:** ...
 - "front" field = SAT skill or rule name (1-4 words)
-- "back" field = "TERM — SAT tests: ... | How it appears: ... | Tip: ..." followed by optional examples
+- "back" field = 3 short lines (definition + appearance + tip) followed by optional examples
 - TERM must be 1-4 words
-- SAT tests: 8-20 words describing what the SAT is testing
-- How it appears: 8-20 words describing how it shows up on the SAT
-- Tip: 6-16 words with a quick recognition tip or mini-example
+- What this tests: 10-24 words describing the exact skill being measured
+- How it appears: 10-24 words describing common SAT-style presentation
+- Quick tip: 8-18 words with a practical recognition strategy
 - Use an em dash (—) to separate term and back content
 - After the definition, add 1-2 examples as a bulleted list if helpful (use • for bullets)
 - Examples should be concise, SAT-appropriate, and illustrate the concept clearly
 - NO ^ symbol for exponents - use actual superscript characters (e.g., x², x³, not x^2)
 - NO decorative symbols except bullets for examples
-- Keep explanations concise and test-oriented (avoid lecture-style)
-- Use **bold** sparingly inside SAT tests/How it appears/Tip to emphasize 1-2 key terms
+- Keep explanations clear and slightly fuller (avoid overly condensed phrasing)
+- Use **bold** only for labels and occasional key terms, never entire lines
 
 EXAMPLES OF CORRECT FORMAT:
 - front: "Quadratic Formula"
-  back: "Quadratic Formula — SAT tests: solving ax² + bx + c = 0 efficiently | How it appears: choose correct roots or steps | Tip: **Identify** a, b, c before plugging in
+  back: "Quadratic Formula — **What this tests:** solving ax² + bx + c = 0 with precise setup
+**How it appears:** choose correct roots, equivalent forms, or valid solving steps
+**Quick tip:** **Identify** a, b, and c before substitution
 • x² + 5x + 6 = 0 → x = -2 or x = -3
 • 2x² - 8x + 6 = 0 → x = 1 or x = 3"
 
 - front: "Parallel Lines"
-  back: "Parallel Lines — SAT tests: **equal slopes** and non-intersection | How it appears: compare equations or graphs | Tip: match slopes first
+  back: "Parallel Lines — **What this tests:** recognizing **equal slopes** and non-intersecting linear relationships
+**How it appears:** compare equations, tables, or graph behavior
+**Quick tip:** match slope first, then check different y-intercepts
 • y = 2x + 3 and y = 2x - 5 are parallel
 • Both have slope m = 2"
 
 - front: "Subject-Verb Agreement"
-  back: "Subject-Verb Agreement — SAT tests: matching verb number to subject | How it appears: distractor phrases between subject and verb | Tip: find the **true subject**
+  back: "Subject-Verb Agreement — **What this tests:** matching verb number to the sentence's actual subject
+**How it appears:** distractor phrases appear between subject and verb
+**Quick tip:** locate the **true subject** before checking verb form
 • The team wins (singular subject, singular verb)
 • The teams win (plural subject, plural verb)"
 
@@ -89,9 +98,9 @@ OUTPUT FORMAT:
   "flashcards": [
     {
       "front": "TERM (1-4 words)",
-      "back": "TERM — definition (10-25 words, clear and educational)\n• Example 1 (if helpful, concise)\n• Example 2 (if helpful, concise)",
+      "back": "TERM — **What this tests:** clear definition (10-24 words)\n**How it appears:** SAT-style appearance (10-24 words)\n**Quick tip:** practical strategy (8-18 words)\n• Example 1 (if helpful)\n• Example 2 (if helpful)",
       "difficulty": "Easy" | "Medium" | "Hard",
-      "tag": "Vocab" | "Grammar" | "Reading" | "Math No Calculator" | "Math Calculator" | "Functions" | "Statistics" | "Rhetoric"
+      "tag": "Vocab" | "Grammar" | "Reading" | "Math" | "Functions" | "Statistics" | "Rhetoric"
     }
   ],
   "reviewIntervals": {
@@ -112,7 +121,7 @@ FORMATTING RULES:
         },
         {
           role: "user",
-          content: `Create SAT flashcards about: ${topic}. Generate 10-15 flashcards following the format: TERM — definition (8-20 words). Add 1-2 bulleted examples (•) under the definition if helpful. Terms must be 1-4 words. Use actual superscripts for exponents (x² not x^2).`,
+          content: `Create SAT flashcards about: ${topic}. Generate 10-15 flashcards using this format with line breaks: TERM — **What this tests:** ... then **How it appears:** ... then **Quick tip:** .... Add 1-2 bulleted examples (•) when useful. Terms must be 1-4 words. Use actual superscripts for exponents (x² not x^2).`,
         },
       ],
       response_format: { type: "json_object" },
@@ -149,11 +158,11 @@ FORMATTING RULES:
         
         // Truncate if too long (increased limits to preserve examples)
         if (card.front) card.front = truncateText(card.front, 50);
-        if (card.back) card.back = truncateText(card.back, 350);
+        if (card.back) card.back = truncateText(card.back, 480);
         
         const enforced = ensureFlashcardBackFormat(card);
         card = enforced.card;
-        card.back = ensureBoldEmphasis(card.back, card.front);
+        // Keep bolding selective: rely on prompt + formatter, avoid auto-bold injection.
         card.skillCategory = ensureSingleSkill(card.skillCategory || card.front, card.front);
         if (!card.section) {
           const tag = typeof card.tag === "string" ? card.tag.toLowerCase() : "";

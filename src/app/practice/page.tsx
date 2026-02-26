@@ -10,6 +10,7 @@ import { calculateSectionScore, getPercentile, getScoreInterpretation } from "@/
 import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracking";
 import Timer from "@/components/ui/Timer";
 import WritingQuestion from "@/components/ui/WritingQuestion";
+import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import { getTopicsForSection } from "@/data/topics";
 
 type SectionType = "math" | "reading" | "writing";
@@ -65,11 +66,11 @@ const renderFormattedText = (text: string) => {
     return <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal">{renderBoldText(text)}</p>;
   }
   return (
-    <ul className="space-y-1.5">
+    <ul className="space-y-2">
       {bullets.map((line, idx) => (
-        <li key={idx} className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
-          <span className="mr-2 text-sky-500 dark:text-sky-400 font-semibold">•</span>
-          {renderBoldText(line)}
+        <li key={idx} className="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-normal">
+          <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
+          <span>{renderBoldText(line)}</span>
         </li>
       ))}
     </ul>
@@ -110,6 +111,7 @@ export default function PracticeTests() {
   });
   const [practiceSet, setPracticeSet] = useState<PracticeSet & { id?: string } | null>(null);
   const [currentTestId, setCurrentTestId] = useState<string | null>(null);
+  const currentTestIdRef = React.useRef<string | null>(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<OptionLetter | null>(null);
   const [showResults, setShowResults] = useState(false);
@@ -124,7 +126,18 @@ export default function PracticeTests() {
     hasSubscription: boolean;
   } | null>(null);
   const [freeUsageCount, setFreeUsageCount] = useState(0);
+  const [targetQuestionCount, setTargetQuestionCount] = useState(5);
+  const [isBatchLoading, setIsBatchLoading] = useState(false);
+  const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
+  const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
+  const isProgressiveMode =
+    (testType === "writing" || testType === "reading") && targetQuestionCount > 5;
+  const practiceProgressPercent = practiceSet
+    ? ((currentQuestion + 1) /
+        (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
+      100
+    : 0;
 
   // Get timer duration based on section type and question count
   const getTimerDuration = (section: SectionType | null, questionCount: number): number => {
@@ -179,6 +192,7 @@ export default function PracticeTests() {
 
     setLoading(true);
     setError(null);
+    setBatchLoadError(null);
     setPracticeSet(null);
     setCurrentQuestion(0);
     setSelectedAnswer(null);
@@ -186,14 +200,15 @@ export default function PracticeTests() {
     setScore(0);
     setUserAnswers({});
     setShowConfig(false);
+    setTargetQuestionCount(config.questionCount);
 
-    try {
+    const requestPracticeBatch = async (count: number) => {
       const res = await fetch("/api/generate-practice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           section: testType,
-          questionCount: config.questionCount,
+          questionCount: count,
           topic: config.topic || undefined,
           difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
         }),
@@ -204,9 +219,18 @@ export default function PracticeTests() {
         throw new Error(data.error || "Failed to generate test.");
       }
 
-      const data = (await res.json()) as PracticeSet & { id?: string };
-      setPracticeSet(data);
+      return (await res.json()) as PracticeSet & { id?: string };
+    };
+
+    try {
+      const initialCount =
+        testType === "writing" || testType === "reading"
+          ? Math.min(5, config.questionCount)
+          : config.questionCount;
+      const data = await requestPracticeBatch(initialCount);
       setCurrentTestId(data.id || null);
+      currentTestIdRef.current = data.id || null;
+      setPracticeSet(data);
 
       // Increment free tier usage ONLY for free users (premium users have unlimited)
       if (!subscriptionStatus?.hasSubscription) {
@@ -232,6 +256,72 @@ export default function PracticeTests() {
     }
   };
 
+  React.useEffect(() => {
+    if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
+    const loaded = practiceSet.questions.length;
+    const remaining = targetQuestionCount - loaded;
+    const questionsLeftInLoadedBatch = loaded - (currentQuestion + 1);
+
+    // Keep one batch ahead while the user works through the current 5.
+    if (remaining > 0 && questionsLeftInLoadedBatch <= 4 && !batchLoadingRef.current) {
+      batchLoadingRef.current = true;
+      setIsBatchLoading(true);
+      setBatchLoadError(null);
+
+      const load = async () => {
+        try {
+          const batchSize = Math.min(5, remaining);
+          const res = await fetch("/api/generate-practice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              section: testType,
+              questionCount: batchSize,
+              topic: config.topic || undefined,
+              difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+              existingTestId: currentTestIdRef.current,
+            }),
+          });
+
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || "Failed to load next question batch.");
+          }
+
+          const nextBatch = (await res.json()) as PracticeSet & { id?: string };
+          setPracticeSet((prev) => {
+            if (!prev) return prev;
+            const baseIndex = prev.questions.length;
+            const normalized = nextBatch.questions.map((q, idx) => ({
+              ...q,
+              id: baseIndex + idx + 1,
+            }));
+            return {
+              ...prev,
+              passage: prev.passage || nextBatch.passage,
+              questions: [...prev.questions, ...normalized],
+            };
+          });
+        } catch (err: any) {
+          setBatchLoadError(err.message || "Failed to load next question batch.");
+        } finally {
+          batchLoadingRef.current = false;
+          setIsBatchLoading(false);
+        }
+      };
+
+      void load();
+    }
+  }, [
+    isProgressiveMode,
+    practiceSet,
+    currentQuestion,
+    targetQuestionCount,
+    config.topic,
+    config.difficulty,
+    testType,
+  ]);
+
   const handleAnswerSelect = (answer: OptionLetter) => {
     setSelectedAnswer(answer);
     setUserAnswers({ ...userAnswers, [currentQuestion]: answer });
@@ -243,6 +333,51 @@ export default function PracticeTests() {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
     } else {
+      // In progressive mode, wait for remaining batches before finishing.
+      if (isProgressiveMode && practiceSet.questions.length < targetQuestionCount) {
+        setBatchLoadError(null);
+        if (!batchLoadingRef.current) {
+          batchLoadingRef.current = true;
+          setIsBatchLoading(true);
+          try {
+            const remaining = targetQuestionCount - practiceSet.questions.length;
+            const batchSize = Math.min(5, remaining);
+            const res = await fetch("/api/generate-practice", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                section: testType,
+                questionCount: batchSize,
+                topic: config.topic || undefined,
+                difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+                existingTestId: currentTestIdRef.current || undefined,
+              }),
+            });
+            if (!res.ok) {
+              const data = await res.json();
+              throw new Error(data.error || "Failed to load next question batch.");
+            }
+            const nextBatch = (await res.json()) as PracticeSet & { id?: string };
+            const baseIndex = practiceSet.questions.length;
+            const normalized = nextBatch.questions.map((q, idx) => ({
+              ...q,
+              id: baseIndex + idx + 1,
+            }));
+            const updatedQuestions = [...practiceSet.questions, ...normalized];
+            setPracticeSet({ ...practiceSet, questions: updatedQuestions });
+            setCurrentQuestion(currentQuestion + 1);
+            setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
+            return;
+          } catch (err: any) {
+            setBatchLoadError(err.message || "Still loading next questions. Please try again.");
+            return;
+          } finally {
+            batchLoadingRef.current = false;
+            setIsBatchLoading(false);
+          }
+        }
+        return;
+      }
       await calculateScore(practiceSet.questions);
       setShowResults(true);
     }
@@ -308,6 +443,8 @@ export default function PracticeTests() {
     setCurrentQuestion(0);
     setSelectedAnswer(null);
     setShowResults(false);
+    setCurrentTestId(null);
+    currentTestIdRef.current = null;
     setScore(0);
     setSatScore(null);
     setUserAnswers({});
@@ -341,12 +478,14 @@ export default function PracticeTests() {
   ];
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 pb-6 sm:pb-8 md:pb-10 max-w-full overflow-x-hidden w-full">
-      <PageHeader
-        eyebrow="Practice Tests"
-        title="Test your progress along the trail."
-        subtitle="Select a trail section, configure your checkpoint, and get instant feedback on your climb."
-      />
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
+      {!showConfig && !loading && !practiceSet && (
+        <PageHeader
+          eyebrow="Practice Tests"
+          title="Test your progress along the trail."
+          subtitle="Select a trail section, configure your checkpoint, and get instant feedback on your climb."
+        />
+      )}
 
       {subscriptionStatus && !subscriptionStatus.hasSubscription && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
@@ -378,7 +517,7 @@ export default function PracticeTests() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 text-white text-sm font-semibold transition-colors whitespace-nowrap"
+              className="px-5 py-2.5 rounded-2xl bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 dark:from-amber-400 dark:to-amber-500 dark:hover:from-amber-400 dark:hover:to-amber-600 text-slate-900 dark:text-slate-900 text-sm font-bold transition-all border-2 border-amber-600 dark:border-amber-600 shadow-[0_4px_0_rgba(217,119,6,0.3)] hover:shadow-[0_5px_0_rgba(217,119,6,0.4)] active:shadow-[0_2px_0_rgba(217,119,6,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade
             </button>
@@ -442,10 +581,10 @@ export default function PracticeTests() {
                   <button
                     key={count}
                     onClick={() => setConfig({ ...config, questionCount: count })}
-                    className={`px-5 py-2.5 rounded-xl border transition font-medium ${
+                    className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
                       config.questionCount === count
-                        ? "border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100"
-                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.05]"
+                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
                     }`}
                   >
                     {count}
@@ -463,7 +602,7 @@ export default function PracticeTests() {
                 <select
                   value={config.topic || ""}
                   onChange={(e) => setConfig({ ...config, topic: e.target.value })}
-                  className="ai-config-input lessons-dropdown-trigger w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-400/20 dark:focus:ring-sky-500/20 font-medium"
+                  className="ai-config-input w-full px-4 py-2.5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 hover:border-sky-400 dark:hover:border-sky-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-400/20 dark:focus:ring-sky-500/20 font-medium transition-all"
                 >
                   <option value="">Choose an SAT subcategory</option>
                   {sectionTopics.map((topic) => (
@@ -501,10 +640,10 @@ export default function PracticeTests() {
                   <button
                     key={diff}
                     onClick={() => setConfig({ ...config, difficulty: diff })}
-                    className={`px-5 py-2.5 rounded-xl border transition font-medium ${
+                    className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
                       config.difficulty === diff
-                        ? "border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100"
-                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.05]"
+                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
                     }`}
                   >
                     {diff}
@@ -602,7 +741,14 @@ export default function PracticeTests() {
                     <span>Question {idx + 1}</span>
                     <span className={isCorrect ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}>{isCorrect ? "✓ Correct" : "✗ Incorrect"}</span>
                   </div>
-                  <p className="text-slate-700 dark:text-slate-200 text-sm font-medium">{q.question}</p>
+                  {testType === "writing" ? (
+                    <WritingQuestion
+                      question={q.question}
+                      className="text-slate-700 dark:text-slate-200 text-sm font-medium"
+                    />
+                  ) : (
+                    <p className="text-slate-700 dark:text-slate-200 text-sm font-medium">{q.question}</p>
+                  )}
                   <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 font-medium">
                     Your answer: {userAnswers[idx] || "—"} • Correct: {q.correctAnswer}
                   </p>
@@ -656,31 +802,30 @@ export default function PracticeTests() {
           <div className="relative z-10">
             <div className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400 mb-3 font-medium">
               <span>
-                Question {currentQuestion + 1} / {practiceSet.questions.length}
+                Question {currentQuestion + 1} / {isProgressiveMode ? targetQuestionCount : practiceSet.questions.length}
               </span>
               <div className="flex items-center gap-4">
+                <SubtleProgressCircle progress={practiceProgressPercent} />
                 <Timer
-                  initialMinutes={getTimerDuration(testType, practiceSet.questions.length)}
+                  initialMinutes={getTimerDuration(
+                    testType,
+                    isProgressiveMode ? targetQuestionCount : practiceSet.questions.length
+                  )}
                   onTimeUp={handleTimeUp}
                   warningMinutes={5}
+                  paused={isProgressiveMode && isBatchLoading}
                 />
               </div>
             </div>
-            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-              <div
-                className="h-full brand-gradient"
-                style={{ width: `${((currentQuestion + 1) / practiceSet.questions.length) * 100}%` }}
-              />
-            </div>
           </div>
 
-          {practiceSet.passage && (
+          {((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage) && (
             <div className="mt-2 border-2 border-slate-300 dark:border-slate-600 rounded-2xl p-5 sm:p-6 bg-slate-50 dark:bg-slate-800/90 text-sm sm:text-base text-slate-800 dark:text-slate-100 whitespace-pre-line font-medium leading-relaxed mb-6 shadow-sm">
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
                 <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-400 font-semibold">Passage</span>
               </div>
               <div className="prose prose-sm max-w-none dark:prose-invert">
-                {practiceSet.passage}
+                {(practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage}
               </div>
             </div>
           )}
@@ -697,15 +842,15 @@ export default function PracticeTests() {
                 </p>
               </>
             ) : (
-              <p className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-4 leading-relaxed">
+              <p className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-4 leading-relaxed whitespace-pre-line">
                 {practiceSet.questions[currentQuestion].question}
               </p>
             )}
-            <div className="flex flex-wrap gap-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
-              <span className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200">
+            <div className="flex flex-wrap gap-2 text-xs font-medium">
+              <span className="practice-skill-badge px-3 py-1.5 rounded-full border">
                 {practiceSet.questions[currentQuestion].skillFocus}
               </span>
-              <span className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200">
+              <span className="practice-difficulty-badge px-3 py-1.5 rounded-full border">
                 Difficulty: {practiceSet.questions[currentQuestion].difficulty}
               </span>
             </div>
@@ -719,10 +864,10 @@ export default function PracticeTests() {
                   <button
                     key={optionLetter}
                     onClick={() => handleAnswerSelect(optionLetter)}
-                    className={`w-full text-left p-4 sm:p-5 rounded-xl border-2 transition-all ${
+                    className={`w-full text-left p-4 sm:p-5 rounded-2xl border-2 transition-all font-medium ${
                       isSelected
-                        ? "border-sky-500 dark:border-sky-400 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100 shadow-sm"
-                        : "border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:shadow-sm"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
+                        : "border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
                     <span className="font-bold mr-3">{optionLetter})</span>
@@ -738,9 +883,23 @@ export default function PracticeTests() {
               Previous
             </PrimaryButton>
             <PrimaryButton onClick={handleNext}>
-              {currentQuestion === practiceSet.questions.length - 1 ? "Finish" : "Next"}
+              {currentQuestion === practiceSet.questions.length - 1
+                ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
+                : "Next"}
             </PrimaryButton>
           </div>
+          {isProgressiveMode && (
+            <div className="pt-3 text-xs text-slate-600 dark:text-slate-400 font-medium">
+              {isBatchLoading
+                ? "Loading next 5 questions in the background…"
+                : `Loaded ${practiceSet.questions.length} of ${targetQuestionCount} questions.`}
+            </div>
+          )}
+          {batchLoadError && (
+            <p className="text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              {batchLoadError}
+            </p>
+          )}
         </GlassPanel>
       )}
     </div>

@@ -163,7 +163,7 @@ export default function Progress({
     : null;
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 lg:px-10 pb-6 sm:pb-8 md:pb-10 max-w-full overflow-x-hidden w-full">
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
       <PageHeader
         eyebrow="Progress"
         title="Monitor your climb to the peak."
