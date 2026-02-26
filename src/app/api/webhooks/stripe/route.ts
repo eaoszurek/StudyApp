@@ -83,12 +83,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Webhook error:", error);
-    return NextResponse.json(
-      { error: error.message || "Webhook handler failed" },
-      { status: 500 }
-    );
+    // Return 200 to prevent Stripe from retrying on internal errors.
+    // Only signature verification failures (above) return non-200.
+    return NextResponse.json({ received: true });
   }
 }
 

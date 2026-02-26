@@ -71,9 +71,6 @@ export async function GET() {
           return NextResponse.json({
             subscriptionStatus: newStatus,
             hasSubscription: newStatus === "ACTIVE" || newStatus === "TRIALING",
-            stripeCustomerId: user.stripeCustomerId,
-            stripeSubscriptionId: subscription.id,
-            synced: true,
           });
         }
       } catch (error) {
@@ -97,9 +94,6 @@ export async function GET() {
           return NextResponse.json({
             subscriptionStatus: currentStatus,
             hasSubscription: currentStatus === "ACTIVE" || currentStatus === "TRIALING",
-            stripeCustomerId: user.stripeCustomerId,
-            stripeSubscriptionId: user.stripeSubscriptionId,
-            synced: true,
           });
         }
       } catch (error) {
@@ -116,9 +110,6 @@ export async function GET() {
           return NextResponse.json({
             subscriptionStatus: "CANCELLED",
             hasSubscription: false,
-            stripeCustomerId: user.stripeCustomerId,
-            stripeSubscriptionId: null,
-            synced: true,
           });
         }
       }
@@ -127,13 +118,11 @@ export async function GET() {
     return NextResponse.json({
       subscriptionStatus: user.subscriptionStatus,
       hasSubscription: user.subscriptionStatus === "ACTIVE" || user.subscriptionStatus === "TRIALING",
-      stripeCustomerId: user.stripeCustomerId,
-      stripeSubscriptionId: user.stripeSubscriptionId,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error getting subscription status:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to get subscription status" },
+      { error: "Failed to get subscription status" },
       { status: 500 }
     );
   }

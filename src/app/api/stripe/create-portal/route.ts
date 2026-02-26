@@ -9,7 +9,7 @@ import { getServerSession } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     // Check if Stripe is configured
     if (!stripe) {
@@ -45,10 +45,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ url: portalSession.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating portal session:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to create portal session" },
+      { error: "Failed to open subscription management. Please try again." },
       { status: 500 }
     );
   }

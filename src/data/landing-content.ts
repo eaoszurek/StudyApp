@@ -58,11 +58,11 @@ export const landingContent = {
         price: "$0",
         period: "forever",
         features: [
-          "5 practice checkpoints per month",
-          "Basic Route Map generator",
-          "50 flashcards per pack",
-          "10 micro-lessons per month",
+          "1 free use across all features",
+          "Practice tests, flashcards, study plans",
+          "Micro-lessons with practice questions",
           "Progress tracking",
+          "Anonymous session support",
         ],
         cta: "Start Free",
         popular: false,
@@ -91,7 +91,7 @@ export const landingContent = {
       },
       {
         question: "Do you offer refunds?",
-        answer: "We offer a 14-day money-back guarantee. If you're not satisfied, contact us within 14 days for a full refund.",
+        answer: "Except where required by law, payments are non-refundable. You can cancel at any time, and you'll retain access until the end of your current billing period.",
       },
       {
         question: "What's the difference between Free and Paid?",
@@ -99,44 +99,7 @@ export const landingContent = {
       },
     ],
   },
-  testimonials: [
-    {
-      name: "Sarah Chen",
-      scoreImprovement: "+180 points",
-      quote: "PeakPrep's Route Maps helped me stay organized and focused. I went from 1200 to 1380 in 3 months.",
-      avatar: "/images/testimonial-sarah.jpg",
-    },
-    {
-      name: "Marcus Johnson",
-      scoreImprovement: "+210 points",
-      quote: "The checkpoint practice tests were game-changers. The instant feedback helped me understand my mistakes immediately.",
-      avatar: "/images/testimonial-marcus.jpg",
-    },
-    {
-      name: "Emma Rodriguez",
-      scoreImprovement: "+195 points",
-      quote: "I loved the mountain theme—it made studying feel like an adventure instead of a chore. Reached my target score!",
-      avatar: "/images/testimonial-emma.jpg",
-    },
-    {
-      name: "Alex Kim",
-      scoreImprovement: "+225 points",
-      quote: "The flashcards were perfect for quick study sessions. I could review anywhere, anytime. Best investment I made!",
-      avatar: "/images/testimonial-alex.jpg",
-    },
-    {
-      name: "Jordan Taylor",
-      scoreImprovement: "+200 points",
-      quote: "The micro-lessons broke down complex topics into digestible chunks. Made learning so much easier!",
-      avatar: "/images/testimonial-jordan.jpg",
-    },
-    {
-      name: "Riley Martinez",
-      scoreImprovement: "+190 points",
-      quote: "The progress tracking kept me motivated. Seeing my score climb week by week was incredibly rewarding.",
-      avatar: "/images/testimonial-riley.jpg",
-    },
-  ],
+  testimonials: [],
   trustBar: {
     text: "Built by a student, for students.",
   },

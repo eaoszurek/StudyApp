@@ -90,10 +90,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ url: checkoutSession.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error creating checkout session:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to create checkout session" },
+      { error: "Failed to create checkout session. Please try again." },
       { status: 500 }
     );
   }

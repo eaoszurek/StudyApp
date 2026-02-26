@@ -164,10 +164,10 @@ export async function POST() {
       hasSubscription: user.subscriptionStatus === "ACTIVE" || user.subscriptionStatus === "TRIALING",
       message: "No subscription found",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error syncing subscription:", error);
     return NextResponse.json(
-      { error: error.message || "Failed to sync subscription" },
+      { error: "Failed to sync subscription" },
       { status: 500 }
     );
   }

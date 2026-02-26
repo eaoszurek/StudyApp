@@ -17,7 +17,7 @@ interface TestimonialsProps {
 
 export default function Testimonials({
   testimonials,
-  trustText = "Trusted by 1,700+ students climbing to their target scores",
+  trustText = "Built by a student, for students.",
 }: TestimonialsProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const x = useMotionValue(0);
@@ -26,6 +26,7 @@ export default function Testimonials({
 
   // Auto-rotate carousel
   useEffect(() => {
+    if (testimonials.length === 0) return;
     const interval = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % testimonials.length);
     }, 5000);
@@ -37,6 +38,10 @@ export default function Testimonials({
   useEffect(() => {
     x.set(-currentIndex * 100);
   }, [currentIndex, x]);
+
+  if (testimonials.length === 0) {
+    return null;
+  }
 
   const goToSlide = (index: number) => {
     setCurrentIndex(index);
