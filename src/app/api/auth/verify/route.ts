@@ -13,10 +13,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Missing token" }, { status: 400 });
     }
 
-    const email = await verifyMagicLinkToken(token);
-    if (!email) {
+    const rawEmail = await verifyMagicLinkToken(token);
+    if (!rawEmail) {
       return NextResponse.json({ error: "Invalid or expired token" }, { status: 400 });
     }
+
+    const email = rawEmail.toLowerCase().trim();
 
     let user = await prisma.user.findUnique({
       where: { email },

@@ -129,10 +129,7 @@ export default function Lessons() {
     if (!openDropdown || !dropdownRef.current) return;
     const dropdownEl = dropdownRef.current.querySelector(".lessons-dropdown") as HTMLElement | null;
     if (!dropdownEl) return;
-    const computed = window.getComputedStyle(dropdownEl);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/7267ab81-b3bf-4c7b-b2fa-d6513f837920',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'lessons/page.tsx:118',message:'dropdown computed styles',data:{openDropdown,htmlClass:document.documentElement.className,bg:computed.backgroundColor,color:computed.color,borderColor:computed.borderColor},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    window.getComputedStyle(dropdownEl);
   }, [openDropdown]);
 
   const generateLesson = async (topicInput?: string) => {

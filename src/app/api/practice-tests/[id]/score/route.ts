@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "@/lib/auth";
+import { getServerSession, getOrCreateAnonymousSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
 import { z } from "zod";
 
@@ -21,12 +21,10 @@ export async function PATCH(
   try {
     const { id } = await params;
     const user = await getServerSession();
+    let sessionId: string | undefined;
 
     if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      sessionId = await getOrCreateAnonymousSession();
     }
 
     const body = await req.json();
@@ -41,12 +39,18 @@ export async function PATCH(
 
     const { scaledScore, rawScore, maxRawScore, timeSpent } = validationResult.data;
 
-    // Verify the test belongs to the user
+    if (rawScore > maxRawScore) {
+      return NextResponse.json(
+        { error: "rawScore cannot be greater than maxRawScore" },
+        { status: 400 }
+      );
+    }
+
+    // Verify the test belongs to the user or anonymous session
     const test = await prisma.practiceTest.findFirst({
-      where: {
-        id,
-        userId: user.id,
-      },
+      where: user
+        ? { id, userId: user.id }
+        : { id, sessionId },
     });
 
     if (!test) {
