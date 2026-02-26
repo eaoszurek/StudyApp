@@ -100,8 +100,8 @@ function DashboardContent() {
   }, [fetchSubscription, searchParams]);
 
   useEffect(() => {
-    // Fetch score history from backend
     const loadStats = async () => {
+      try {
       const history = await getScoreHistory();
       const recentSessions = await getRecentSessions(7);
       
@@ -147,6 +147,9 @@ function DashboardContent() {
         setEncouragementMessage("Nice work logging checkpoints. Keep building consistency this week.");
       } else {
         setEncouragementMessage("You’re getting started. Each Practice Test moves you closer to your target.");
+      }
+      } catch (err) {
+        console.error('Failed to load dashboard stats:', err);
       }
     };
     

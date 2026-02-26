@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * GET - Export all user data (GDPR data portability)
@@ -14,6 +15,14 @@ export async function GET() {
       return NextResponse.json(
         { error: "Unauthorized. Please sign in to export your data." },
         { status: 401 }
+      );
+    }
+
+    const rl = rateLimit(`export:${user.id}`, { limit: 3, windowSeconds: 3600 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Export limit reached. Please try again later." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
       );
     }
 
@@ -31,10 +40,10 @@ export async function GET() {
             updatedAt: true,
           },
         }),
-        prisma.flashcardSet.findMany({ where: { userId: user.id } }),
-        prisma.practiceTest.findMany({ where: { userId: user.id } }),
-        prisma.studyPlan.findMany({ where: { userId: user.id } }),
-        prisma.microLesson.findMany({ where: { userId: user.id } }),
+        prisma.flashcardSet.findMany({ where: { userId: user.id }, take: 1000 }),
+        prisma.practiceTest.findMany({ where: { userId: user.id }, take: 1000 }),
+        prisma.studyPlan.findMany({ where: { userId: user.id }, take: 1000 }),
+        prisma.microLesson.findMany({ where: { userId: user.id }, take: 1000 }),
       ]);
 
     const exportData = {
