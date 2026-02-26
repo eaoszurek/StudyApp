@@ -24,12 +24,20 @@ export async function GET() {
     });
 
     // Parse JSON plan for each study plan
-    const plansWithParsedData = studyPlans.map((plan) => ({
-      id: plan.id,
-      plan: JSON.parse(plan.plan),
-      createdAt: plan.createdAt,
-      updatedAt: plan.updatedAt,
-    }));
+    const plansWithParsedData = studyPlans.map((plan) => {
+      let parsedPlan;
+      try {
+        parsedPlan = JSON.parse(plan.plan);
+      } catch {
+        parsedPlan = {};
+      }
+      return {
+        id: plan.id,
+        plan: parsedPlan,
+        createdAt: plan.createdAt,
+        updatedAt: plan.updatedAt,
+      };
+    });
 
     return NextResponse.json({ studyPlans: plansWithParsedData });
   } catch (error: any) {

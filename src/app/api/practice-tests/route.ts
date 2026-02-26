@@ -24,16 +24,24 @@ export async function GET() {
     });
 
     // Parse JSON questions for each test
-    const testsWithParsedQuestions = practiceTests.map((test) => ({
-      id: test.id,
-      section: test.section,
-      topic: test.topic,
-      difficulty: test.difficulty,
-      questions: JSON.parse(test.questions),
-      passage: test.passage,
-      score: test.score,
-      createdAt: test.createdAt,
-    }));
+    const testsWithParsedQuestions = practiceTests.map((test) => {
+      let questions;
+      try {
+        questions = JSON.parse(test.questions);
+      } catch {
+        questions = [];
+      }
+      return {
+        id: test.id,
+        section: test.section,
+        topic: test.topic,
+        difficulty: test.difficulty,
+        questions,
+        passage: test.passage,
+        score: test.score,
+        createdAt: test.createdAt,
+      };
+    });
 
     return NextResponse.json({ practiceTests: testsWithParsedQuestions });
   } catch (error: any) {

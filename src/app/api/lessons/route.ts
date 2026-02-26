@@ -24,12 +24,20 @@ export async function GET() {
     });
 
     // Parse JSON lesson for each micro lesson
-    const lessonsWithParsedData = microLessons.map((lesson) => ({
-      id: lesson.id,
-      topic: lesson.topic,
-      lesson: JSON.parse(lesson.lesson),
-      createdAt: lesson.createdAt,
-    }));
+    const lessonsWithParsedData = microLessons.map((lesson) => {
+      let parsedLesson;
+      try {
+        parsedLesson = JSON.parse(lesson.lesson);
+      } catch {
+        parsedLesson = {};
+      }
+      return {
+        id: lesson.id,
+        topic: lesson.topic,
+        lesson: parsedLesson,
+        createdAt: lesson.createdAt,
+      };
+    });
 
     return NextResponse.json({ microLessons: lessonsWithParsedData });
   } catch (error: any) {

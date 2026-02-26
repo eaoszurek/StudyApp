@@ -24,14 +24,22 @@ export async function GET() {
     });
 
     // Parse JSON cards for each set
-    const setsWithParsedCards = flashcardSets.map((set) => ({
-      id: set.id,
-      title: set.title,
-      topic: set.topic,
-      cards: JSON.parse(set.cards),
-      createdAt: set.createdAt,
-      updatedAt: set.updatedAt,
-    }));
+    const setsWithParsedCards = flashcardSets.map((set) => {
+      let cards;
+      try {
+        cards = JSON.parse(set.cards);
+      } catch {
+        cards = [];
+      }
+      return {
+        id: set.id,
+        title: set.title,
+        topic: set.topic,
+        cards,
+        createdAt: set.createdAt,
+        updatedAt: set.updatedAt,
+      };
+    });
 
     return NextResponse.json({ flashcardSets: setsWithParsedCards });
   } catch (error: any) {
