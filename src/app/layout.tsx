@@ -3,11 +3,8 @@ import { Geist_Mono, Montserrat, Oswald } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import DarkModeInit from "@/components/DarkModeInit";
-<<<<<<< Updated upstream
 import CookieConsent from "@/components/ui/CookieConsent";
-=======
 import { absoluteUrl, siteUrl } from "@/lib/seo";
->>>>>>> Stashed changes
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",

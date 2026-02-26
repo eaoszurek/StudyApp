@@ -58,16 +58,10 @@ export const landingContent = {
         price: "$0",
         period: "forever",
         features: [
-<<<<<<< Updated upstream
-          "1 free use across all features",
-          "Practice tests, flashcards, study plans",
-          "Micro-lessons with practice questions",
-=======
           "1 free practice checkpoint",
           "1 free Route Map study plan",
           "1 free flashcard pack",
           "1 free micro-lesson",
->>>>>>> Stashed changes
           "Progress tracking",
           "Anonymous session support",
         ],

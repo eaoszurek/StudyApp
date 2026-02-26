@@ -98,6 +98,13 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
+            <h2 className="text-xl font-semibold text-slate-900 mb-3">Data Retention</h2>
+            <p className="text-slate-700 leading-relaxed">
+              We retain your account and usage data (practice tests, flashcards, study plans, progress) until you delete your account. Once you request account deletion, we remove your personal data and associated content from our systems. Server logs and operational data may be retained for a limited period (e.g., up to 90 days) for security and troubleshooting. Data processed by third parties (such as Stripe and OpenAI) is retained according to their respective policies.
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-xl font-semibold text-slate-900 mb-3">Third-Party Services</h2>
             <p className="text-slate-700 leading-relaxed mb-3">
               We use the following third-party services that may collect information:

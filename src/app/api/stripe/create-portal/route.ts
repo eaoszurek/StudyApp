@@ -8,9 +8,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { stripe } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { checkOrigin } from "@/utils/apiHelpers";
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
+    const originError = checkOrigin(request);
+    if (originError) return originError;
+
     // Check if Stripe is configured
     if (!stripe) {
       return NextResponse.json(

@@ -252,11 +252,6 @@ export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolea
     return { card, valid: false, errors };
   }
 
-<<<<<<< Updated upstream
-  const lines = rawBack.split("\n").map((line: string) => line.trim()).filter(Boolean);
-  const exampleLines = lines.filter((line: string) => line.startsWith("•"));
-  let definitionLine = lines.find((line: string) => line.includes("—")) || lines[0] || "";
-=======
   const lines: string[] = rawBack
     .split("\n")
     .map((line: string) => line.trim())
@@ -264,7 +259,6 @@ export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolea
   const exampleLines = lines.filter((line: string) => line.startsWith("•"));
   const contentLines = lines.filter((line: string) => !line.startsWith("•"));
   let definitionLine = contentLines.find((line: string) => line.includes("—")) || contentLines[0] || "";
->>>>>>> Stashed changes
 
   if (!definitionLine.includes("—")) {
     definitionLine = `${term || "Skill"} — ${definitionLine}`;

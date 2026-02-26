@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, createSession, getOrCreateAnonymousSession } from "@/lib/auth";
 import { migrateSessionToUser } from "@/lib/migrate-session";
-import { handleApiError } from "@/utils/apiHelpers";
+import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/policy";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -18,6 +18,9 @@ const RegisterSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const originError = checkOrigin(req);
+    if (originError) return originError;
+
     const forwarded = req.headers.get("x-forwarded-for");
     const ip = forwarded?.split(",")[0]?.trim() || "unknown";
     const rl = rateLimit(`register:${ip}`, { limit: 5, windowSeconds: 60 });

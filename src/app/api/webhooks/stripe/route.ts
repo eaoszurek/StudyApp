@@ -37,12 +37,20 @@ export async function POST(request: NextRequest) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
+    } catch (err: unknown) {
+      console.error("Webhook signature verification failed:", err);
       return NextResponse.json(
-        { error: `Webhook Error: ${err.message}` },
+        { error: "Webhook signature verification failed" },
         { status: 400 }
       );
+    }
+
+    // Idempotency: skip if we already processed this event
+    const existing = await prisma.stripeWebhookEvent.findUnique({
+      where: { eventId: event.id },
+    });
+    if (existing) {
+      return NextResponse.json({ received: true });
     }
 
     // Handle different event types
@@ -81,6 +89,12 @@ export async function POST(request: NextRequest) {
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
+
+    await prisma.stripeWebhookEvent.create({
+      data: { eventId: event.id },
+    }).catch(() => {
+      // Race: another delivery already processed this event; ignore
+    });
 
     return NextResponse.json({ received: true });
   } catch (error: unknown) {

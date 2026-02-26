@@ -94,36 +94,20 @@ function DashboardContent() {
     const sessionId = searchParams?.get("session_id");
 
     if (sessionId) {
-<<<<<<< Updated upstream
-      load();
-      const retries = [2000, 5000, 10000];
-      retries.forEach(delay => {
-        timeouts.push(setTimeout(() => { if (!cancelled) fetchSubscription(); }, delay));
-      });
-=======
-      // Just completed checkout - fetch subscription status
-      // The subscription-status endpoint automatically syncs with Stripe
-      // Also retry after delays in case webhook needs time
       syncAndFetchSubscription();
       const retries = [2000, 5000, 10000];
-      const timeouts = retries.map(delay => 
-        setTimeout(() => syncAndFetchSubscription(), delay)
-      );
-      return () => timeouts.forEach(clearTimeout);
->>>>>>> Stashed changes
+      retries.forEach(delay => {
+        timeouts.push(setTimeout(() => { if (!cancelled) syncAndFetchSubscription(); }, delay));
+      });
     } else {
       load();
     }
-<<<<<<< Updated upstream
 
     return () => {
       cancelled = true;
       timeouts.forEach(clearTimeout);
     };
-  }, [fetchSubscription, searchParams]);
-=======
   }, [fetchSubscription, searchParams, syncAndFetchSubscription]);
->>>>>>> Stashed changes
 
   useEffect(() => {
     const loadStats = async () => {

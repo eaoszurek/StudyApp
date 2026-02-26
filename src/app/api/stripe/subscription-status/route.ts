@@ -82,12 +82,9 @@ export async function GET() {
           return NextResponse.json({
             subscriptionStatus: newStatus,
             hasSubscription: newStatus === "ACTIVE" || newStatus === "TRIALING",
-<<<<<<< Updated upstream
-=======
             stripeCustomerId: user.stripeCustomerId,
             stripeSubscriptionId: newStatus ? subscription.id : null,
             synced: true,
->>>>>>> Stashed changes
           });
         }
       } catch (error) {

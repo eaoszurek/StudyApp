@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
-import { validateApiKey, handleApiError, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
 
@@ -45,6 +46,15 @@ export async function POST(req: Request) {
     const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
 
     const accessContext = await getAccessContext();
+    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again in a moment." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
+    }
+
     let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
 
     if (existingTestId) {
@@ -204,18 +214,13 @@ CRITICAL SAT WRITING REQUIREMENTS:
     const cacheKey = `generate-practice:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
     const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
-<<<<<<< Updated upstream
-    const getModelPayload = async (requestedCount: number) => {
-      const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
-      const completion = await withRetry(
-        () => getOpenAIClient().chat.completions.create({
-=======
     const MAX_BLOCK_ATTEMPTS = 4;
     const MAX_SET_ATTEMPTS = 3;
 
     const getModelPayload = async (requestedCount: number, extraInstructions = "") => {
-      const completion = await openai.chat.completions.create({
->>>>>>> Stashed changes
+      const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
+      const completion = await withRetry(
+        () => getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
       max_tokens: Math.min(3600, Math.max(900, requestedCount * 360)),
@@ -346,7 +351,10 @@ Do not output anything except the JSON.`,
         },
       ],
       response_format: { type: "json_object" },
-      });
+        }),
+        2,
+        timeoutMs
+      );
       const responseText = completion.choices[0].message?.content || "{}";
       let data;
       

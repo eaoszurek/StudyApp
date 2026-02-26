@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword, createSession, getOrCreateAnonymousSession } from "@/lib/auth";
 import { migrateSessionToUser } from "@/lib/migrate-session";
-import { handleApiError } from "@/utils/apiHelpers";
+import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 
 const LoginSchema = z.object({
@@ -13,6 +13,9 @@ const LoginSchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const originError = checkOrigin(req);
+    if (originError) return originError;
+
     const forwarded = req.headers.get("x-forwarded-for");
     const ip = forwarded?.split(",")[0]?.trim() || "unknown";
     const rl = rateLimit(`login:${ip}`, { limit: 10, windowSeconds: 60 });

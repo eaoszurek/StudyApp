@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { handleApiError, validateApiKey, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
 
 export async function POST(req: Request) {
@@ -29,6 +30,14 @@ export async function POST(req: Request) {
     if (apiKeyError) return apiKeyError;
 
     const accessContext = await getAccessContext();
+    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again in a moment." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
+    }
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(
@@ -72,7 +81,7 @@ Return ONLY valid JSON that matches this schema:
 Rules:
 - Questions must be SAT-style and concise.
 - Make distractor choices plausible.
-- Explanations must briefly justify the correct answer.
+- Explanations must briefly justify the correct answer and be encouraging, like a tutor.
 - Avoid non-SAT topics; reinterpret them into SAT-relevant content if needed.
 - Across the five questions, avoid repeating stems or near-identical scenarios.
 - If Math: include at least one word problem and one non-word problem; vary contexts and representations.
@@ -92,7 +101,17 @@ Rules:
     );
 
     const responseText = cachedResponse ? JSON.stringify(cachedResponse) : (completion?.choices[0].message?.content || "{}");
-    const data = JSON.parse(responseText);
+    let data: { questions?: unknown[] };
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        data = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("Failed to parse JSON response from model.");
+      }
+    }
 
     if (!Array.isArray(data.questions)) {
       throw new Error("Invalid response format from model.");

@@ -22,8 +22,8 @@ export default function CookieConsent() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-[200] p-4">
-      <div className="mx-auto max-w-3xl rounded-xl bg-white dark:bg-slate-800 shadow-xl border border-slate-200 dark:border-slate-700 px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <p className="text-sm text-slate-600 dark:text-slate-300 flex-1">
+      <div className="mx-auto max-w-3xl rounded-xl bg-white shadow-xl border border-slate-200 px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <p className="text-sm text-slate-600 flex-1">
           We use essential cookies to keep you signed in and track your study
           progress. No advertising or third-party tracking cookies are used.{" "}
           <Link

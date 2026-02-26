@@ -3,6 +3,7 @@ import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { cleanText, truncateText, ensureTaskDuration, ensureBoldEmphasis } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
 
@@ -47,6 +48,14 @@ export async function POST(req: Request) {
     const { answers, performanceData } = validationResult.data;
 
     const accessContext = await getAccessContext();
+    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again in a moment." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
+    }
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(

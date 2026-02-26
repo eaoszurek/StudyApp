@@ -3,24 +3,32 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+const FEATURE_PATHS = [
+  "/dashboard",
+  "/practice",
+  "/study-plan",
+  "/flashcards",
+  "/lessons",
+  "/progress",
+];
+
 export default function DarkModeInit() {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Check if we're on the landing page
-    const isLandingPage = pathname === "/";
+    const isFeaturePage = FEATURE_PATHS.some(
+      (p) => pathname === p || pathname.startsWith(p + "/")
+    );
 
-    // Force light mode on landing page
-    if (isLandingPage) {
+    if (!isFeaturePage) {
       document.documentElement.classList.remove("dark");
       return;
     }
 
-    // Apply dark mode for other pages based on preference
     const saved = localStorage.getItem("darkMode");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const shouldBeDark = saved ? saved === "true" : prefersDark;
-    
+
     if (shouldBeDark) {
       document.documentElement.classList.add("dark");
     } else {

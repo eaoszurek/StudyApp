@@ -7,9 +7,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "@/lib/auth";
 import { stripe, STRIPE_PRICE_ID_MONTHLY } from "@/lib/stripe";
 import { prisma } from "@/lib/prisma";
+import { checkOrigin } from "@/utils/apiHelpers";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    const originError = checkOrigin(request);
+    if (originError) return originError;
+
     // Check if Stripe is configured
     if (!stripe || !STRIPE_PRICE_ID_MONTHLY) {
       return NextResponse.json(
@@ -22,6 +27,14 @@ export async function POST(request: NextRequest) {
     const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const rl = rateLimit(`checkout:${session.id}`, { limit: 5, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many checkout attempts. Please try again in a moment." },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+      );
     }
 
     const body = await request.json();

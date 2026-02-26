@@ -100,6 +100,26 @@ export function errorResponse(
 }
 
 /**
+ * Origin check for mutating requests (CSRF-style).
+ * Returns 403 if origin and host headers are present and do not match.
+ * Returns null if allowed (no origin, or origin matches host).
+ */
+export function checkOrigin(request: Request): NextResponse | null {
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (!origin || !host) return null;
+  try {
+    const originHost = new URL(origin).host;
+    if (originHost !== host) {
+      return NextResponse.json({ error: "Cross-origin request blocked" }, { status: 403 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Invalid request origin" }, { status: 403 });
+  }
+  return null;
+}
+
+/**
  * Validates API key is configured
  */
 export function validateApiKey(): NextResponse | null {

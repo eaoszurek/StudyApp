@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -25,8 +26,10 @@ const nextConfig: NextConfig = {
     "@libsql/client",
     "libsql",
   ],
-  // Configure Turbopack (empty config to use Turbopack instead of webpack)
-  turbopack: {},
+  // Configure Turbopack root to avoid workspace inference warnings
+  turbopack: {
+    root: path.join(__dirname),
+  },
   async headers() {
     return [
       {
