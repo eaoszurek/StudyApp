@@ -13,12 +13,15 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const databaseUrl = process.env.DATABASE_URL || "file:./dev.db";
+const tursoAuthToken = process.env.TURSO_AUTH_TOKEN;
 
 // Create Prisma adapter with LibSQL (works with both local SQLite and Turso)
-// PrismaLibSql accepts the config directly, not a client instance
-const adapter = new PrismaLibSql({
-  url: databaseUrl,
-});
+// Turso requires TURSO_AUTH_TOKEN in env; local file:./dev.db does not
+const adapterConfig: { url: string; authToken?: string } = { url: databaseUrl };
+if (tursoAuthToken) {
+  adapterConfig.authToken = tursoAuthToken;
+}
+const adapter = new PrismaLibSql(adapterConfig);
 
 export const prisma =
   globalForPrisma.prisma ??

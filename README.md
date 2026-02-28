@@ -83,6 +83,27 @@ stripe listen --forward-to localhost:3000/api/webhooks/stripe
 ```
 4. Copy the webhook signing secret to your `.env` as `STRIPE_WEBHOOK_SECRET`
 
+### Deploying to Vercel (Turso)
+
+For production you need a hosted database. Turso (libSQL) is supported.
+
+1. **Turso**: Create a database at [turso.tech](https://turso.tech), then get:
+   - Database URL (e.g. `libsql://your-db-username.turso.io`)
+   - Auth token: `turso db tokens create <your-db-name>`
+
+2. **Vercel env vars**: In your Vercel project → Settings → Environment Variables, set:
+   - `DATABASE_URL` = your Turso database URL
+   - `TURSO_AUTH_TOKEN` = the Turso auth token (required for Turso; not used for local `file:./dev.db`)
+   - Plus your other keys (OpenAI, Stripe, `NEXT_PUBLIC_APP_URL`, etc.)
+
+3. **Run migrations on Turso once** (so `User`, `Session`, etc. exist):
+   ```bash
+   set DATABASE_URL=libsql://your-db-username.turso.io
+   set TURSO_AUTH_TOKEN=your-token
+   npx prisma migrate deploy
+   ```
+   Use your real Turso URL and token. After this, your Vercel app can sign in and use the DB.
+
 ## Project Structure
 
 ```
