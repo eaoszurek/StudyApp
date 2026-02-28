@@ -176,6 +176,10 @@ export function handleApiError(error: any): NextResponse {
     );
   }
 
+  // Always log the real error server-side (Vercel → Functions → logs)
+  console.error("[api] Unhandled error:", error?.message ?? error);
+  if (error?.stack) console.error(error.stack);
+
   return errorResponse(
     isProd
       ? "An unexpected error occurred. Please try again."
