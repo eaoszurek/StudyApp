@@ -96,13 +96,14 @@ For production you need a hosted database. Turso (libSQL) is supported.
    - `TURSO_AUTH_TOKEN` = the Turso auth token (required for Turso; not used for local `file:./dev.db`)
    - Plus your other keys (OpenAI, Stripe, `NEXT_PUBLIC_APP_URL`, etc.)
 
-3. **Run migrations on Turso once** (so `User`, `Session`, etc. exist):
-   ```bash
-   set DATABASE_URL=libsql://your-db-username.turso.io
-   set TURSO_AUTH_TOKEN=your-token
-   npx prisma migrate deploy
+3. **Run migrations on Turso once** (so `User`, `Session`, etc. exist). Prisma CLI does not accept `libsql://` for `migrate deploy`, so use the script:
+   **PowerShell** (run from project root; use your real URL and token):
+   ```powershell
+   $env:DATABASE_URL="libsql://your-db-username.turso.io"
+   $env:TURSO_AUTH_TOKEN="your-turso-auth-token"
+   node scripts/apply-turso-migrations.mjs
    ```
-   Use your real Turso URL and token. After this, your Vercel app can sign in and use the DB.
+   Use single quotes around the token if it contains special characters. After this, your Vercel app can sign in and use the DB.
 
 ## Project Structure
 

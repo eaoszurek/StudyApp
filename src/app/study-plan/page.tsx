@@ -538,10 +538,7 @@ export default function StudyPlanPage() {
               <span>
                 Question {currentQuestion + 1} of {questionnaire.length}
               </span>
-              <div className="flex items-center gap-3">
-                <span>{Math.round(progress)}% complete</span>
-                <SubtleProgressCircle progress={progress} />
-              </div>
+              <SubtleProgressCircle progress={progress} />
             </div>
           </GlassPanel>
 

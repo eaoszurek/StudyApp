@@ -28,8 +28,8 @@ export default function Navigation() {
   ];
 
   return (
-    <nav className="app-navbar relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+    <nav className="app-navbar relative overflow-x-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full overflow-x-hidden">
         <div className="flex items-center justify-between h-14 min-h-[3.5rem]">
           {/* Logo */}
           <div className="flex-shrink-0">
