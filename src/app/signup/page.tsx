@@ -128,12 +128,12 @@ export default function SignUp() {
           </div>
         </motion.div>
 
-        <div className="w-full max-w-md">
-          <GlassPanel delay={0.15}>
-          <h2 className="text-2xl font-semibold text-slate-900 mb-6 text-center">
+        <div className="w-full max-w-sm">
+          <GlassPanel delay={0.15} className="px-5 py-5">
+          <h2 className="text-lg font-semibold text-slate-900 mb-4 text-center">
             Create an account
           </h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-3">
                 <InputField
                   type="text"
                   placeholder="Full name"
@@ -203,7 +203,7 @@ export default function SignUp() {
                   )}
                 </PrimaryButton>
               </form>
-          <p className="text-sm text-slate-600 text-center mt-6">
+          <p className="text-sm text-slate-600 text-center mt-4">
             Already have an account?{" "}
             <Link href="/login" className="text-sky-600 hover:text-sky-700 font-medium">
               Log in

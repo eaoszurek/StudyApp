@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { verifyPassword, createSession, getOrCreateAnonymousSession } from "@/lib/auth";
-import { migrateSessionToUser } from "@/lib/migrate-session";
+import { verifyPassword, createSession } from "@/lib/auth";
 import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 
@@ -68,22 +67,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Get anonymous session ID if exists
-    let anonymousSessionId: string | undefined;
-    try {
-      anonymousSessionId = await getOrCreateAnonymousSession();
-    } catch (error) {
-      // If we can't get anonymous session, continue anyway
-      console.warn("Could not get anonymous session:", error);
-    }
-
-    // Migrate session data to user account
-    if (anonymousSessionId) {
-      await migrateSessionToUser(anonymousSessionId, user.id);
-    }
-
-    // Create authenticated session
-    await createSession(user.id, anonymousSessionId);
+    await createSession(user.id);
 
     return NextResponse.json({
       success: true,

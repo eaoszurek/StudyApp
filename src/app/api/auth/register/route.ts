@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, createSession, getOrCreateAnonymousSession } from "@/lib/auth";
-import { migrateSessionToUser } from "@/lib/migrate-session";
+import { hashPassword, createSession } from "@/lib/auth";
 import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/policy";
 import { rateLimit } from "@/lib/rate-limit";
@@ -74,22 +73,7 @@ export async function POST(req: Request) {
         },
       });
 
-      // Get anonymous session ID if exists
-      let anonymousSessionId: string | undefined;
-      try {
-        anonymousSessionId = await getOrCreateAnonymousSession();
-      } catch (error) {
-        console.warn("Could not get anonymous session:", error);
-      }
-
-      // Migrate session data to user account
-      if (anonymousSessionId) {
-        await migrateSessionToUser(anonymousSessionId, user.id);
-      }
-
-      // Create authenticated session
-      await createSession(user.id, anonymousSessionId);
-      
+      await createSession(user.id);
       return NextResponse.json({
         success: true,
         message: "Password set successfully. You are now signed in.",
@@ -113,23 +97,7 @@ export async function POST(req: Request) {
       },
     });
 
-    // Get anonymous session ID if exists
-    let anonymousSessionId: string | undefined;
-    try {
-      anonymousSessionId = await getOrCreateAnonymousSession();
-    } catch (error) {
-      // If we can't get anonymous session, continue anyway
-      console.warn("Could not get anonymous session:", error);
-    }
-
-    // Migrate session data to user account
-    if (anonymousSessionId) {
-      await migrateSessionToUser(anonymousSessionId, user.id);
-    }
-
-    // Create authenticated session
-    await createSession(user.id, anonymousSessionId);
-
+    await createSession(user.id);
     return NextResponse.json({
       success: true,
       message: "Account created successfully",

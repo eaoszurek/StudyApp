@@ -58,7 +58,7 @@ export default function PrivacyPolicy() {
               <div>
                 <h3 className="font-semibold text-slate-900 mb-2">Session Information</h3>
                 <p className="leading-relaxed">
-                  We use session cookies and identifiers to maintain your login state and track your progress across sessions. You can use some features anonymously without creating an account.
+                  We use session cookies to keep you signed in and to track your progress. An account is required to use the app’s features.
                 </p>
               </div>
             </div>

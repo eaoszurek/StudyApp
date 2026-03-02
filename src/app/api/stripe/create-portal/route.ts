@@ -41,8 +41,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create portal session
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Create portal session — use env URL or derive from request for correct return URL
+    const host = request.headers.get("host") || "";
+    const protocol = host.includes("localhost") ? "http" : "https";
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (host ? `${protocol}://${host}` : "http://localhost:3000");
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${appUrl}/dashboard`,

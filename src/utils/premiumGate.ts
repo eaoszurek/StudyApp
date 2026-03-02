@@ -1,13 +1,12 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { getServerSession, getOrCreateAnonymousSession, SessionUser } from "@/lib/auth";
+import { getServerSession, SessionUser } from "@/lib/auth";
 
 const FREE_TIER_LIMIT = 1;
 
 export interface AccessContext {
   user: SessionUser | null;
-  sessionId?: string;
 }
 
 export interface PremiumGateResult {
@@ -19,13 +18,7 @@ export interface PremiumGateResult {
 
 export async function getAccessContext(): Promise<AccessContext> {
   const user = await getServerSession();
-
-  if (user) {
-    return { user };
-  }
-
-  const sessionId = await getOrCreateAnonymousSession();
-  return { user: null, sessionId };
+  return { user };
 }
 
 function hasActiveSubscription(user: SessionUser | null): boolean {
@@ -49,12 +42,7 @@ export async function checkPremiumGate(context: AccessContext): Promise<PremiumG
     };
   }
 
-  const monthStart = getMonthStart();
-  const whereBase = context.user?.id
-    ? { userId: context.user.id }
-    : { sessionId: context.sessionId };
-
-  if (!("userId" in whereBase) && !whereBase.sessionId) {
+  if (!context.user?.id) {
     return {
       allowed: false,
       hasSubscription: false,
@@ -62,6 +50,9 @@ export async function checkPremiumGate(context: AccessContext): Promise<PremiumG
       limit: FREE_TIER_LIMIT,
     };
   }
+
+  const monthStart = getMonthStart();
+  const whereBase = { userId: context.user.id };
 
   const [flashcardCount, practiceCount, studyPlanCount, lessonCount] = await Promise.all([
     prisma.flashcardSet.count({

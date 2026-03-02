@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession, getOrCreateAnonymousSession } from "@/lib/auth";
+import { getServerSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
 
 /**
- * GET - Fetch user's score history
+ * GET - Fetch user's score history (requires sign-in)
  */
 export async function GET() {
   try {
     const user = await getServerSession();
-    let sessionId: string | undefined;
-
     if (!user) {
-      sessionId = await getOrCreateAnonymousSession();
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
 
-    // Fetch practice tests with scores
     const practiceTests = await prisma.practiceTest.findMany({
-      where: user
-        ? { userId: user.id, completedAt: { not: null } } // Only completed tests
-        : { sessionId, completedAt: { not: null } },
+      where: { userId: user.id, completedAt: { not: null } },
       select: {
         id: true,
         section: true,

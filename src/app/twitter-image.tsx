@@ -24,7 +24,7 @@ export default function TwitterImage() {
         }}
       >
         <div style={{ fontSize: 34, opacity: 0.92, marginBottom: 14 }}>PeakPrep</div>
-        <div style={{ fontSize: 68, fontWeight: 800, lineHeight: 1.1, marginBottom: 20 }}>
+        <div style={{ fontSize: 68, fontWeight: 800, lineHeight: 1.1, marginBottom: 20, display: "flex", flexDirection: "column" }}>
           Smarter SAT Practice,
           <br />
           Faster Score Gains

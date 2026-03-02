@@ -69,7 +69,7 @@ export async function getServerSession(): Promise<SessionUser | null> {
 /**
  * Create a secure session for authenticated user
  */
-export async function createSession(userId: string, anonymousSessionId?: string): Promise<string> {
+export async function createSession(userId: string): Promise<string> {
   const cookieStore = await cookies();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS);
@@ -78,7 +78,6 @@ export async function createSession(userId: string, anonymousSessionId?: string)
   const session = await prisma.session.create({
     data: {
       userId,
-      sessionId: anonymousSessionId, // Keep reference to anonymous session for migration
       expiresAt,
     },
   });
@@ -204,39 +203,4 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
-/**
- * Get or create anonymous session ID from cookie
- */
-export async function getOrCreateAnonymousSession(): Promise<string> {
-  const cookieStore = await cookies();
-  const ANONYMOUS_SESSION_COOKIE = "sat_session_id";
-  
-  let sessionId = cookieStore.get(ANONYMOUS_SESSION_COOKIE)?.value;
-
-  if (!sessionId) {
-    // Generate new session ID
-    sessionId = crypto.randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    // Store in database
-    await prisma.session.create({
-      data: {
-        sessionId,
-        expiresAt,
-      },
-    });
-
-    // Set cookie
-    cookieStore.set(ANONYMOUS_SESSION_COOKIE, sessionId, {
-      expires: expiresAt,
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-    });
-  }
-
-  return sessionId;
-}
 

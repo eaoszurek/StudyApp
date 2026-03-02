@@ -48,7 +48,10 @@ export async function POST(req: Request) {
     const { answers, performanceData } = validationResult.data;
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -270,12 +273,10 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       days: cleanedPlan.dailyPlan,
     };
 
-    const { user, sessionId } = accessContext;
-
+    const { user } = accessContext;
     await prisma.studyPlan.create({
       data: {
-        userId: user?.id,
-        sessionId,
+        userId: user.id,
         plan: JSON.stringify(transformedPlan),
       },
     });

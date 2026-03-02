@@ -46,7 +46,10 @@ export async function POST(req: Request) {
     const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -58,11 +61,8 @@ export async function POST(req: Request) {
     let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
 
     if (existingTestId) {
-      const whereOwnership = accessContext.user?.id
-        ? { id: existingTestId, userId: accessContext.user.id }
-        : { id: existingTestId, sessionId: accessContext.sessionId };
       existingPracticeTest = await prisma.practiceTest.findFirst({
-        where: whereOwnership,
+        where: { id: existingTestId, userId: accessContext.user.id },
         select: { id: true, questions: true, passage: true },
       });
 
@@ -853,8 +853,7 @@ Do not output anything except the JSON.`,
       setCachedValue(cacheKey, { passage, questions: normalizedQuestions });
     }
 
-    // Get userId or sessionId for saving
-    const { user, sessionId } = accessContext;
+    const { user } = accessContext;
 
     let practiceTestId = existingPracticeTest?.id;
     let responseQuestions = normalizedQuestions;
@@ -893,8 +892,7 @@ Do not output anything except the JSON.`,
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({
         data: {
-          userId: user?.id,
-          sessionId,
+          userId: user.id,
           section: section,
           topic: topic || null,
           difficulty: difficulty || null,

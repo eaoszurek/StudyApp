@@ -32,7 +32,10 @@ export async function POST(req: Request) {
     const { topic } = validationResult.data;
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -196,14 +199,10 @@ FORMATTING RULES:
       throw new Error("Generated too few valid flashcards. Please try again.");
     }
 
-    // Get userId or sessionId for saving
-    const { user, sessionId } = accessContext;
-
-    // Save to database
+    const { user } = accessContext;
     await prisma.flashcardSet.create({
       data: {
-        userId: user?.id,
-        sessionId,
+        userId: user.id,
         title: topic,
         topic: topic,
         cards: JSON.stringify(uniqueFlashcards),

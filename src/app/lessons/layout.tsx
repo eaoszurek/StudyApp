@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { createPageMetadata } from "@/lib/seo";
+import { getServerSession } from "@/lib/auth";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = createPageMetadata({
   title: "SAT Micro-Lessons",
@@ -8,7 +12,9 @@ export const metadata: Metadata = createPageMetadata({
   path: "/lessons",
 });
 
-export default function LessonsLayout({ children }: { children: React.ReactNode }) {
-  return children;
+export default async function LessonsLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession();
+  if (!session) redirect("/login");
+  return <>{children}</>;
 }
 

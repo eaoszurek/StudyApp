@@ -1,25 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession, getOrCreateAnonymousSession } from "@/lib/auth";
+import { getServerSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
 
 /**
- * GET - Fetch user's study plans
+ * GET - Fetch user's study plans (requires sign-in)
  */
 export async function GET() {
   try {
     const user = await getServerSession();
-    let sessionId: string | undefined;
-
     if (!user) {
-      sessionId = await getOrCreateAnonymousSession();
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
 
-    // Fetch study plans
     const studyPlans = await prisma.studyPlan.findMany({
-      where: user
-        ? { userId: user.id }
-        : { sessionId },
+      where: { userId: user.id },
       orderBy: { createdAt: "desc" },
     });
 

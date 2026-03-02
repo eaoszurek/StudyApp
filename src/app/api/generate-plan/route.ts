@@ -29,7 +29,10 @@ export async function POST(req: Request) {
     if (apiKeyError) return apiKeyError;
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -161,12 +164,10 @@ Return ONLY valid JSON, no markdown, no code blocks, just the raw JSON object.`
 
     const cleanedPlan = cleanValue(planJSON);
 
-    const { user, sessionId } = accessContext;
-
+    const { user } = accessContext;
     await prisma.studyPlan.create({
       data: {
-        userId: user?.id,
-        sessionId,
+        userId: user.id,
         plan: JSON.stringify(cleanedPlan),
       },
     });

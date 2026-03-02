@@ -24,7 +24,7 @@ export default function OpenGraphImage() {
         }}
       >
         <div style={{ fontSize: 36, opacity: 0.9, marginBottom: 16 }}>PeakPrep</div>
-        <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1.1, marginBottom: 22 }}>
+        <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1.1, marginBottom: 22, display: "flex", flexDirection: "column" }}>
           AI SAT Prep That
           <br />
           Feels Personalized

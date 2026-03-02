@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession, getOrCreateAnonymousSession } from "@/lib/auth";
+import { getServerSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
 import { z } from "zod";
 
@@ -12,7 +12,7 @@ const ScoreUpdateSchema = z.object({
 });
 
 /**
- * PATCH - Update practice test score
+ * PATCH - Update practice test score (requires sign-in)
  */
 export async function PATCH(
   req: Request,
@@ -21,10 +21,8 @@ export async function PATCH(
   try {
     const { id } = await params;
     const user = await getServerSession();
-    let sessionId: string | undefined;
-
     if (!user) {
-      sessionId = await getOrCreateAnonymousSession();
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
 
     const body = await req.json();
@@ -46,11 +44,8 @@ export async function PATCH(
       );
     }
 
-    // Verify the test belongs to the user or anonymous session
     const test = await prisma.practiceTest.findFirst({
-      where: user
-        ? { id, userId: user.id }
-        : { id, sessionId },
+      where: { id, userId: user.id },
     });
 
     if (!test) {

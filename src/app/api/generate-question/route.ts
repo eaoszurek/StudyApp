@@ -30,7 +30,10 @@ export async function POST(req: Request) {
     if (apiKeyError) return apiKeyError;
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -158,12 +161,10 @@ Rules:
       throw new Error("Failed to generate valid questions.");
     }
 
-    const { user, sessionId } = accessContext;
-
+    const { user } = accessContext;
     await prisma.practiceTest.create({
       data: {
-        userId: user?.id,
-        sessionId,
+        userId: user.id,
         section: "mixed",
         questions: JSON.stringify(cleanedQuestions),
       },

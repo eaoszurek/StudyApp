@@ -34,7 +34,10 @@ export async function POST(req: Request) {
     const defaultDifficulty = difficulty || "easy";
 
     const accessContext = await getAccessContext();
-    const rlKey = `ai:${accessContext.user?.id ?? accessContext.sessionId ?? "anon"}`;
+    if (!accessContext.user) {
+      return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const rlKey = `ai:${accessContext.user.id}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -248,14 +251,10 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
         .filter((flashcard: string) => flashcard.length > 0);
     }
 
-    // Get userId or sessionId for saving
-    const { user, sessionId } = accessContext;
-
-    // Save to database
+    const { user } = accessContext;
     await prisma.microLesson.create({
       data: {
-        userId: user?.id,
-        sessionId,
+        userId: user.id,
         topic: topic,
         lesson: JSON.stringify(data),
       },
