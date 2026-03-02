@@ -83,12 +83,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create checkout session — use env URL or derive from request so Vercel works without NEXT_PUBLIC_APP_URL
+    // Create checkout session — success/cancel URLs must have explicit scheme (https)
     const host = request.headers.get("host") || "";
     const protocol = host.includes("localhost") ? "http" : "https";
-    const appUrl =
+    let appUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       (host ? `${protocol}://${host}` : "http://localhost:3000");
+    if (!appUrl.startsWith("http://") && !appUrl.startsWith("https://")) {
+      appUrl = `https://${appUrl}`;
+    }
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",

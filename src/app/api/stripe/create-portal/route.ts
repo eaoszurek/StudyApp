@@ -41,12 +41,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create portal session — use env URL or derive from request for correct return URL
+    // Create portal session — return_url must have explicit scheme (https)
     const host = request.headers.get("host") || "";
     const protocol = host.includes("localhost") ? "http" : "https";
-    const appUrl =
+    let appUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       (host ? `${protocol}://${host}` : "http://localhost:3000");
+    if (!appUrl.startsWith("http://") && !appUrl.startsWith("https://")) {
+      appUrl = `https://${appUrl}`;
+    }
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: user.stripeCustomerId,
       return_url: `${appUrl}/dashboard`,
