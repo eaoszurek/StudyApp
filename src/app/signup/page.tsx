@@ -97,7 +97,7 @@ export default function SignUp() {
       <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
         <Logo href="/" size="md" />
       </div>
-      <div className="w-full mx-auto max-w-[360px] min-w-[280px]">
+      <div className="w-full mx-auto max-w-[320px] min-w-[260px]">
         <div className="flex flex-col gap-8 items-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -105,27 +105,13 @@ export default function SignUp() {
           transition={{ duration: 0.5 }}
           className="space-y-4 text-center w-full"
         >
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-600">
-            Welcome
-          </p>
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-600">Welcome</p>
           <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">
-            Join the most polished SAT workspace.
+            Create your PeakPrep account.
           </h1>
-          <p className="text-slate-700 text-base mx-auto">
-            Create adaptive practice tests, lightning flashcards, and living study plans all in one OS-level interface.
+          <p className="text-slate-700 text-sm mx-auto">
+            Sign up to save your study plans, flashcards, and practice history.
           </p>
-          <div className="flex flex-wrap justify-center gap-3 pt-2 mx-auto">
-            {["Adaptive practice", "Liquid study plans", "Flashcard memory engine", "Progress telemetry"].map(
-              (item) => (
-                <div key={item} className="flex items-center gap-2 text-slate-700">
-                  <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-sky-600">
-                    <FeatureIcon name="sparkles" size={14} />
-                  </span>
-                  <span className="text-xs font-medium">{item}</span>
-                </div>
-              )
-            )}
-          </div>
         </motion.div>
 
         <div className="w-full">
@@ -133,7 +119,7 @@ export default function SignUp() {
           <h2 className="text-base font-semibold text-slate-900 mb-3 text-center">
             Create an account
           </h2>
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="space-y-3 max-w-[280px] mx-auto">
                 <InputField
                   type="text"
                   placeholder="Full name"

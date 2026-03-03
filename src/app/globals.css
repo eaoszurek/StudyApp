@@ -142,6 +142,20 @@ body {
   transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1), color 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Auth pages: keep a very small, centered column and form */
+.auth-shell {
+  max-width: 320px;
+  min-width: 260px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.auth-form-inner {
+  max-width: 280px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 html.dark body,
 .dark body,
 html[class~="dark"] body {

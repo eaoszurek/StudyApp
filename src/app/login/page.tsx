@@ -76,7 +76,7 @@ export default function Login() {
       <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
         <Logo href="/" size="md" />
       </div>
-      <div className="w-full mx-auto max-w-[360px] min-w-[280px]">
+      <div className="w-full mx-auto max-w-[320px] min-w-[260px]">
         <div className="flex flex-col gap-8 items-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -84,27 +84,13 @@ export default function Login() {
           transition={{ duration: 0.5 }}
           className="space-y-4 text-center w-full"
         >
-          <p className="text-xs uppercase tracking-[0.35em] text-slate-600">
-            Welcome Back
-          </p>
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-600">Welcome Back</p>
           <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">
             Continue your climb to the peak.
           </h1>
-          <p className="text-slate-700 text-base mx-auto">
-            Sign in to access your personalized study plans, practice tests, and track your progress.
+          <p className="text-slate-700 text-sm mx-auto">
+            Sign in to access your study plan, practice tests, and progress.
           </p>
-          <div className="flex flex-wrap justify-center gap-3 pt-2 mx-auto">
-            {["Practice tests", "Study plans", "Flashcards", "Progress tracking"].map(
-              (item) => (
-                <div key={item} className="flex items-center gap-2 text-slate-700">
-                  <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-sky-600">
-                    <FeatureIcon name="sparkles" size={14} />
-                  </span>
-                  <span className="text-xs font-medium">{item}</span>
-                </div>
-              )
-            )}
-          </div>
         </motion.div>
 
         <div className="w-full">
@@ -112,7 +98,7 @@ export default function Login() {
           <h2 className="text-base font-semibold text-slate-900 mb-3 text-center">
             Sign in to your account
           </h2>
-              <form onSubmit={handleSubmit} className="space-y-2.5">
+              <form onSubmit={handleSubmit} className="space-y-2.5 max-w-[280px] mx-auto">
                 <InputField
                   type="email"
                   placeholder="Email address"
