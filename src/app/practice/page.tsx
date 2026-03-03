@@ -8,7 +8,6 @@ import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { motion } from "framer-motion";
 import { calculateSectionScore, getPercentile, getScoreInterpretation } from "@/utils/satScoring";
 import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracking";
-import Timer from "@/components/ui/Timer";
 import WritingQuestion from "@/components/ui/WritingQuestion";
 import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import { getTopicsForSection } from "@/data/topics";
@@ -120,7 +119,6 @@ export default function PracticeTests() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<number, OptionLetter>>({});
-  const [timeUp, setTimeUp] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<{
     subscriptionStatus: string | null;
     hasSubscription: boolean;
@@ -138,35 +136,6 @@ export default function PracticeTests() {
         (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
       100
     : 0;
-
-  // Get timer duration based on section type and question count
-  const getTimerDuration = (section: SectionType | null, questionCount: number): number => {
-    if (!section) return 0;
-
-    const perQuestionMinutes = {
-      math: 1.35, // ~80 min / 58 questions
-      reading: 1.25, // ~65 min / 52 questions
-      writing: 0.8, // ~35 min / 44 questions
-    };
-
-    const minimumMinutes = {
-      math: 8,
-      reading: 7,
-      writing: 5,
-    };
-
-    const minutes = Math.ceil(questionCount * perQuestionMinutes[section]);
-    return Math.max(minutes, minimumMinutes[section]);
-  };
-
-  const handleTimeUp = () => {
-    setTimeUp(true);
-    // Auto-submit when time runs out
-    if (practiceSet && !showResults) {
-      calculateScore(practiceSet.questions);
-      setShowResults(true);
-    }
-  };
 
   const handleSectionSelect = (type: SectionType) => {
     setTestType(type);
@@ -448,7 +417,6 @@ export default function PracticeTests() {
     setScore(0);
     setSatScore(null);
     setUserAnswers({});
-    setTimeUp(false);
     setConfig({
       questionCount: 5,
       topic: "",
@@ -799,32 +767,32 @@ export default function PracticeTests() {
 
       {practiceSet && !showResults && (
         <GlassPanel className="mt-8 space-y-6 ai-output-scope">
+          {isBatchLoading &&
+          isProgressiveMode &&
+          practiceSet.questions.length < targetQuestionCount &&
+          currentQuestion === practiceSet.questions.length - 1 ? (
+            <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center">
+              <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-6" aria-hidden />
+              <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading next 5 questions…</p>
+              <p className="text-sm text-slate-600 dark:text-slate-400">This usually takes a moment.</p>
+            </div>
+          ) : (
+            <>
           <div className="relative z-10">
             <div className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400 mb-3 font-medium">
               <span>
                 Question {currentQuestion + 1} / {isProgressiveMode ? targetQuestionCount : practiceSet.questions.length}
               </span>
-              <div className="flex items-center gap-4">
-                <SubtleProgressCircle progress={practiceProgressPercent} />
-                <Timer
-                  initialMinutes={getTimerDuration(
-                    testType,
-                    isProgressiveMode ? targetQuestionCount : practiceSet.questions.length
-                  )}
-                  onTimeUp={handleTimeUp}
-                  warningMinutes={5}
-                  paused={isProgressiveMode && isBatchLoading}
-                />
-              </div>
+              <SubtleProgressCircle progress={practiceProgressPercent} />
             </div>
           </div>
 
           {((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage) && (
-            <div className="mt-2 border-2 border-slate-300 dark:border-slate-600 rounded-2xl p-5 sm:p-6 bg-slate-50 dark:bg-slate-800/90 text-sm sm:text-base text-slate-800 dark:text-slate-100 whitespace-pre-line font-medium leading-relaxed mb-6 shadow-sm">
+            <div className="mt-2 border-2 border-slate-200 dark:border-slate-600 rounded-2xl p-5 sm:p-6 bg-white dark:bg-slate-800/90 text-sm sm:text-base text-slate-900 dark:text-slate-100 whitespace-pre-line font-medium leading-relaxed mb-6 shadow-sm">
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
                 <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-400 font-semibold">Passage</span>
               </div>
-              <div className="prose prose-sm max-w-none dark:prose-invert">
+              <div className="text-slate-900 dark:text-slate-100 prose prose-sm max-w-none dark:prose-invert prose-p:text-slate-900 dark:prose-p:text-slate-100 prose-headings:text-slate-900 dark:prose-headings:text-slate-100">
                 {(practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage}
               </div>
             </div>
@@ -899,6 +867,8 @@ export default function PracticeTests() {
             <p className="text-xs text-rose-700 dark:text-rose-300 font-semibold">
               {batchLoadError}
             </p>
+          )}
+            </>
           )}
         </GlassPanel>
       )}

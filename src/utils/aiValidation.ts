@@ -4,6 +4,16 @@
  */
 
 /**
+ * Truncate to at most maxWords words.
+ */
+function truncateWords(text: string, maxWords: number): string {
+  if (!text || maxWords < 1) return text || "";
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text.trim();
+  return words.slice(0, maxWords).join(" ");
+}
+
+/**
  * Validates flashcard format
  */
 export function validateFlashcardFormat(card: any): { valid: boolean; errors: string[] } {
@@ -24,28 +34,24 @@ export function validateFlashcardFormat(card: any): { valid: boolean; errors: st
     const backText = card.back.trim();
     const wordCount = backText.split(/\s+/).length;
     
-    // Check for em dash format
     if (!backText.includes("—")) {
       errors.push("Back must include em dash (—) to separate term and definition");
     }
     
-    // Check word count (definition should be 10-25 words, but allow flexibility for examples)
-    // Increased from 50 to 70 to allow for multiple examples
     if (wordCount < 8) {
       errors.push(`Back definition is too short (minimum 8 words, found ${wordCount})`);
     }
-    if (wordCount > 70) {
-      errors.push(`Back definition is too long (maximum 70 words including examples, found ${wordCount})`);
+    // Allow up to 130 words so model output with one set of sections + examples passes
+    if (wordCount > 130) {
+      errors.push(`Back definition is too long (maximum 130 words including examples, found ${wordCount})`);
     }
   }
 
-  if (!card.difficulty || !["Easy", "Medium", "Hard"].includes(card.difficulty)) {
+  // Difficulty and tag are optional; route will default to Medium / Grammar
+  if (card.difficulty && !["Easy", "Medium", "Hard"].includes(card.difficulty)) {
     errors.push("Difficulty must be Easy, Medium, or Hard");
   }
-
-  if (!card.tag || typeof card.tag !== "string") {
-    errors.push("Tag is required");
-  }
+  // Tag can be missing; we default it when saving
 
   return { valid: errors.length === 0, errors };
 }
@@ -273,22 +279,28 @@ export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolea
   const fromLine = (regex: RegExp, source: string) => source.match(regex)?.[1]?.trim() || "";
   const joinedContent = contentLines.join(" | ");
 
-  const whatTests =
+  const whatTests = truncateWords(
     fromLine(/(?:SAT tests|What this tests):\s*([^|]+)/i, joinedContent) ||
     fromLine(/(?:tests?)\s*:\s*([^|]+)/i, joinedContent) ||
     pipeParts[0] ||
     defBody ||
-    "the exact SAT skill and decision point";
+    "the exact SAT skill and decision point",
+    30
+  );
 
-  const howAppears =
+  const howAppears = truncateWords(
     fromLine(/How it appears:\s*([^|]+)/i, joinedContent) ||
     pipeParts[1] ||
-    "in short passages, equations, or answer-choice comparisons";
+    "in short passages, equations, or answer-choice comparisons",
+    25
+  );
 
-  const quickTip =
+  const quickTip = truncateWords(
     fromLine(/(?:Quick )?Tip:\s*([^|]+)/i, joinedContent) ||
     pipeParts[2] ||
-    "identify the tested rule before evaluating choices";
+    "identify the tested rule before evaluating choices",
+    20
+  );
 
   const rebuiltLines = [
     `${term || "Skill"} — **What this tests:** ${whatTests}`,

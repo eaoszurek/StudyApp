@@ -176,9 +176,11 @@ export function handleApiError(error: any): NextResponse {
     );
   }
 
-  // Always log the real error server-side (Vercel → Functions → logs)
-  console.error("[api] Unhandled error:", error?.message ?? error);
-  if (error?.stack) console.error(error.stack);
+  // Log server-side only (Vercel → Project → Logs / Functions). Do not log request bodies or tokens.
+  const errMsg = error?.message ?? String(error);
+  const errCode = error?.code ?? error?.status;
+  console.error("[api] Unhandled error:", errCode ? `[${errCode}] ${errMsg}` : errMsg);
+  if (error?.stack && process.env.NODE_ENV !== "production") console.error(error.stack);
 
   return errorResponse(
     isProd

@@ -65,23 +65,18 @@ export async function POST(req: Request) {
           content: `You are an expert SAT tutor creating flashcards to help students master key concepts. Your explanations should be clear, educational, and supportive - like a tutor explaining concepts to a student. Make the definitions helpful and memorable, not just technical.
 
 CRITICAL FORMAT RULES:
-- Each flashcard must follow this EXACT structure with line breaks:
-  TERM — **What this tests:** ...
-  **How it appears:** ...
-  **Quick tip:** ...
-- "front" field = SAT skill or rule name (1-4 words)
-- "back" field = 3 short lines (definition + appearance + tip) followed by optional examples
-- TERM must be 1-4 words
-- What this tests: 10-24 words describing the exact skill being measured
-- How it appears: 10-24 words describing common SAT-style presentation
-- Quick tip: 8-18 words with a practical recognition strategy
-- Use an em dash (—) to separate term and back content
-- After the definition, add 1-2 examples as a bulleted list if helpful (use • for bullets)
-- Examples should be concise, SAT-appropriate, and illustrate the concept clearly
-- NO ^ symbol for exponents - use actual superscript characters (e.g., x², x³, not x^2)
-- NO decorative symbols except bullets for examples
-- Keep explanations clear and slightly fuller (avoid overly condensed phrasing)
-- Use **bold** only for labels and occasional key terms, never entire lines
+- Each flashcard must have "front", "back", "difficulty", and "tag". Do not omit any field.
+- difficulty: exactly one of "Easy", "Medium", "Hard". tag: exactly one of "Vocab", "Grammar", "Reading", "Math", "Functions", "Statistics", "Rhetoric".
+- In "back", include each of these exactly ONCE per card (do not repeat the same sections):
+  TERM — **What this tests:** ... (one short line)
+  **How it appears:** ... (one short line)
+  **Quick tip:** ... (one short line)
+  then optionally 1-2 bullet examples (• ...)
+- "front" = SAT skill or rule name (1-4 words). "back" = the three sections above plus optional bullets only.
+- What this tests: 10-24 words. How it appears: 10-24 words. Quick tip: 8-18 words.
+- Use an em dash (—) to separate term and definition. Use **bold** only for the labels (What this tests, How it appears, Quick tip).
+- NO ^ for exponents - use superscripts (x², x³). NO repeating the same section text multiple times.
+- Add 1-2 bullet examples (•) when helpful; keep total back under 100 words.
 
 EXAMPLES OF CORRECT FORMAT:
 - front: "Quadratic Formula"
@@ -174,19 +169,22 @@ FORMATTING RULES:
         
         const enforced = ensureFlashcardBackFormat(card);
         card = enforced.card;
-        // Keep bolding selective: rely on prompt + formatter, avoid auto-bold injection.
         card.skillCategory = ensureSingleSkill(card.skillCategory || card.front, card.front);
         if (!card.section) {
           const tag = typeof card.tag === "string" ? card.tag.toLowerCase() : "";
           card.section = tag.includes("math") ? "Math" : "Reading & Writing";
         }
-        // Validate format
+        if (!card.difficulty || !["Easy", "Medium", "Hard"].includes(card.difficulty)) {
+          card.difficulty = "Medium";
+        }
+        if (!card.tag || typeof card.tag !== "string") {
+          card.tag = card.section === "Math" ? "Math" : "Grammar";
+        }
         const validation = validateFlashcardFormat(card);
         if (!validation.valid) {
           console.warn("Invalid flashcard format:", validation.errors, card);
-          return null; // Filter out invalid cards
+          return null;
         }
-        
         return card;
       })
       .filter((card: any) => card !== null); // Remove invalid cards

@@ -76,43 +76,43 @@ export default function Login() {
       <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
         <Logo href="/" size="md" />
       </div>
-      <div className="w-full mx-auto">
-        <div className="max-w-4xl mx-auto flex flex-col lg:flex-row gap-8 items-center justify-center">
+      <div className="w-full mx-auto max-w-md">
+        <div className="flex flex-col gap-8 items-center">
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="space-y-6 text-center flex-1"
+          transition={{ duration: 0.5 }}
+          className="space-y-4 text-center w-full"
         >
-          <p className="text-sm uppercase tracking-[0.4em] text-slate-600">
+          <p className="text-xs uppercase tracking-[0.35em] text-slate-600">
             Welcome Back
           </p>
-          <h1 className="text-4xl md:text-5xl font-semibold text-slate-900 leading-tight">
+          <h1 className="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">
             Continue your climb to the peak.
           </h1>
-          <p className="text-slate-700 text-lg max-w-xl mx-auto">
+          <p className="text-slate-700 text-base max-w-md mx-auto">
             Sign in to access your personalized study plans, practice tests, and track your progress.
           </p>
-          <div className="flex flex-wrap justify-center gap-4 max-w-2xl mx-auto">
+          <div className="flex flex-wrap justify-center gap-3 pt-2 max-w-md mx-auto">
             {["Practice tests", "Study plans", "Flashcards", "Progress tracking"].map(
               (item) => (
-                <div key={item} className="flex items-center gap-3 text-slate-700">
-                  <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sky-600">
+                <div key={item} className="flex items-center gap-2 text-slate-700">
+                  <span className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-sky-600 text-xs">
                     ✦
                   </span>
-                  <span className="text-sm font-medium">{item}</span>
+                  <span className="text-xs font-medium">{item}</span>
                 </div>
               )
             )}
           </div>
         </motion.div>
 
-        <div className="w-full max-w-sm">
-          <GlassPanel delay={0.15} className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4 text-center">
+        <div className="w-full max-w-[280px]">
+          <GlassPanel delay={0.15} className="px-4 py-4">
+          <h2 className="text-base font-semibold text-slate-900 mb-3 text-center">
             Sign in to your account
           </h2>
-              <form onSubmit={handleSubmit} className="space-y-3">
+              <form onSubmit={handleSubmit} className="space-y-2.5">
                 <InputField
                   type="email"
                   placeholder="Email address"
@@ -145,7 +145,7 @@ export default function Login() {
                   )}
                 </PrimaryButton>
               </form>
-          <p className="text-sm text-slate-600 text-center mt-4">
+          <p className="text-xs text-slate-600 text-center mt-3">
             Don't have an account?{" "}
             <Link href="/signup" className="text-sky-600 hover:text-sky-700 font-medium">
               Sign up

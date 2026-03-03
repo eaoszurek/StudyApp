@@ -429,10 +429,10 @@ export default function Lessons() {
             </ul>
           </GlassPanel>
 
-          {/* Example */}
+          {/* Example - light mode: light background + dark text; dark mode: dark bg + light text */}
           <GlassPanel className="mb-6">
             <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Example</h3>
-            <div className="border-2 border-sky-300 dark:border-sky-500 rounded-xl bg-sky-50 dark:bg-slate-900/70 p-5 shadow-sm">
+            <div className="border-2 border-sky-300 dark:border-sky-500 rounded-xl bg-sky-50 p-5 shadow-sm dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 [&_p]:text-slate-800 dark:[&_p]:text-slate-200 [&_li]:text-slate-800 dark:[&_li]:text-slate-200 [&_span]:text-inherit">
               {renderFormattedText(lesson.example)}
             </div>
           </GlassPanel>
@@ -458,7 +458,7 @@ export default function Lessons() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.1 }}
                   >
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 sm:p-5 bg-slate-100 dark:bg-slate-800">
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 sm:p-5 bg-white dark:bg-slate-800 shadow-sm">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                         <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">
                           Question {idx + 1}
@@ -489,10 +489,10 @@ export default function Lessons() {
                               disabled={showAnswer}
                               className={`w-full text-left p-3 sm:p-4 rounded-2xl border-2 transition-all font-medium ${
                                 showAnswer && isCorrectOption
-                                  ? "border-green-400 dark:border-green-400 bg-gradient-to-br from-green-100 to-green-50 dark:from-green-900/40 dark:to-green-900/30 text-green-900 dark:text-green-100 shadow-[0_4px_0_rgba(34,197,94,0.15),0_6px_16px_rgba(34,197,94,0.1)] scale-[1.02]"
+                                  ? "border-green-400 bg-gradient-to-br from-green-100 to-green-50 text-green-900 dark:border-green-400 dark:from-green-900/40 dark:to-green-900/30 dark:text-green-100 shadow-[0_4px_0_rgba(34,197,94,0.15),0_6px_16px_rgba(34,197,94,0.1)] scale-[1.02]"
                                   : isSelected
-                                  ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
-                                  : "border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
+                                  ? "border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 text-sky-900 dark:border-sky-400 dark:from-sky-900/40 dark:to-sky-900/30 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
+                                  : "border-slate-200 hover:border-sky-300 text-slate-800 bg-slate-50 hover:bg-sky-50/50 dark:border-slate-600 dark:hover:border-sky-500 dark:text-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
                               }`}
                             >
                               <span className="font-bold mr-3">{optionLetter})</span>
