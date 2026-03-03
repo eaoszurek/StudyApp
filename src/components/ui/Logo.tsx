@@ -42,18 +42,18 @@ export default function Logo({
   const sizeClasses = {
     sm: {
       image: "h-7 w-auto",
-      container: "p-1",
+      container: "",
       gap: "gap-1.5"
     },
     md: {
       image: "h-10 w-auto",
-      container: "p-1",
+      container: "",
       gap: "gap-2",
       text: "text-xl"
     },
     lg: {
       image: "h-12 w-auto",
-      container: "p-0.5",
+      container: "",
       gap: "gap-3",
       text: "text-2xl"
     }

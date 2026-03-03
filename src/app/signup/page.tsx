@@ -97,7 +97,7 @@ export default function SignUp() {
       <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
         <Logo href="/" size="md" />
       </div>
-      <div className="w-full mx-auto max-w-[320px] min-w-[260px]">
+      <div className="w-full auth-shell">
         <div className="flex flex-col gap-8 items-center">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -119,7 +119,10 @@ export default function SignUp() {
           <h2 className="text-base font-semibold text-slate-900 mb-3 text-center">
             Create an account
           </h2>
-              <form onSubmit={handleSubmit} className="space-y-3 max-w-[280px] mx-auto">
+              <form
+                onSubmit={handleSubmit}
+                className="space-y-3 auth-form-inner"
+              >
                 <InputField
                   type="text"
                   placeholder="Full name"
