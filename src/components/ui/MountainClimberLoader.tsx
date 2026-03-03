@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useState, useEffect, useRef, memo } from "react";
+import FeatureIcon from "./FeatureIcon";
 
 // Cache animation data at module level to prevent re-fetching
 let cachedAnimationData: any = null;
@@ -91,7 +92,7 @@ function MountainClimberLoader({
         className={`flex items-center justify-center ${className}`}
         style={{ width: `${size}px`, height: `${size}px`, minHeight: `${size}px` }}
       >
-        <div className="text-slate-400 animate-pulse text-4xl">⛰️</div>
+        <div className="text-slate-400 animate-pulse"><FeatureIcon name="mountain" size={40} /></div>
       </div>
     );
   }

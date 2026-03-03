@@ -4,41 +4,17 @@ import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageHeader from "@/components/ui/PageHeader";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 import Link from "next/link";
 import { getScoreHistory, getRecentSessions } from "@/utils/scoreTracking";
 import { getPercentile, getScoreInterpretation } from "@/utils/satScoring";
 
 const tools = [
-  {
-    href: "/practice",
-    title: "Practice Tests",
-    desc: "Practice tests along your trail with instant feedback and explanations.",
-    icon: "🚩",
-  },
-  {
-    href: "/study-plan",
-    title: "Study Plans",
-    desc: "Personalized expedition plans with milestones and waypoints.",
-    icon: "🗺️",
-  },
-  {
-    href: "/flashcards",
-    title: "Flashcards",
-    desc: "Essential knowledge packs for your climb with spaced repetition.",
-    icon: "🎒",
-  },
-  {
-    href: "/lessons",
-    title: "Micro-Lessons",
-    desc: "Quick 1–2 minute knowledge checkpoints with examples and practice questions.",
-    icon: "📚",
-  },
-  {
-    href: "/progress",
-    title: "Progress",
-    desc: "Monitor your elevation gain, momentum, and progress toward the peak.",
-    icon: "⛰️",
-  },
+  { href: "/practice", title: "Practice Tests", desc: "Practice tests along your trail with instant feedback and explanations.", icon: "practice" as const },
+  { href: "/study-plan", title: "Study Plans", desc: "Personalized expedition plans with milestones and waypoints.", icon: "study-plan" as const },
+  { href: "/flashcards", title: "Flashcards", desc: "Essential knowledge packs for your climb with spaced repetition.", icon: "flashcards" as const },
+  { href: "/lessons", title: "Micro-Lessons", desc: "Quick 1–2 minute knowledge checkpoints with examples and practice questions.", icon: "lessons" as const },
+  { href: "/progress", title: "Progress", desc: "Monitor your elevation gain, momentum, and progress toward the peak.", icon: "progress" as const },
 ];
 
 function DashboardContent() {
@@ -235,8 +211,8 @@ function DashboardContent() {
           <GlassPanel key={tool.href} delay={idx * 0.05} className="h-full">
             <div className="flex flex-col h-full">
               <div className="flex items-start justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-2xl">
-                  {tool.icon}
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                  <FeatureIcon name={tool.icon} size={24} />
                 </div>
                 <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 font-semibold">
                   gear

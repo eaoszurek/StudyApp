@@ -10,6 +10,7 @@ import { calculateSectionScore, getPercentile, getScoreInterpretation } from "@/
 import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracking";
 import WritingQuestion from "@/components/ui/WritingQuestion";
 import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 import { getTopicsForSection } from "@/data/topics";
 
 type SectionType = "math" | "reading" | "writing";
@@ -425,24 +426,9 @@ export default function PracticeTests() {
   };
 
   const sectionCards = [
-    {
-      type: "math" as SectionType,
-      title: "Math Trail",
-      desc: "Algebra, functions, data analysis, geometry checkpoints.",
-      icon: "⛰️",
-    },
-    {
-      type: "reading" as SectionType,
-      title: "Reading Trail",
-      desc: "Evidence, main ideas, rhetoric, synthesis checkpoints.",
-      icon: "🗻",
-    },
-    {
-      type: "writing" as SectionType,
-      title: "Writing Trail",
-      desc: "Grammar, clarity, transitions, structure checkpoints.",
-      icon: "🏔️",
-    },
+    { type: "math" as SectionType, title: "Math Trail", desc: "Algebra, functions, data analysis, geometry checkpoints.", icon: "math" as const },
+    { type: "reading" as SectionType, title: "Reading Trail", desc: "Evidence, main ideas, rhetoric, synthesis checkpoints.", icon: "reading" as const },
+    { type: "writing" as SectionType, title: "Writing Trail", desc: "Grammar, clarity, transitions, structure checkpoints.", icon: "writing" as const },
   ];
 
   return (
@@ -503,8 +489,8 @@ export default function PracticeTests() {
             >
               <GlassPanel delay={idx * 0.05}>
                 <div className="flex flex-col gap-2">
-                  <div className="w-10 h-10 text-2xl leading-none flex items-center justify-center">
-                    {card.icon}
+                  <div className="w-10 h-10 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                    <FeatureIcon name={card.icon} size={24} />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{card.title}</h3>
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{card.desc}</p>
@@ -707,7 +693,9 @@ export default function PracticeTests() {
                 >
                   <div className="flex justify-between text-sm font-bold mb-2 text-slate-900 dark:text-white">
                     <span>Question {idx + 1}</span>
-                    <span className={isCorrect ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}>{isCorrect ? "✓ Correct" : "✗ Incorrect"}</span>
+                    <span className={`flex items-center gap-1.5 ${isCorrect ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                          {isCorrect ? <><FeatureIcon name="check" size={16} /> Correct</> : <><FeatureIcon name="incorrect" size={16} /> Incorrect</>}
+                        </span>
                   </div>
                   {testType === "writing" ? (
                     <WritingQuestion
@@ -723,16 +711,16 @@ export default function PracticeTests() {
                   {(q.explanation_correct || q.explanation) && (
                     <div className="mt-4 space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                       <div>
-                        <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1.5 uppercase tracking-wide">
-                          ✓ Explanation
+                        <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
+                          <FeatureIcon name="check" size={14} /> Explanation
                         </p>
                         {renderFormattedText(q.explanation_correct || q.explanation || "")}
                       </div>
                       
                       {q.explanation_incorrect && Object.keys(q.explanation_incorrect).length > 0 && (
                         <div>
-                          <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1.5 uppercase tracking-wide">
-                            ✗ Why Other Answers Are Wrong
+                          <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
+                            <FeatureIcon name="incorrect" size={14} /> Why Other Answers Are Wrong
                           </p>
                           <div className="space-y-1.5">
                             {Object.entries(q.explanation_incorrect).map(([letter, reason]) => (
@@ -747,8 +735,8 @@ export default function PracticeTests() {
                       
                       {q.strategy_tip && (
                         <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                          <p className="text-xs font-bold text-sky-700 dark:text-sky-400 mb-1.5 uppercase tracking-wide">
-                            💡 Strategy Tip
+                          <p className="text-xs font-bold text-sky-700 dark:text-sky-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
+                            <FeatureIcon name="lightbulb" size={14} /> Strategy Tip
                           </p>
                           {renderFormattedText(q.strategy_tip)}
                         </div>

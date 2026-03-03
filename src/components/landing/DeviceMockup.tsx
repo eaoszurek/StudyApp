@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ReactNode } from "react";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 
 interface DeviceMockupProps {
   children?: ReactNode;
@@ -39,7 +40,7 @@ export default function DeviceMockup({
                 {children || (
                   <div className="w-full h-full flex items-center justify-center p-6">
                     <div className="text-center">
-                      <div className="text-6xl mb-4">⛰️</div>
+                      <div className="text-slate-500 mb-4"><FeatureIcon name="mountain" size={48} /></div>
                       <p className="text-slate-400 text-sm">App Preview</p>
                     </div>
                   </div>
@@ -78,7 +79,7 @@ export default function DeviceMockup({
             {children || (
               <div className="w-full h-full flex items-center justify-center p-8">
                 <div className="text-center">
-                  <div className="text-8xl mb-6">⛰️</div>
+                  <div className="text-slate-500 mb-6"><FeatureIcon name="mountain" size={64} /></div>
                   <p className="text-slate-400">App Preview</p>
                 </div>
               </div>

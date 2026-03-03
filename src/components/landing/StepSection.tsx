@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import FeatureIcon from "@/components/ui/FeatureIcon";
+import type { FeatureIconName } from "@/components/ui/FeatureIcon";
 import RouteMapMockup from "./mockups/RouteMapMockup";
 import QuizMockup from "./mockups/QuizMockup";
 import AssessmentMockup from "./mockups/AssessmentMockup";
@@ -10,7 +12,7 @@ const steps = [
     number: "01",
     title: "Set your goal",
     description: "Tell Peak Prep what you’re working on so your next step is always clear.",
-    icon: "⛺",
+    icon: "dashboard" as FeatureIconName,
     mockup: <AssessmentMockup />,
     color: "from-sky-500/20 to-green-500/20",
     highlights: ["2-minute setup", "Clear target score", "Stress-free start"],
@@ -20,7 +22,7 @@ const steps = [
     number: "02",
     title: "Study smart",
     description: "Get focused practice, flashcards, and explanations built for short sessions.",
-    icon: "🗺️",
+    icon: "study-plan" as FeatureIconName,
     mockup: <RouteMapMockup />,
     color: "from-green-500/20 to-blue-500/20",
     highlights: ["Short daily sessions", "Skill-focused practice", "Coach-like explanations"],
@@ -30,7 +32,7 @@ const steps = [
     number: "03",
     title: "See progress",
     description: "Track your climb and keep momentum with quick wins and clear feedback.",
-    icon: "🚩",
+    icon: "practice" as FeatureIconName,
     mockup: <QuizMockup />,
     color: "from-blue-500/20 to-purple-500/20",
     highlights: ["Progress snapshots", "Confidence boosts", "Next-step guidance"],
@@ -96,7 +98,7 @@ export default function StepSection() {
                     <div className="flex-1 space-y-5">
                       {/* Step Header */}
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="text-4xl">{step.icon}</div>
+                        <div className="text-slate-600"><FeatureIcon name={step.icon} size={36} /></div>
                         <div className="flex flex-col">
                           <div className="text-3xl font-bold text-slate-600">
                             {step.number}

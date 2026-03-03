@@ -1,5 +1,7 @@
 "use client";
 
+import FeatureIcon from "@/components/ui/FeatureIcon";
+
 /**
  * CSS Placeholder for Climber Animation
  * 
@@ -29,8 +31,8 @@ export default function ClimberLoaderPlaceholder() {
         </div>
         
         {/* Climber placeholder */}
-        <div className="relative z-10 text-6xl animate-bounce" style={{ animationDuration: '2s' }}>
-          ⛰️
+        <div className="relative z-10 text-slate-500 animate-bounce" style={{ animationDuration: '2s' }}>
+          <FeatureIcon name="mountain" size={56} />
         </div>
         
         {/* Progress indicator */}

@@ -82,7 +82,7 @@ export default function Home() {
       <StepSection />
 
       {/* 3. Feature Highlights */}
-      <FeatureGrid features={landingContent.features} />
+      <FeatureGrid features={landingContent.features as Parameters<typeof FeatureGrid>[0]["features"]} />
 
       {/* 4. Testimonials */}
       <Testimonials

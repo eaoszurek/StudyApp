@@ -9,6 +9,7 @@ import { getPercentile, getScoreInterpretation } from "@/utils/satScoring";
 import { getTargetGoal, getGoalProgress, getDaysUntilTest, setTargetGoal } from "@/utils/goalTracking";
 import InputField from "@/components/ui/InputField";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 
 function getTimeAgo(date: Date): string {
   const now = new Date();
@@ -193,7 +194,9 @@ export default function Progress({
                     />
                   </div>
                   {goalProgress.isAchieved ? (
-                    <p className="text-sm text-green-600 dark:text-green-400 font-semibold">🎉 Goal achieved!</p>
+                    <p className="text-sm text-green-600 dark:text-green-400 font-semibold flex items-center gap-2">
+                      <FeatureIcon name="goal-achieved" size={18} /> Goal achieved!
+                    </p>
                   ) : (
                     <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
                       {goalProgress.pointsRemaining} points to go
@@ -271,13 +274,13 @@ export default function Progress({
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <GlassPanel delay={0.05}>
-          <div className="text-2xl sm:text-3xl mb-2">⛺</div>
+          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="dashboard" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.currentCamp}</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Current Camp</div>
         </GlassPanel>
 
         <GlassPanel delay={0.1}>
-          <div className="text-2xl sm:text-3xl mb-2">⛰️</div>
+          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="mountain" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.currentAltitude}%</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Current Altitude</div>
           {stats.estimatedSATScore > 0 && (
@@ -288,7 +291,7 @@ export default function Progress({
         </GlassPanel>
 
         <GlassPanel delay={0.15}>
-          <div className="text-2xl sm:text-3xl mb-2">📈</div>
+          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="progress" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
             {stats.elevationGained > 0 ? `+${stats.elevationGained}` : stats.elevationGained}
           </div>
@@ -296,7 +299,7 @@ export default function Progress({
         </GlassPanel>
 
         <GlassPanel delay={0.2}>
-          <div className="text-2xl sm:text-3xl mb-2">🔥</div>
+          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="flame" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.climbingMomentum}</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Days This Week</div>
         </GlassPanel>
@@ -423,7 +426,7 @@ export default function Progress({
         ) : (
           <div className="space-y-3">
             {recentSessions.slice(0, RECENT_ACTIVITY_LIMIT).map((session, idx) => {
-              const sectionEmoji = session.section === "math" ? "⛰️" : session.section === "reading" ? "🗻" : "🏔️";
+              const sectionIcon = session.section === "math" ? "math" : session.section === "reading" ? "reading" : "writing";
               const sectionName = session.section === "math" ? "Math" : session.section === "reading" ? "Reading" : "Writing";
               const score = session.score && typeof session.score === 'object' && 'scaled' in session.score 
                 ? session.score.scaled 
@@ -433,7 +436,7 @@ export default function Progress({
               
               return (
                 <div key={session.id} className="ai-output-card flex items-center p-4 bg-slate-100/80 dark:bg-slate-900/60 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                  <div className="text-2xl mr-4">{sectionEmoji}</div>
+                  <div className="text-slate-600 dark:text-slate-400 mr-4"><FeatureIcon name={sectionIcon} size={24} /></div>
                   <div className="flex-1">
                     <div className="font-bold text-slate-900 dark:text-white">
                       Completed {sectionName} Checkpoint

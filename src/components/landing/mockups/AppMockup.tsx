@@ -21,31 +21,22 @@ export default function AppMockup() {
       {/* Nav Items Grid Container - 2 rows x 3 columns */}
       <rect x="85" y="18" width="850" height="34" rx="12" fill="rgba(0, 0, 0, 0.05)" stroke="rgba(0, 0, 0, 0.05)" strokeWidth="1" />
       
-      {/* Row 1 - 3 columns */}
-      {/* Dashboard - Active with highlight */}
+      {/* Row 1 - 3 columns - icons as simple shapes */}
       <rect x="92" y="20" width="275" height="14" rx="10" fill="rgba(14, 165, 233, 0.15)" />
-      <text x="100" y="30" fill="#0C4A6E" fontSize="12" fontWeight="600">⛺</text>
+      <g transform="translate(98, 22) scale(0.45)"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="#0C4A6E" strokeWidth="2" fill="none" /></g>
       <text x="115" y="30" fill="#0C4A6E" fontSize="11" fontWeight="600">Dashboard</text>
-      
-      <text x="382" y="30" fill="#475569" fontSize="12">🚩</text>
+      <g transform="translate(378, 22) scale(0.45)"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7" stroke="#475569" strokeWidth="2" fill="none" /></g>
       <text x="397" y="30" fill="#475569" fontSize="11">Practice Tests</text>
-      
-      <text x="672" y="30" fill="#475569" fontSize="12">🗺️</text>
+      <g transform="translate(668, 22) scale(0.45)"><path d="M1 6v16l8-4 8 4V2L9 6 1 2z" stroke="#475569" strokeWidth="2" fill="none" /><path d="M9 2v16M1 6l8 4 8-4" stroke="#475569" strokeWidth="2" fill="none" /></g>
       <text x="687" y="30" fill="#475569" fontSize="11">Study Plans</text>
-      
-      {/* Row 2 - 3 columns */}
-      <text x="100" y="47" fill="#475569" fontSize="12">🎒</text>
+      <g transform="translate(98, 39) scale(0.45)"><rect x="1" y="1" width="10" height="8" rx="1" stroke="#475569" strokeWidth="2" fill="none" /><rect x="1" y="4" width="10" height="8" rx="1" stroke="#475569" strokeWidth="2" fill="none" /></g>
       <text x="115" y="47" fill="#475569" fontSize="11">Flashcards</text>
-      
-      <text x="382" y="47" fill="#475569" fontSize="12">📚</text>
+      <g transform="translate(378, 39) scale(0.45)"><path d="M2 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2z" stroke="#475569" strokeWidth="2" fill="none" /><path d="M10 3h6a2 2 0 012 2v14l-5-3" stroke="#475569" strokeWidth="2" fill="none" /></g>
       <text x="397" y="47" fill="#475569" fontSize="11">Micro-Lessons</text>
-      
-      <text x="672" y="47" fill="#475569" fontSize="12">⛰️</text>
+      <g transform="translate(668, 39) scale(0.45)"><path d="M23 20l-8-12-8 12h16z" stroke="#475569" strokeWidth="2" fill="none" /></g>
       <text x="687" y="47" fill="#475569" fontSize="11">Progress</text>
-      
-      {/* Settings Button in top right */}
       <rect x="1020" y="20" width="130" height="30" rx="8" fill="transparent" />
-      <text x="1045" y="40" fill="#475569" fontSize="18">⚙️</text>
+      <g transform="translate(1042, 30) scale(0.5)"><circle cx="12" cy="12" r="3" stroke="#475569" strokeWidth="2" fill="none" /><path d="M12 15v3M12 21v1.5M9 12H7.5M16.5 12H15M10.5 9.5L9 8M15 13l.75-.75M9 15l-.75-.75M15 9.5l.75-.75" stroke="#475569" strokeWidth="1.5" fill="none" /></g>
       <text x="1065" y="40" fill="#475569" fontSize="12" fontWeight="500">Settings</text>
       
       {/* Main Content Container */}
@@ -82,7 +73,7 @@ export default function AppMockup() {
         {/* Tool Card 1 - Practice Tests */}
         <rect x="60" y="390" width="340" height="180" rx="12" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="80" y="410" width="48" height="48" rx="12" fill="#F1F5F9" />
-        <text x="104" y="440" textAnchor="middle" fill="#1E293B" fontSize="24">🚩</text>
+        <g transform="translate(92, 422) scale(1.2)"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7" stroke="#475569" strokeWidth="2" fill="none" /></g>
         <text x="380" y="425" textAnchor="end" fill="#64748B" fontSize="10" fontWeight="600" letterSpacing="0.1em">GEAR</text>
         <text x="80" y="480" fill="#0F172A" fontSize="20" fontWeight="700">Practice Tests</text>
         <text x="80" y="505" fill="#475569" fontSize="12" fontWeight="500">Practice tests along your trail with instant feedback.</text>
@@ -92,7 +83,7 @@ export default function AppMockup() {
         {/* Tool Card 2 - Study Plans */}
         <rect x="420" y="390" width="340" height="180" rx="12" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="440" y="410" width="48" height="48" rx="12" fill="#F1F5F9" />
-        <text x="464" y="440" textAnchor="middle" fill="#1E293B" fontSize="24">🗺️</text>
+        <g transform="translate(452, 422) scale(1.2)"><path d="M1 6v16l8-4 8 4V2L9 6 1 2z" stroke="#475569" strokeWidth="2" fill="none" /></g>
         <text x="740" y="425" textAnchor="end" fill="#64748B" fontSize="10" fontWeight="600" letterSpacing="0.1em">GEAR</text>
         <text x="440" y="480" fill="#0F172A" fontSize="20" fontWeight="700">Study Plans</text>
         <text x="440" y="505" fill="#475569" fontSize="12" fontWeight="500">Personalized expedition plans with milestones.</text>
@@ -102,7 +93,7 @@ export default function AppMockup() {
         {/* Tool Card 3 - Flashcards */}
         <rect x="780" y="390" width="340" height="180" rx="12" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="800" y="410" width="48" height="48" rx="12" fill="#F1F5F9" />
-        <text x="824" y="440" textAnchor="middle" fill="#1E293B" fontSize="24">🎒</text>
+        <g transform="translate(812, 422) scale(1.2)"><rect x="2" y="2" width="12" height="10" rx="1" stroke="#475569" strokeWidth="2" fill="none" /><rect x="2" y="6" width="12" height="10" rx="1" stroke="#475569" strokeWidth="2" fill="none" /></g>
         <text x="1100" y="425" textAnchor="end" fill="#64748B" fontSize="10" fontWeight="600" letterSpacing="0.1em">GEAR</text>
         <text x="800" y="480" fill="#0F172A" fontSize="20" fontWeight="700">Flashcards</text>
         <text x="800" y="505" fill="#475569" fontSize="12" fontWeight="500">Essential knowledge packs for your climb.</text>
@@ -112,7 +103,7 @@ export default function AppMockup() {
         {/* Tool Card 4 - Micro-Lessons */}
         <rect x="60" y="590" width="340" height="180" rx="12" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="80" y="610" width="48" height="48" rx="12" fill="#F1F5F9" />
-        <text x="104" y="640" textAnchor="middle" fill="#1E293B" fontSize="24">📚</text>
+        <g transform="translate(92, 622) scale(1.2)"><path d="M2 3h6a2 2 0 012 2v14l-5-3-5 3V5a2 2 0 012-2z" stroke="#475569" strokeWidth="2" fill="none" /><path d="M10 3h6a2 2 0 012 2v14l-5-3" stroke="#475569" strokeWidth="2" fill="none" /></g>
         <text x="380" y="625" textAnchor="end" fill="#64748B" fontSize="10" fontWeight="600" letterSpacing="0.1em">GEAR</text>
         <text x="80" y="680" fill="#0F172A" fontSize="20" fontWeight="700">Micro-Lessons</text>
         <text x="80" y="705" fill="#475569" fontSize="12" fontWeight="500">Quick 1–2 minute knowledge checkpoints.</text>
@@ -122,7 +113,7 @@ export default function AppMockup() {
         {/* Tool Card 5 - Progress */}
         <rect x="420" y="590" width="340" height="180" rx="12" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="440" y="610" width="48" height="48" rx="12" fill="#F1F5F9" />
-        <text x="464" y="640" textAnchor="middle" fill="#1E293B" fontSize="24">⛰️</text>
+        <g transform="translate(452, 622) scale(1.2)"><path d="M12 2L2 22h20L12 2z" stroke="#475569" strokeWidth="2" fill="none" /></g>
         <text x="740" y="625" textAnchor="end" fill="#64748B" fontSize="10" fontWeight="600" letterSpacing="0.1em">GEAR</text>
         <text x="440" y="680" fill="#0F172A" fontSize="20" fontWeight="700">Progress</text>
         <text x="440" y="705" fill="#475569" fontSize="12" fontWeight="500">Monitor your elevation gain and progress.</text>

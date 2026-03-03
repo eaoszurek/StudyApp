@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PrimaryButton from "@/components/ui/PrimaryButton";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 
 interface PricingTier {
   id: string;
@@ -86,8 +87,8 @@ export default function Pricing({ tiers, faq }: PricingProps) {
                 {/* Header */}
                 <div className="mb-5">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">
-                      {tier.id === "free" ? "⛺" : tier.id === "pro" ? "⛰️" : "🏔️"}
+                    <span className="text-slate-600">
+                      {tier.id === "free" ? <FeatureIcon name="dashboard" size={22} /> : <FeatureIcon name="mountain" size={22} />}
                     </span>
                     <h3 className="text-lg font-bold text-slate-900">{tier.name}</h3>
                   </div>
@@ -113,7 +114,7 @@ export default function Pricing({ tiers, faq }: PricingProps) {
                       key={fIdx}
                       className="flex items-start gap-2 text-xs text-slate-700 font-medium leading-relaxed"
                     >
-                      <span className="text-green-600 mt-0.5 text-sm flex-shrink-0">✓</span>
+                      <FeatureIcon name="check" size={16} className="text-green-600 mt-0.5 flex-shrink-0" />
                       <span>{feature}</span>
                     </li>
                   ))}

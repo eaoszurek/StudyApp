@@ -42,8 +42,8 @@ export const metadata: Metadata = {
     "SAT math practice",
   ],
   icons: {
-    icon: [{ url: "/logo.png" }],
-    apple: [{ url: "/logo.png" }],
+    icon: [{ url: "/logo.png", type: "image/png" }],
+    apple: [{ url: "/logo.png", type: "image/png" }],
   },
   openGraph: {
     title: "PeakPrep | AI SAT Prep App",

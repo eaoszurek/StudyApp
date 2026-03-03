@@ -189,13 +189,20 @@ export default function LayoutWrapper({
           <div className="absolute bottom-[-15rem] left-1/2 -translate-x-1/2 w-[40rem] h-[35rem] bg-sky-500/15 dark:bg-sky-500/10 blur-[180px]" />
         </div>
       )}
-      <div className="flex flex-col min-h-screen w-full max-w-full">
+      <div className="flex min-h-screen w-full max-w-full">
         {!hideNav && (
-          <div className="sticky top-0 z-[100] w-full">
-            <Navigation />
-          </div>
+          <>
+            <div className="hidden md:block fixed left-0 top-0 bottom-0 z-[100] w-52 lg:w-56">
+              <Navigation variant="sidebar" />
+            </div>
+            <div className="md:hidden fixed top-0 left-0 right-0 z-[100]">
+              <Navigation variant="mobile" />
+            </div>
+          </>
         )}
-        <div className={`relative z-0 w-full max-w-full ${hideNav ? "" : "pt-6 sm:pt-8 md:pt-10 pb-6 sm:pb-8 md:pb-10"}`}>{children}</div>
+        <div className={`relative z-0 flex-1 min-w-0 w-full ${hideNav ? "" : "pt-14 md:pt-8 md:pl-52 lg:pl-56 pb-6 sm:pb-8 md:pb-10 px-4 sm:px-6 md:px-8"}`}>
+          {children}
+        </div>
       </div>
     </div>
   );

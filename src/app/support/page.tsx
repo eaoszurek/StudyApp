@@ -65,7 +65,7 @@ export default function SupportPage() {
                 Whether you have questions about your study plan, need help with a feature, or want to share feedback about your journey, we're here to support you every step of the way.
               </p>
               <p className="text-slate-600 dark:text-slate-400 text-sm md:text-base">
-                We typically respond within 24 hours. Keep climbing towards your target score! 🏔️
+                We typically respond within 24 hours. Keep climbing towards your target score!
               </p>
             </div>
           </div>

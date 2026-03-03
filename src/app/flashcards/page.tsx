@@ -6,6 +6,7 @@ import InputField from "@/components/ui/InputField";
 import PageHeader from "@/components/ui/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FlashcardData,
@@ -606,7 +607,7 @@ export default function Flashcards() {
                         : "border-slate-200 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:shadow-[0_3px_0_rgba(34,197,94,0.15),0_4px_12px_rgba(34,197,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
-                    <span className="font-bold">✓ Got it</span>
+                    <span className="font-bold inline-flex items-center gap-1.5"><FeatureIcon name="check" size={18} /> Got it</span>
                     {currentCard.interval > 0 && (
                       <span className="block text-xs text-slate-500 dark:text-slate-300 mt-1 font-medium">
                         Review in {getReviewIntervalText(currentCard.interval)}
@@ -646,7 +647,7 @@ export default function Flashcards() {
                         : "border-slate-200 dark:border-slate-600 hover:border-rose-300 dark:hover:border-rose-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:shadow-[0_3px_0_rgba(244,63,94,0.15),0_4px_12px_rgba(244,63,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
-                    <span className="font-bold">✗ No idea</span>
+                    <span className="font-bold inline-flex items-center gap-1.5"><FeatureIcon name="incorrect" size={18} /> No idea</span>
                     <span className="block text-xs text-slate-500 dark:text-slate-300 mt-1 font-medium">
                       Review again today
                     </span>

@@ -14,41 +14,11 @@ export const landingContent = {
     },
   },
   features: [
-    {
-      id: "route-maps",
-      icon: "🗺️",
-      title: "Personalized Route Maps",
-      description: "AI-generated study plans that adapt to your pace, target score, and timeline.",
-      link: "/study-plan",
-    },
-    {
-      id: "tools-supplies",
-      icon: "🎒",
-      title: "Tools & Supplies",
-      description: "Spaced repetition flashcards with SAT-accurate content for every concept.",
-      link: "/flashcards",
-    },
-    {
-      id: "checkpoints",
-      icon: "🚩",
-      title: "Trail Checkpoints",
-      description: "Timed practice tests with instant feedback and detailed explanations.",
-      link: "/practice",
-    },
-    {
-      id: "micro-lessons",
-      icon: "📚",
-      title: "Micro-Lessons",
-      description: "Quick 1–2 minute knowledge checkpoints with examples and practice questions.",
-      link: "/lessons",
-    },
-    {
-      id: "backtrack",
-      icon: "📊",
-      title: "Progress",
-      description: "Review analytics and track your elevation gain across all trails.",
-      link: "/progress",
-    },
+    { id: "route-maps", icon: "study-plan", title: "Personalized Route Maps", description: "AI-generated study plans that adapt to your pace, target score, and timeline.", link: "/study-plan" },
+    { id: "tools-supplies", icon: "flashcards", title: "Tools & Supplies", description: "Spaced repetition flashcards with SAT-accurate content for every concept.", link: "/flashcards" },
+    { id: "checkpoints", icon: "practice", title: "Trail Checkpoints", description: "Timed practice tests with instant feedback and detailed explanations.", link: "/practice" },
+    { id: "micro-lessons", icon: "lessons", title: "Micro-Lessons", description: "Quick 1–2 minute knowledge checkpoints with examples and practice questions.", link: "/lessons" },
+    { id: "backtrack", icon: "progress", title: "Progress", description: "Review analytics and track your elevation gain across all trails.", link: "/progress" },
   ],
   pricing: {
     tiers: [

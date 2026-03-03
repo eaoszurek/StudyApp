@@ -19,7 +19,7 @@ export default function AssessmentMockup() {
       {/* Progress Container */}
       <rect x="40" y="90" width="620" height="50" rx="8" fill="rgba(255,255,255,0.05)" />
       <text x="60" y="115" fill="#94A3B8" fontSize="12" fontWeight="500">Question 1 of 6</text>
-      <text x="600" y="115" textAnchor="end" fill="#94A3B8" fontSize="12" fontWeight="500">17% complete</text>
+      <text x="600" y="115" textAnchor="end" fill="#94A3B8" fontSize="12" fontWeight="500">17%</text>
       <rect x="60" y="125" width="560" height="8" rx="4" fill="rgba(255,255,255,0.1)" />
       <rect x="60" y="125" width="93" height="8" rx="4" fill="#4A90E2" />
       

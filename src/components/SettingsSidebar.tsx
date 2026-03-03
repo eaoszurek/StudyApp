@@ -7,6 +7,7 @@ import { getCurrentUser, signOut } from "@/utils/auth";
 import { useRouter } from "next/navigation";
 import PrimaryButton from "./ui/PrimaryButton";
 import ConfirmationModal from "./ui/ConfirmationModal";
+import FeatureIcon from "./ui/FeatureIcon";
 
 interface ApiUser {
   id: string;
@@ -319,8 +320,9 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
                   ) : subscriptionStatus?.hasSubscription ? (
                     <div className="space-y-3">
                       <div className="p-3 rounded-xl bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/30 dark:to-green-900/30 border-2 border-emerald-400 dark:border-emerald-600 shadow-sm">
-                        <p className="text-sm font-bold text-emerald-800 dark:text-emerald-100">
-                          ✓ Premium Active
+                        <p className="text-sm font-bold text-emerald-800 dark:text-emerald-100 flex items-center gap-2">
+                          <FeatureIcon name="check" size={18} className="flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          Premium Active
                         </p>
                         <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1 font-semibold">
                           {subscriptionStatus.subscriptionStatus === "ACTIVE"

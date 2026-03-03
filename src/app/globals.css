@@ -134,7 +134,7 @@ body {
     radial-gradient(circle at 80% 0%, rgba(74, 144, 226, 0.04), transparent 40%),
     linear-gradient(180deg, #f5f7fa 0%, #f9fafb 100%);
   color: #0f172a;
-  font-family: var(--font-montserrat, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-weight: 400;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
@@ -389,13 +389,14 @@ html.dark .glass-panel-strong,
 }
 
 .brand-gradient {
-  background: linear-gradient(135deg, var(--forest-green), var(--sky-blue)) !important;
+  background-color: var(--sky-blue);
   opacity: 1 !important;
 }
 
 html.dark .brand-gradient,
 .dark .brand-gradient {
-  background: linear-gradient(135deg, #34D399, #60A5FA) !important;
+  background-color: #38bdf8;
+  opacity: 1 !important;
 }
 
 .subtle-progress-circle {
@@ -460,41 +461,41 @@ html.dark .practice-skill-badge,
 
 html.dark .practice-difficulty-badge,
 .dark .practice-difficulty-badge {
-  background: linear-gradient(135deg, rgba(5, 150, 105, 0.35), rgba(15, 118, 110, 0.35));
-  border-color: rgba(45, 212, 191, 0.4);
-  color: #ccfbf1;
+  background-color: rgba(15, 23, 42, 0.6);
+  border-color: rgba(148, 163, 184, 0.6);
+  color: #e5e7eb;
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #4A90E2, #1E5532, #F7E7D3);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background: none;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: #0f172a;
 }
 
 html.dark .text-gradient,
 .dark .text-gradient {
-  background: linear-gradient(135deg, #60A5FA, #34D399, #FDE68A);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background: none;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: #e5e7eb;
 }
 
 .text-gradient-hero {
-  background: linear-gradient(135deg, #1e293b 0%, #4A90E2 50%, #1E5532 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background: none;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: #0f172a;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
 
 html.dark .text-gradient-hero,
 .dark .text-gradient-hero {
-  background: linear-gradient(135deg, #f1f5f9 0%, #60A5FA 50%, #34D399 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background: none;
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  color: #f9fafb;
 }
 
 /* Premium Typography Utilities */
@@ -555,7 +556,7 @@ html.dark .text-gradient-hero,
 
 /* Mountain-themed font for hero */
 .font-oswald {
-  font-family: var(--font-oswald), sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0.05em;
   font-weight: 700;
 }
@@ -803,18 +804,15 @@ html.dark .input-field::placeholder,
   color: rgba(148, 163, 184, 0.6);
 }
 
-/* Ensure gradient backgrounds work consistently across browsers */
 .bg-gradient-to-b,
 .bg-gradient-to-br,
 .bg-gradient-to-r {
-  background-image: var(--tw-gradient-stops) !important;
+  background-image: none !important;
+  background-color: var(--tw-gradient-from, var(--tw-gradient-to, inherit)) !important;
 }
 
-/* Force consistent rendering of utility classes */
 html:not(.dark) .from-sky-100 {
   --tw-gradient-from: #e0f2fe !important;
-  --tw-gradient-to: rgba(224, 242, 254, 0) !important;
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
 }
 
 html:not(.dark) .to-sky-50 {
@@ -823,8 +821,6 @@ html:not(.dark) .to-sky-50 {
 
 html:not(.dark) .from-green-100 {
   --tw-gradient-from: #dcfce7 !important;
-  --tw-gradient-to: rgba(220, 252, 231, 0) !important;
-  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
 }
 
 html:not(.dark) .to-green-50 {

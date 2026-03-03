@@ -26,7 +26,7 @@ export default function GlassPanel({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay, ease: [0.16, 1, 0.3, 1] }}
       className={[
-        "glass-panel relative",
+        "glass-panel relative rounded-xl",
         overflow === "visible" ? "overflow-visible" : "overflow-hidden",
         padding ? "p-4 sm:p-5 md:p-6" : "",
         className,

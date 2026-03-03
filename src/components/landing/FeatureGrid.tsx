@@ -2,10 +2,12 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import FeatureIcon from "@/components/ui/FeatureIcon";
+import type { FeatureIconName } from "@/components/ui/FeatureIcon";
 
 interface Feature {
   id: string;
-  icon: string;
+  icon: FeatureIconName;
   title: string;
   description: string;
   link: string;
@@ -53,8 +55,8 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
                   {/* Content */}
                   <div className="relative z-10">
                     {/* Icon */}
-                    <div className="text-3xl mb-4 transform group-hover:scale-110 transition-transform duration-300">
-                      {feature.icon}
+                    <div className="text-slate-600 mb-4 transform group-hover:scale-110 transition-transform duration-300">
+                      <FeatureIcon name={feature.icon} size={32} />
                     </div>
 
                     {/* Title */}

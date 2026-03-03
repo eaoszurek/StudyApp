@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useState } from "react";
 import Logo from "@/components/ui/Logo";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 
 export default function LandingNavbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -69,7 +70,7 @@ export default function LandingNavbar() {
               className="md:hidden p-2 text-slate-700 hover:text-slate-900 transition-colors"
               aria-label="Menu"
             >
-              <span className="text-2xl">{mobileMenuOpen ? "✕" : "☰"}</span>
+              {mobileMenuOpen ? <FeatureIcon name="close" size={24} /> : <FeatureIcon name="menu" size={24} />}
             </button>
           </div>
 

@@ -8,6 +8,7 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
+import FeatureIcon from "@/components/ui/FeatureIcon";
 import { SAT_TOPICS } from "@/data/topics";
 
 interface Lesson {
@@ -465,13 +466,13 @@ export default function Lessons() {
                         </span>
                         {selectedAnswer && (
                           <span
-                            className={`text-sm font-semibold px-3 py-1 rounded-full w-fit ${
+                            className={`inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1 rounded-full w-fit ${
                               isCorrect
                                 ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
                                 : "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400"
                             }`}
                           >
-                            {isCorrect ? "✓ Correct" : "✗ Incorrect"}
+                            {isCorrect ? <><FeatureIcon name="check" size={14} /> Correct</> : <><FeatureIcon name="incorrect" size={14} /> Incorrect</>}
                           </span>
                         )}
                       </div>
@@ -516,16 +517,16 @@ export default function Lessons() {
                             </p>
                             {q.explanation && (
                               <div className="mt-3">
-                                <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1.5 uppercase tracking-wide">
-                                  ✓ Explanation
+                                <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
+                                  <FeatureIcon name="check" size={14} /> Explanation
                                 </p>
                                 {renderFormattedText(q.explanation)}
                               </div>
                             )}
                             {q.explanation_incorrect && Object.keys(q.explanation_incorrect).length > 0 && (
                               <div className="mt-4">
-                                <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1.5 uppercase tracking-wide">
-                                  ✗ Why Other Answers Are Wrong
+                                <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
+                                  <FeatureIcon name="incorrect" size={14} /> Why Other Answers Are Wrong
                                 </p>
                                 <div className="space-y-1.5">
                                   {Object.entries(q.explanation_incorrect).map(([letter, reason]) => (
