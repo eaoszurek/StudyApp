@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import GlassPanel from "@/components/ui/GlassPanel";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import InputField from "@/components/ui/InputField";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
@@ -72,7 +71,7 @@ export default function Login() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 py-12 relative">
+    <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-white relative">
       {/* Back to Home Logo */}
       <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
         <Logo href="/" size="md" />
@@ -109,7 +108,7 @@ export default function Login() {
         </motion.div>
 
         <div className="w-full">
-          <GlassPanel delay={0.15} className="px-4 py-4">
+          <div className="px-5 py-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
           <h2 className="text-base font-semibold text-slate-900 mb-3 text-center">
             Sign in to your account
           </h2>
@@ -152,7 +151,7 @@ export default function Login() {
               Sign up
             </Link>
           </p>
-          </GlassPanel>
+          </div>
         </div>
         </div>
       </div>
