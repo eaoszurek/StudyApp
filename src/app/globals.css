@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Force class-based dark mode in Tailwind v4 (override default media-query behavior) */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Premium Color Palette - Mountain Expedition Theme */
   --forest-green: #1E5532; /* Soft green */
