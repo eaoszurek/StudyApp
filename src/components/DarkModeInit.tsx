@@ -27,7 +27,7 @@ export default function DarkModeInit() {
 
     const saved = localStorage.getItem("darkMode");
 
-    // New users start in light mode; respect saved preference after that
+    // Default to light mode for new users; respect saved preference after that
     const shouldBeDark = saved === "true";
 
     if (shouldBeDark) {
