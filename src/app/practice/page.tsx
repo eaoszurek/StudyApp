@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
@@ -148,8 +148,10 @@ export default function PracticeTests() {
     });
   };
 
-  const generateTest = async () => {
-    if (!testType) return;
+  const generateTest = async (overrides?: { section?: SectionType; config?: TestConfig }) => {
+    const selectedSection = overrides?.section ?? testType;
+    const selectedConfig = overrides?.config ?? config;
+    if (!selectedSection) return;
 
     // Check free tier limit (1 use total across all features)
     const FREE_TIER_LIMIT = 1;
@@ -170,17 +172,19 @@ export default function PracticeTests() {
     setScore(0);
     setUserAnswers({});
     setShowConfig(false);
-    setTargetQuestionCount(config.questionCount);
+    setTargetQuestionCount(selectedConfig.questionCount);
+    setTestType(selectedSection);
+    setConfig(selectedConfig);
 
     const requestPracticeBatch = async (count: number) => {
       const res = await fetch("/api/generate-practice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          section: testType,
+          section: selectedSection,
           questionCount: count,
-          topic: config.topic || undefined,
-          difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+          topic: selectedConfig.topic || undefined,
+          difficulty: selectedConfig.difficulty === "Mixed" ? undefined : selectedConfig.difficulty,
         }),
       });
 
@@ -194,9 +198,9 @@ export default function PracticeTests() {
 
     try {
       const initialCount =
-        testType === "writing" || testType === "reading"
-          ? Math.min(5, config.questionCount)
-          : config.questionCount;
+        selectedSection === "writing" || selectedSection === "reading"
+          ? Math.min(5, selectedConfig.questionCount)
+          : selectedConfig.questionCount;
       const data = await requestPracticeBatch(initialCount);
       setCurrentTestId(data.id || null);
       currentTestIdRef.current = data.id || null;
@@ -225,6 +229,23 @@ export default function PracticeTests() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("autostart") !== "1") return;
+    const sectionParam = params.get("section");
+    if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) return;
+
+    const parsedConfig: TestConfig = {
+      questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
+      topic: params.get("topic") || "",
+      difficulty: (params.get("difficulty") as TestConfig["difficulty"]) || "Mixed",
+    };
+    const section = sectionParam as SectionType;
+    window.history.replaceState({}, "", "/practice");
+    void generateTest({ section, config: parsedConfig });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
@@ -611,7 +632,7 @@ export default function PracticeTests() {
 
             {/* Generate Button */}
             <div className="flex gap-3 pt-2">
-              <PrimaryButton onClick={generateTest} disabled={loading} fullWidth>
+              <PrimaryButton onClick={() => void generateTest()} disabled={loading} fullWidth>
                 {loading ? "Setting checkpoint..." : `Start ${config.questionCount}-question checkpoint`}
               </PrimaryButton>
             </div>

@@ -15,6 +15,8 @@ const StudyPlanRequestSchema = z.object({
     weakestSection: z.string().max(100).optional(),
     hoursPerDay: z.string().max(20).optional(),
     studyStyle: z.string().max(100).optional(),
+    workloadPreference: z.string().max(100).optional(),
+    confidenceLevel: z.string().max(100).optional(),
     notes: z.string().max(500).optional(),
   }),
   performanceData: z.object({
@@ -73,6 +75,8 @@ export async function POST(req: Request) {
       weakestSection,
       hoursPerDay,
       studyStyle,
+      workloadPreference,
+      confidenceLevel,
       notes,
     } = answers;
     
@@ -138,7 +142,7 @@ RULES (Tutor-like, encouraging approach):
 - If performance data is provided, use ACTUAL performance metrics (current score, weakest section from practice) instead of user estimates.
 - Overview: Give an encouraging summary (2-3 sentences). Acknowledge their goal, mention current progress if available, and express confidence in their ability to improve. If current score is known, frame the gap positively (e.g., "You're currently at X, and with focused practice, reaching Y is absolutely achievable").
 - WeeklyPlan: 4-8 weeks depending on timeline. Each week has a main focus (1 short phrase) and 4-6 specific, actionable tasks. Make tasks feel achievable and explain their purpose briefly.
-- DailyPlan: Create realistic daily tasks based on time available. Include 7 days (Monday-Sunday) with 2-4 tasks per day. Vary the tasks to keep it engaging.
+- DailyPlan: Create realistic daily tasks based on time available. Include 7 days (Monday-Sunday) with 1-3 tasks per day. Include lighter days and occasional single longer-task days where appropriate.
 - Each task must start with "Reading & Writing:" or "Math:" so it is easy to scan.
 - PracticeTests: Schedule full-length tests (every 1-2 weeks). List as strings like "Week 2: Full-length practice test", "Week 4: Full-length practice test". Explain why these checkpoints matter.
 - Strategies: Give encouraging, practical improvement strategies for weak areas (3-5 strategies). Frame them positively (e.g., "Focus on..." rather than "You're weak at..."). Make them specific and actionable.
@@ -158,6 +162,8 @@ Only output the JSON object. No extra text.`,
 - Weakest Section: ${actualWeakestSection || "Not specified"}${performanceData ? ` (based on actual practice performance)` : ""}
 - Hours per day available: ${hoursPerDay || "Not specified"}
 - Study Style: ${studyStyle || "Not specified"}
+- Workload Preference: ${workloadPreference || "Not specified"}
+- Confidence Level: ${confidenceLevel || "Not specified"}
 ${currentScore ? `- Current Estimated Score: ${currentScore} (from ${totalSessions} practice test${totalSessions !== 1 ? 's' : ''})` : ""}
 ${notes ? `- Additional Notes: ${notes}` : ""}
 ${performanceData ? `- Performance Data: Student has completed ${totalSessions} practice test${totalSessions !== 1 ? 's' : ''} with an average score of ${currentScore}. Use this actual data to create a more targeted plan.` : ""}
@@ -199,11 +205,11 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
 
     const getTaskCap = (hours?: string, planType: "daily" | "weekly" = "daily") => {
       const normalized = (hours || "").toLowerCase();
-      if (normalized.includes("30 min")) return planType === "daily" ? 2 : 3;
-      if (normalized.includes("1 hour")) return planType === "daily" ? 3 : 4;
-      if (normalized.includes("2 hours")) return planType === "daily" ? 4 : 5;
-      if (normalized.includes("3+")) return planType === "daily" ? 5 : 6;
-      return planType === "daily" ? 3 : 4;
+      if (normalized.includes("30 min")) return planType === "daily" ? 1 : 3;
+      if (normalized.includes("1 hour")) return planType === "daily" ? 2 : 4;
+      if (normalized.includes("2 hours")) return planType === "daily" ? 3 : 5;
+      if (normalized.includes("3+")) return planType === "daily" ? 3 : 6;
+      return planType === "daily" ? 2 : 4;
     };
 
     const clampTasks = (tasks: string[], planType: "daily" | "weekly") => {

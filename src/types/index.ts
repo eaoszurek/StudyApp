@@ -71,6 +71,8 @@ export interface QuestionnaireAnswer {
   weakestSection?: string;
   hoursPerDay?: string;
   studyStyle?: string;
+  workloadPreference?: string;
+  confidenceLevel?: string;
   notes?: string;
 }
 
@@ -93,5 +95,38 @@ export interface PersonalizedPlan {
     day: string;
     tasks: string[];
   }[];
+  calendarWeeks?: StudyCalendarWeek[];
+}
+
+export type StudyTaskType = "flashcards" | "practice" | "lesson" | "review";
+
+export interface StudyTaskLaunchTarget {
+  path: "/flashcards" | "/practice" | "/lessons" | "/progress";
+  params?: Record<string, string>;
+}
+
+export interface StudyCalendarTask {
+  id: string;
+  type: StudyTaskType;
+  skillFocus: string;
+  estimatedMinutes: number;
+  rawText: string;
+  launchTarget: StudyTaskLaunchTarget;
+}
+
+export interface StudyCalendarDay {
+  id: string;
+  dayName: string;
+  dayNumber: number;
+  dateISO: string;
+  accentClass: string;
+  tasks: StudyCalendarTask[];
+}
+
+export interface StudyCalendarWeek {
+  weekIndex: number;
+  label: string;
+  focus?: string;
+  days: StudyCalendarDay[];
 }
 

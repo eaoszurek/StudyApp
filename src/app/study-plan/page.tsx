@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import InputField from "@/components/ui/InputField";
 import PageHeader from "@/components/ui/PageHeader";
@@ -8,42 +8,34 @@ import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { getScoreHistory, getSectionPerformance } from "@/utils/scoreTracking";
+import type {
+  PersonalizedPlan,
+  QuestionnaireAnswer,
+  StudyCalendarDay,
+  StudyCalendarTask,
+  StudyCalendarWeek,
+  StudyTaskLaunchTarget,
+  StudyTaskType,
+} from "@/types";
+import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 
 const STORAGE_KEY = "sat_study_plan";
-const REMAINING_WEEKS_KEY = "sat_study_plan_remaining_weeks";
+const TASKS_STORAGE_KEY = `${STORAGE_KEY}_tasks`;
+const UNLOCKED_WEEK_KEY = `${STORAGE_KEY}_unlocked_week`;
+const ACTIVE_WEEK_KEY = `${STORAGE_KEY}_active_week`;
 
-interface QuestionnaireAnswer {
-  targetScore?: string;
-  testDate?: string;
-  weakestSection?: string;
-  hoursPerDay?: string;
-  studyStyle?: string;
-  notes?: string;
-}
-
-interface PersonalizedPlan {
-  // New format
-  overview: string;
-  weeklyPlan?: {
-    week: number;
-    focus: string;
-    tasks: string[];
-  }[];
-  dailyPlan?: {
-    day: string;
-    tasks: string[];
-  }[];
-  practiceTests?: string[];
-  strategies?: string[];
-  // Legacy format for compatibility
-  timeframe?: "daily" | "weekly";
-  days?: {
-    day: string;
-    tasks: string[];
-  }[];
-  sessionId?: string; // Anonymous session ID for backend migration
-}
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAY_ACCENTS = [
+  "border-t-sky-300 dark:border-t-sky-500",
+  "border-t-blue-300 dark:border-t-blue-500",
+  "border-t-indigo-300 dark:border-t-indigo-500",
+  "border-t-violet-300 dark:border-t-violet-500",
+  "border-t-cyan-300 dark:border-t-cyan-500",
+  "border-t-emerald-300 dark:border-t-emerald-500",
+  "border-t-amber-300 dark:border-t-amber-500",
+];
 
 const questionnaire = [
   {
@@ -77,6 +69,18 @@ const questionnaire = [
     options: ["Short daily sessions", "Longer weekly sessions"],
   },
   {
+    type: "button",
+    id: "workloadPreference",
+    question: "How should your week be balanced?",
+    options: ["Balanced all week", "Lighter weekdays", "Weekend push"],
+  },
+  {
+    type: "button",
+    id: "confidenceLevel",
+    question: "How confident are you with current SAT skills?",
+    options: ["Need foundation refresh", "Mixed confidence", "Ready for harder drills"],
+  },
+  {
     type: "text",
     id: "notes",
     question: "Any special trail conditions or constraints? (optional)",
@@ -92,51 +96,154 @@ const renderBoldText = (text: string) => {
   });
 };
 
-const groupTasksBySection = (tasks: string[]) => {
-  const groups = {
-    reading: [] as { task: string; index: number }[],
-    math: [] as { task: string; index: number }[],
-    other: [] as { task: string; index: number }[],
+const sanitizeText = (text: string) => text.replace(/\*\*/g, "").trim();
+
+const inferSkillFocus = (taskText: string, fallback: string) => {
+  const clean = sanitizeText(taskText);
+  const onMatch = clean.match(/\bon\s+([a-z0-9&\-\s]+)$/i);
+  if (onMatch?.[1]) return onMatch[1].trim();
+  const colonParts = clean.split(":");
+  if (colonParts.length > 1) return colonParts.slice(1).join(":").trim();
+  return fallback;
+};
+
+const inferEstimatedMinutes = (taskText: string, type: StudyTaskType) => {
+  const minutes = taskText.match(/(\d+)(?:\s*[-–to]+\s*(\d+))?\s*min/i);
+  if (minutes) {
+    const first = parseInt(minutes[1], 10);
+    const second = minutes[2] ? parseInt(minutes[2], 10) : first;
+    return Math.round((first + second) / 2);
+  }
+  if (type === "practice") return 45;
+  if (type === "flashcards") return 15;
+  if (type === "lesson") return 20;
+  return 12;
+};
+
+const inferTaskType = (taskText: string): StudyTaskType => {
+  const lower = taskText.toLowerCase();
+  if (lower.includes("practice test") || lower.includes("full-length")) return "practice";
+  if (lower.includes("micro-lesson") || lower.includes("lesson")) return "lesson";
+  if (lower.includes("flashcard")) return "flashcards";
+  return "review";
+};
+
+const inferLaunchTarget = (type: StudyTaskType, skillFocus: string): StudyTaskLaunchTarget => {
+  const normalizedTopic = skillFocus;
+  const lower = skillFocus.toLowerCase();
+  const section =
+    /algebra|equation|linear|quadratic|function|geometry|ratio|slope|statistics|probability|graph/i.test(lower)
+      ? "math"
+      : /grammar|punctuation|vocabulary|syntax|evidence|transition|rhetorical/i.test(lower)
+        ? "writing"
+        : "reading";
+
+  if (type === "flashcards") {
+    return { path: "/flashcards", params: { topic: normalizedTopic } };
+  }
+  if (type === "lesson") {
+    return { path: "/lessons", params: { topic: normalizedTopic, autostart: "1" } };
+  }
+  if (type === "practice") {
+    return {
+      path: "/practice",
+      params: { autostart: "1", section, topic: normalizedTopic, difficulty: "Mixed", questions: "12" },
+    };
+  }
+  return { path: "/progress" };
+};
+
+const formatTaskType = (type: StudyTaskType) => {
+  if (type === "flashcards") return "Flashcards";
+  if (type === "practice") return "Practice Test";
+  if (type === "lesson") return "Lesson";
+  return "Review";
+};
+
+const mondayForCurrentWeek = () => {
+  const now = new Date();
+  const day = now.getDay(); // 0 Sunday
+  const distanceToMonday = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + distanceToMonday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
+};
+
+const buildCalendarWeeks = (plan: PersonalizedPlan): StudyCalendarWeek[] => {
+  const daily = plan.dailyPlan || plan.days || [];
+  const weekly = plan.weeklyPlan || [];
+  const totalWeeks = Math.max(1, weekly.length, Math.ceil(daily.length / 7));
+  const startMonday = mondayForCurrentWeek();
+
+  const buildTask = (rawTask: string, weekIndex: number, dayIndex: number, taskIndex: number, fallback: string) => {
+    const type = inferTaskType(rawTask);
+    const skillFocus = inferSkillFocus(rawTask, fallback);
+    return {
+      id: `w${weekIndex}-d${dayIndex}-t${taskIndex}`,
+      type,
+      skillFocus,
+      estimatedMinutes: inferEstimatedMinutes(rawTask, type),
+      rawText: sanitizeText(rawTask),
+      launchTarget: inferLaunchTarget(type, skillFocus),
+    } satisfies StudyCalendarTask;
   };
 
-  tasks.forEach((task, index) => {
-    const lower = task.toLowerCase();
-    if (lower.startsWith("reading & writing:") || lower.startsWith("reading:") || lower.startsWith("writing:")) {
-      groups.reading.push({ task, index });
-      return;
-    }
-    if (lower.startsWith("math:")) {
-      groups.math.push({ task, index });
-      return;
-    }
-    if (/reading|writing|grammar|punctuation|transition|evidence|vocabulary|syntax|boundary|rhetorical|concision|agreement|modifier/i.test(lower)) {
-      groups.reading.push({ task, index });
-      return;
-    }
-    if (/math|algebra|equation|linear|quadratic|function|geometry|percent|ratio|statistics|probability|graph|slope|circle|inequal|exponent|radical|system/i.test(lower)) {
-      groups.math.push({ task, index });
-      return;
-    }
-    groups.other.push({ task, index });
-  });
+  const weeks: StudyCalendarWeek[] = [];
+  for (let weekIndex = 0; weekIndex < totalWeeks; weekIndex += 1) {
+    const weekFocus = sanitizeText(weekly[weekIndex]?.focus || `Week ${weekIndex + 1} Focus`);
+    const weekTasks = weekly[weekIndex]?.tasks || [];
+    const days: StudyCalendarDay[] = DAY_NAMES.map((dayName, dayIdx) => {
+      const absoluteDay = weekIndex * 7 + dayIdx;
+      const fromDaily = daily[absoluteDay]?.tasks || [];
+      const synthesized =
+        fromDaily.length > 0
+          ? fromDaily
+          : weekTasks.length > 0
+            ? [weekTasks[dayIdx % weekTasks.length], weekTasks[(dayIdx + 2) % weekTasks.length]]
+            : [`Review progress on ${weekFocus}`];
+      const trimmed = synthesized.filter(Boolean).slice(0, 3);
+      const finalTasks = (trimmed.length > 0 ? trimmed : [`Review progress on ${weekFocus}`]).slice(0, 3);
 
-  return groups;
+      const date = new Date(startMonday);
+      date.setDate(startMonday.getDate() + weekIndex * 7 + dayIdx);
+      const fallbackFocus = weekFocus.replace(/^Week\s*\d+\s*/i, "").trim() || "SAT skill focus";
+
+      return {
+        id: `week-${weekIndex}-day-${dayIdx}`,
+        dayName,
+        dayNumber: date.getDate(),
+        dateISO: date.toISOString(),
+        accentClass: DAY_ACCENTS[dayIdx],
+        tasks: finalTasks.map((task, taskIdx) => buildTask(task, weekIndex, dayIdx, taskIdx, fallbackFocus)),
+      };
+    });
+
+    weeks.push({
+      weekIndex,
+      label: `Week ${weekIndex + 1}`,
+      focus: weekFocus,
+      days,
+    });
+  }
+  return weeks;
 };
 
 export default function StudyPlanPage() {
+  const router = useRouter();
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<QuestionnaireAnswer>({});
   const [plan, setPlan] = useState<PersonalizedPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set<string>());
   const [subscriptionStatus, setSubscriptionStatus] = useState<{
     subscriptionStatus: string | null;
     hasSubscription: boolean;
   } | null>(null);
   const [freeUsageCount, setFreeUsageCount] = useState(0);
-  const [collapsedCards, setCollapsedCards] = useState<Record<string, boolean>>({});
-  const [showRemainingWeeks, setShowRemainingWeeks] = useState(false);
+  const [activeWeekIndex, setActiveWeekIndex] = useState(0);
+  const [unlockedWeekIndex, setUnlockedWeekIndex] = useState(0);
   const [performanceData, setPerformanceData] = useState<{
     weakestSection: string | null;
     averageScore: number;
@@ -171,8 +278,9 @@ export default function StudyPlanPage() {
   useEffect(() => {
     try {
       const savedPlan = localStorage.getItem(STORAGE_KEY);
-      const savedTasks = localStorage.getItem(`${STORAGE_KEY}_tasks`);
-      const savedRemainingWeeks = localStorage.getItem(REMAINING_WEEKS_KEY);
+      const savedTasks = localStorage.getItem(TASKS_STORAGE_KEY);
+      const savedUnlockedWeek = localStorage.getItem(UNLOCKED_WEEK_KEY);
+      const savedActiveWeek = localStorage.getItem(ACTIVE_WEEK_KEY);
       if (savedPlan) {
         const parsedPlan = JSON.parse(savedPlan) as PersonalizedPlan;
         setPlan(parsedPlan);
@@ -181,8 +289,11 @@ export default function StudyPlanPage() {
         const parsedTasks = JSON.parse(savedTasks) as string[];
         setCompletedTasks(new Set(parsedTasks));
       }
-      if (savedRemainingWeeks) {
-        setShowRemainingWeeks(savedRemainingWeeks === "true");
+      if (savedUnlockedWeek) {
+        setUnlockedWeekIndex(Math.max(0, parseInt(savedUnlockedWeek, 10) || 0));
+      }
+      if (savedActiveWeek) {
+        setActiveWeekIndex(Math.max(0, parseInt(savedActiveWeek, 10) || 0));
       }
     } catch (error) {
       console.error("Failed to load study plan:", error);
@@ -201,22 +312,25 @@ export default function StudyPlanPage() {
   }, [plan]);
 
   useEffect(() => {
-    if (completedTasks.size > 0) {
-      try {
-        localStorage.setItem(`${STORAGE_KEY}_tasks`, JSON.stringify(Array.from(completedTasks)));
-      } catch (error) {
-        console.error("Failed to save completed tasks:", error);
+    try {
+      if (completedTasks.size > 0) {
+        localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(Array.from(completedTasks)));
+      } else {
+        localStorage.removeItem(TASKS_STORAGE_KEY);
       }
+    } catch (error) {
+      console.error("Failed to save completed tasks:", error);
     }
   }, [completedTasks]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(REMAINING_WEEKS_KEY, String(showRemainingWeeks));
+      localStorage.setItem(UNLOCKED_WEEK_KEY, String(unlockedWeekIndex));
+      localStorage.setItem(ACTIVE_WEEK_KEY, String(activeWeekIndex));
     } catch (error) {
-      console.error("Failed to save remaining weeks state:", error);
+      console.error("Failed to save week state:", error);
     }
-  }, [showRemainingWeeks]);
+  }, [activeWeekIndex, unlockedWeekIndex]);
 
   // Load performance data to inform study plan
   useEffect(() => {
@@ -335,8 +449,9 @@ export default function StudyPlanPage() {
 
       const data = await res.json();
       setPlan(data);
-      // Reset completed tasks when generating new plan
       setCompletedTasks(new Set());
+      setActiveWeekIndex(0);
+      setUnlockedWeekIndex(0);
 
       // Increment free tier usage for free users
       if (!subscriptionStatus?.hasSubscription) {
@@ -363,127 +478,89 @@ export default function StudyPlanPage() {
     setPlan(null);
     setError(null);
     setCompletedTasks(new Set());
-    setShowRemainingWeeks(false);
+    setActiveWeekIndex(0);
+    setUnlockedWeekIndex(0);
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(`${STORAGE_KEY}_tasks`);
-    localStorage.removeItem(REMAINING_WEEKS_KEY);
+    localStorage.removeItem(TASKS_STORAGE_KEY);
+    localStorage.removeItem(UNLOCKED_WEEK_KEY);
+    localStorage.removeItem(ACTIVE_WEEK_KEY);
   };
 
-  const toggleTask = (taskId: string) => {
+  const markTaskComplete = (taskId: string) => {
     const newCompleted = new Set(completedTasks);
-    if (newCompleted.has(taskId)) {
-      newCompleted.delete(taskId);
-    } else {
-      newCompleted.add(taskId);
-    }
+    newCompleted.add(taskId);
     setCompletedTasks(newCompleted);
   };
 
-  const getTaskId = (
-    type: "weekly" | "daily" | "practice" | "strategy",
-    index: number,
-    taskIndex?: number
-  ): string => {
-    if (taskIndex !== undefined) return `${type}-${index}-task-${taskIndex}`;
-    if (type === "weekly") return `week-${index}`;
-    if (type === "daily") return `day-${index}`;
-    if (type === "practice") return `practice-${index}`;
-    if (type === "strategy") return `strategy-${index}`;
-    return `${type}-${index}`;
-  };
+  const calendarWeeks = useMemo(() => {
+    if (!plan) return [];
+    return buildCalendarWeeks(plan);
+  }, [plan]);
 
-  const getCompletionStats = () => {
-    if (!plan) return { total: 0, completed: 0, percentage: 0 };
-    
-    let total = 0;
-    let completed = 0;
-
-    // Count daily plan tasks
-    (plan.dailyPlan || plan.days || []).forEach((day, idx) => {
-      day.tasks.forEach((_, taskIdx) => {
-        total++;
-        const taskId = getTaskId("daily", idx, taskIdx);
-        if (completedTasks.has(taskId)) completed++;
-      });
-    });
-
-    return {
-      total,
-      completed,
-      percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
-    };
-  };
-
-  const getActiveWeekIndex = () => {
-    if (!plan?.weeklyPlan || plan.weeklyPlan.length === 0) return 0;
-    const daily = plan.dailyPlan || plan.days || [];
-    if (daily.length === 0) return 0;
-    const daysPerWeek = 7;
-    for (let weekIdx = 0; weekIdx < plan.weeklyPlan.length; weekIdx += 1) {
-      const start = weekIdx * daysPerWeek;
-      const end = start + daysPerWeek;
-      const weekDays = daily.slice(start, end);
-      if (weekDays.length === 0) return weekIdx;
-      const weekComplete = weekDays.every((day, dayOffset) =>
-        day.tasks.every((_, taskIdx) => completedTasks.has(getTaskId("daily", start + dayOffset, taskIdx)))
-      );
-      if (!weekComplete) return weekIdx;
-    }
-    return Math.max(0, plan.weeklyPlan.length - 1);
-  };
-
-  const getActiveDayIndex = () => {
-    const daily = plan?.dailyPlan || plan?.days || [];
-    if (daily.length === 0) return 0;
-    const firstIncomplete = daily.findIndex((day, dayIdx) =>
-      day.tasks.some((_, taskIdx) => !completedTasks.has(getTaskId("daily", dayIdx, taskIdx)))
+  const getWeekStats = (week: StudyCalendarWeek) => {
+    const total = week.days.reduce((acc, day) => acc + day.tasks.length, 0);
+    const completed = week.days.reduce(
+      (acc, day) => acc + day.tasks.filter((task) => completedTasks.has(task.id)).length,
+      0
     );
-    if (firstIncomplete === -1) return Math.max(0, daily.length - 1);
-    return firstIncomplete;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { total, completed, percentage };
   };
 
-  const getCurrentDailyTargets = () => {
-    const daily = plan?.dailyPlan || plan?.days || [];
-    if (daily.length === 0) {
-      return {
-        dayLabel: "",
-        firstTarget: [] as { task: string; taskId: string }[],
-        secondTarget: [] as { task: string; taskId: string }[],
-        firstTargetComplete: false,
-      };
+  const isWeekComplete = (week: StudyCalendarWeek) => {
+    if (week.days.length === 0) return false;
+    return week.days.every((day) => day.tasks.every((task) => completedTasks.has(task.id)));
+  };
+
+  useEffect(() => {
+    if (calendarWeeks.length === 0) return;
+    let furthestUnlocked = unlockedWeekIndex;
+    for (let i = 0; i < calendarWeeks.length; i += 1) {
+      if (i === 0 || isWeekComplete(calendarWeeks[i - 1])) {
+        furthestUnlocked = Math.max(furthestUnlocked, i);
+      }
     }
-    const activeDayIndex = getActiveDayIndex();
-    const activeDay = daily[activeDayIndex];
-    const firstTarget = activeDay.tasks.slice(0, 2).map((task, idx) => ({
-      task,
-      taskId: getTaskId("daily", activeDayIndex, idx),
-    }));
-    const secondTarget = activeDay.tasks.slice(2, 4).map((task, idx) => ({
-      task,
-      taskId: getTaskId("daily", activeDayIndex, idx + 2),
-    }));
-    const firstTargetComplete = firstTarget.length > 0 && firstTarget.every((item) => completedTasks.has(item.taskId));
+    if (furthestUnlocked !== unlockedWeekIndex) {
+      setUnlockedWeekIndex(furthestUnlocked);
+    }
 
-    return {
-      dayLabel: activeDay.day,
-      firstTarget,
-      secondTarget,
-      firstTargetComplete,
-    };
-  };
+    const currentWeek = calendarWeeks[activeWeekIndex];
+    if (
+      currentWeek &&
+      isWeekComplete(currentWeek) &&
+      activeWeekIndex < calendarWeeks.length - 1
+    ) {
+      setActiveWeekIndex(activeWeekIndex + 1);
+    }
+  }, [calendarWeeks, completedTasks, activeWeekIndex, unlockedWeekIndex]);
 
-  const toggleCard = (key: string) => {
-    setCollapsedCards((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  const launchTask = (task: StudyCalendarTask) => {
+    markTaskComplete(task.id);
+    const params = task.launchTarget.params
+      ? new URLSearchParams(task.launchTarget.params).toString()
+      : "";
+    router.push(params ? `${task.launchTarget.path}?${params}` : task.launchTarget.path);
   };
 
   const currentQ = questionnaire[currentQuestion];
   const progress = ((currentQuestion + 1) / questionnaire.length) * 100;
+  const safeWeekIndex = Math.min(Math.max(activeWeekIndex, 0), Math.max(calendarWeeks.length - 1, 0));
+  const activeWeek = calendarWeeks[safeWeekIndex];
+  const activeWeekStats = activeWeek ? getWeekStats(activeWeek) : { total: 0, completed: 0, percentage: 0 };
+
+  const getDayProgress = (day: StudyCalendarDay) => {
+    const completedCount = day.tasks.filter((task) => completedTasks.has(task.id)).length;
+    const total = day.tasks.length;
+    return {
+      completedCount,
+      total,
+      percentage: total > 0 ? Math.round((completedCount / total) * 100) : 0,
+      isComplete: total > 0 && completedCount === total,
+    };
+  };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-[1300px] mx-auto overflow-x-hidden w-full">
       {!loading && !plan && (
         <PageHeader
           eyebrow="Study Plans"
@@ -532,7 +609,6 @@ export default function StudyPlanPage() {
 
       {!plan ? (
         <>
-          {/* Progress Bar */}
           <GlassPanel className="mb-6">
             <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-300 mb-3 font-semibold">
               <span>
@@ -542,7 +618,6 @@ export default function StudyPlanPage() {
             </div>
           </GlassPanel>
 
-          {/* Question */}
           <GlassPanel>
             <motion.div
               key={currentQuestion}
@@ -589,7 +664,6 @@ export default function StudyPlanPage() {
                 />
               )}
 
-              {/* Navigation */}
               <div className="flex justify-between gap-3 pt-4">
                 <PrimaryButton
                   variant="secondary"
@@ -629,242 +703,145 @@ export default function StudyPlanPage() {
       ) : (
         <div className="space-y-6">
           <GlassPanel>
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
               <div>
-                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Your Expedition Route Map</h2>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Your SAT Weekly Calendar</h2>
                 <p className="text-slate-600 dark:text-slate-300 mt-2">{renderBoldText(plan.overview)}</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 font-medium">
-                  Your Study Plans are ready. Focus on the next task, and the momentum will follow.
+                  {activeWeekStats.completed} of {activeWeekStats.total} tasks completed this week ({activeWeekStats.percentage}%)
                 </p>
-                {(() => {
-                  const stats = getCompletionStats();
-                  return stats.total > 0 ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 font-medium">
-                      Progress: {stats.completed} of {stats.total} tasks completed ({stats.percentage}%)
-                    </p>
-                  ) : null;
-                })()}
               </div>
-                <PrimaryButton variant="secondary" onClick={reset}>
+              <PrimaryButton variant="secondary" onClick={reset}>
                 Plan New Route
               </PrimaryButton>
             </div>
 
-            {(() => {
-              const dailyTarget = getCurrentDailyTargets();
-              if (!dailyTarget.dayLabel) return null;
-              const showSecondTarget = dailyTarget.firstTargetComplete || showRemainingWeeks;
-              return (
-                <div className="mb-6 ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl p-4 bg-slate-50 dark:bg-slate-900/70">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-xs uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300 font-semibold">
-                      Daily Target
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowRemainingWeeks((prev) => !prev)}
-                      className="text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:border-sky-300 dark:hover:border-sky-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow-md dark:hover:shadow-[0_8px_18px_rgba(56,189,248,0.25)]"
-                    >
-                      {showRemainingWeeks ? "Hide Preview" : "Show in Advance"}
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-3">
-                    {renderBoldText(dailyTarget.dayLabel)}
-                  </p>
-                  <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mb-2">
-                    Target 1
-                  </div>
-                  <ul className="space-y-2">
-                    {dailyTarget.firstTarget.map(({ task, taskId }, idx) => (
-                      <li key={idx} className="flex items-start gap-3 text-slate-700 dark:text-slate-200">
-                        <input
-                          type="checkbox"
-                          checked={completedTasks.has(taskId)}
-                          onChange={() => toggleTask(taskId)}
-                          className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                        />
-                        <span className={completedTasks.has(taskId) ? "line-through opacity-60" : ""}>
-                          {renderBoldText(task)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  {showSecondTarget && dailyTarget.secondTarget.length > 0 && (
-                    <>
-                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mt-4 mb-2">
-                        Target 2
+            {activeWeek && (
+              <>
+                <div className="mb-5 border border-slate-200 dark:border-slate-700 rounded-2xl bg-slate-50 dark:bg-slate-900/50 p-4 sm:p-5">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    <div>
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold">
+                        Weekly Plan
                       </div>
-                      <ul className="space-y-2">
-                        {dailyTarget.secondTarget.map(({ task, taskId }, idx) => (
-                          <li key={idx} className="flex items-start gap-3 text-slate-700 dark:text-slate-200">
-                            <input
-                              type="checkbox"
-                              checked={completedTasks.has(taskId)}
-                              onChange={() => toggleTask(taskId)}
-                              className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                            />
-                            <span className={completedTasks.has(taskId) ? "line-through opacity-60" : ""}>
-                              {renderBoldText(task)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Current Week Focus */}
-            {plan.weeklyPlan && plan.weeklyPlan.length > 0 && (
-              <div className="mb-6 ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Week {plan.weeklyPlan[getActiveWeekIndex()]?.week}</h3>
-                  <span className="text-sm text-sky-700 dark:text-sky-200 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-600">
-                    {renderBoldText(plan.weeklyPlan[getActiveWeekIndex()]?.focus || "")}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Daily Plan (preview only) */}
-            {showRemainingWeeks && (
-            <div className="mb-6">
-              <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">
-                {(plan.timeframe === "daily" || !plan.timeframe) ? "Daily Trail Log" : "Daily Schedule"}
-              </h3>
-              <div className="space-y-4">
-                {(plan.dailyPlan || plan.days || []).slice(getActiveDayIndex(), getActiveDayIndex() + 1).map((day, idx) => (
-                  <motion.div
-                    key={day.day}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                  >
-                    <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">{renderBoldText(day.day)}</h3>
-                    {(() => {
-                      const groups = groupTasksBySection(day.tasks);
-                      const actualDayIndex = getActiveDayIndex() + idx;
-                      const sectionKey = `daily-${actualDayIndex}`;
-                      const isCollapsed = collapsedCards[sectionKey];
-                      const renderGroup = (
-                        label: string,
-                        items: { task: string; index: number }[]
-                      ) => {
-                        if (items.length === 0) return null;
-                        return (
-                          <div className="mb-3 last:mb-0">
-                            <div className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold mb-2">
-                              {label}
-                            </div>
-                            <ul className="space-y-2">
-                              {items.map(({ task, index }) => {
-                                const taskId = getTaskId("daily", actualDayIndex, index);
-                                const isCompleted = completedTasks.has(taskId);
-                                return (
-                                  <li
-                                    key={index}
-                                    className="flex items-start gap-3 text-slate-600 dark:text-slate-300"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isCompleted}
-                                      onChange={() => toggleTask(taskId)}
-                                      className="mt-1 w-4 h-4 rounded border-slate-300 dark:border-slate-500 text-sky-600 focus:ring-sky-500 dark:bg-slate-900"
-                                    />
-                                    <span className={isCompleted ? "line-through opacity-60" : ""}>
-                                      {renderBoldText(task)}
-                                    </span>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        );
-                      };
-
-                      return (
-                        <div>
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-semibold">
-                              Tasks
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleCard(sectionKey)}
-                              className="text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/80 hover:border-sky-300 dark:hover:border-sky-500 hover:text-slate-900 dark:hover:text-white transition shadow-sm hover:shadow-md dark:hover:shadow-[0_8px_18px_rgba(56,189,248,0.25)]"
-                            >
-                              {isCollapsed ? "Show Tasks" : "Hide Tasks"}
-                            </button>
-                          </div>
-                          {!isCollapsed && (
-                            <>
-                              {renderGroup("Reading & Writing", groups.reading)}
-                              {renderGroup("Math", groups.math)}
-                              {renderGroup("Other", groups.other)}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <h3 className="text-xl font-semibold text-slate-900 dark:text-white">{activeWeek.label}</h3>
+                        <span className="text-xs text-sky-700 dark:text-sky-200 px-2.5 py-1 rounded-full bg-sky-100 dark:bg-sky-900/40 border border-sky-200 dark:border-sky-700">
+                          {activeWeek.focus}
+                        </span>
+                        <span className="text-xs px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                          {safeWeekIndex <= unlockedWeekIndex ? "Unlocked" : "Upcoming"}
+                        </span>
+                      </div>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-            )}
-
-            {/* Remaining Weeks */}
-            {showRemainingWeeks && plan.weeklyPlan && plan.weeklyPlan.length > 1 && (
-              <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Remaining Weeks</h3>
-                  <div className="space-y-4">
-                    {plan.weeklyPlan.slice(getActiveWeekIndex() + 1).map((week, idx) => {
-                      const actualIndex = getActiveWeekIndex() + idx + 1;
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveWeekIndex((prev) => Math.max(0, prev - 1))}
+                        disabled={safeWeekIndex === 0}
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        aria-label="Previous week"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveWeekIndex((prev) => Math.min(calendarWeeks.length - 1, prev + 1))
+                        }
+                        disabled={safeWeekIndex >= calendarWeeks.length - 1}
+                        className="h-9 w-9 inline-flex items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                        aria-label="Next week"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-300"
+                      style={{ width: `${activeWeekStats.percentage}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                    {activeWeekStats.completed} of {activeWeekStats.total} tasks completed
+                  </p>
+                </div>
+                <div className="study-calendar-scroll overflow-x-auto pb-2">
+                  <div className="grid grid-cols-7 gap-3 min-w-[980px]">
+                    {activeWeek.days.map((day) => {
+                      const dayProgress = getDayProgress(day);
                       return (
-                        <motion.div
-                          key={week.week}
-                          initial={{ opacity: 0, y: 20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.05 }}
+                        <div
+                          key={day.id}
+                          className={`border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900/70 p-3 border-t-4 ${day.accentClass} ${
+                            dayProgress.isComplete ? "ring-1 ring-emerald-400/70 dark:ring-emerald-500/50" : ""
+                          }`}
                         >
-                          <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                            <div className="flex items-center gap-3 mb-3">
-                              <h4 className="text-xl font-semibold text-slate-900 dark:text-white">Week {week.week}</h4>
-                              <span className="text-sm text-sky-700 dark:text-sky-200 px-3 py-1 rounded-full bg-sky-100/80 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-600">
-                                {renderBoldText(week.focus)}
-                              </span>
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 font-semibold">
+                                {day.dayName.slice(0, 3)}
+                              </p>
+                              <p className="text-lg font-semibold text-slate-900 dark:text-white">{day.dayNumber}</p>
                             </div>
-                            <p className="text-sm text-slate-600 dark:text-slate-300">
-                              This week unlocks after you complete the current week’s daily targets.
-                            </p>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                              {dayProgress.completedCount}/{dayProgress.total}
+                            </span>
                           </div>
-                        </motion.div>
+                          <div className="mb-3 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-sky-500 to-emerald-500 transition-all duration-300"
+                              style={{ width: `${dayProgress.percentage}%` }}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            {day.tasks.map((task) => {
+                              const isCompleted = completedTasks.has(task.id);
+                              return (
+                                <div
+                                  key={task.id}
+                                  className={`rounded-xl border p-2.5 ${
+                                    isCompleted
+                                      ? "border-emerald-200 dark:border-emerald-700 bg-emerald-50/80 dark:bg-emerald-900/25"
+                                      : "border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                                    <span className="text-[10px] uppercase tracking-[0.16em] font-semibold text-sky-700 dark:text-sky-300">
+                                      {formatTaskType(task.type)}
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400">{task.estimatedMinutes} min</span>
+                                  </div>
+                                  <p className="text-xs font-medium text-slate-800 dark:text-slate-100 leading-snug">
+                                    {task.skillFocus}
+                                  </p>
+                                  <div className="mt-2">
+                                    {isCompleted ? (
+                                      <div className="h-7 w-7 rounded-full bg-emerald-500 text-white inline-flex items-center justify-center">
+                                        <Check size={14} />
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => launchTask(task)}
+                                        className="h-7 px-3 rounded-full text-xs font-semibold bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white transition-colors"
+                                      >
+                                        Start
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
-              </div>
-            )}
-
-            {/* Strategies */}
-            {showRemainingWeeks && plan.strategies && plan.strategies.length > 0 && (
-              <div className="mb-6">
-                <h3 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Quick Tips</h3>
-                <div className="ai-output-card border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/60 p-5">
-                  <ul className="space-y-3">
-                    {plan.strategies.map((strategy, idx) => (
-                      <li
-                        key={idx}
-                        className="flex items-start gap-3 text-slate-700 dark:text-slate-200"
-                      >
-                        <span className="text-sky-500 dark:text-sky-400 font-bold text-base leading-none mt-0.5 shrink-0">•</span>
-                        <span className="leading-relaxed">{renderBoldText(strategy)}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              </div>
+              </>
             )}
           </GlassPanel>
         </div>

@@ -133,6 +133,20 @@ export default function Lessons() {
     window.getComputedStyle(dropdownEl);
   }, [openDropdown]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const topicParam = params.get("topic");
+    if (!topicParam) return;
+
+    setTopic(topicParam);
+    if (params.get("autostart") === "1") {
+      setSelectedTopic(topicParam);
+      void generateLesson(topicParam);
+    }
+    window.history.replaceState({}, "", "/lessons");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const generateLesson = async (topicInput?: string) => {
     const finalTopic = topicInput || topic;
     if (!finalTopic.trim()) {
