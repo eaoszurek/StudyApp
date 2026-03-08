@@ -471,7 +471,7 @@ export default function PracticeTests() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-b from-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-600 dark:from-amber-400 dark:to-amber-500 dark:hover:from-amber-400 dark:hover:to-amber-600 text-slate-900 dark:text-slate-900 text-sm font-bold transition-all border-2 border-amber-600 dark:border-amber-600 shadow-[0_4px_0_rgba(217,119,6,0.3)] hover:shadow-[0_5px_0_rgba(217,119,6,0.4)] active:shadow-[0_2px_0_rgba(217,119,6,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
+              className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-bold transition-all border-2 border-amber-600 shadow-[0_4px_0_rgba(217,119,6,0.3)] hover:shadow-[0_5px_0_rgba(217,119,6,0.4)] active:shadow-[0_2px_0_rgba(217,119,6,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade
             </button>
@@ -489,7 +489,7 @@ export default function PracticeTests() {
             >
               <GlassPanel delay={idx * 0.05}>
                 <div className="flex flex-col gap-2">
-                  <div className="w-10 h-10 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                  <div className="w-10 h-10 flex items-center justify-center text-sky-600 dark:text-sky-400">
                     <FeatureIcon name={card.icon} size={24} />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{card.title}</h3>

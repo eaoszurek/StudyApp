@@ -596,6 +596,12 @@ main .premium-card {
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease;
 }
 
+/* Feature grid: hover = darken only, no lift/shadow */
+.premium-card.feature-card-simple-hover:hover {
+  transform: none;
+  box-shadow: var(--shadow-premium);
+}
+
 /* Override hover for no-hover cards - must come after .premium-card:hover */
 .premium-card.pricing-card-no-hover {
   transition: transform 0s !important;
@@ -724,8 +730,10 @@ html.dark .btn-primary,
 }
 
 .btn-primary:active {
+  background: rgb(2, 132, 199); /* sky-600 - pressed */
+  color: #ffffff;
   transform: translateY(0);
-  box-shadow: 0 6px 20px rgba(30, 85, 50, 0.4);
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
 }
 
 html.dark .btn-primary:hover,
@@ -736,7 +744,9 @@ html.dark .btn-primary:hover,
 
 html.dark .btn-primary:active,
 .dark .btn-primary:active {
-  box-shadow: 0 6px 20px rgba(30, 85, 50, 0.6);
+  background: rgb(2, 132, 199); /* sky-600 - pressed */
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.5);
 }
 
 .btn-secondary {
@@ -899,11 +909,21 @@ html.dark [data-app-ui="true"] .btn-primary {
     0 8px 20px rgba(14, 165, 233, 0.25);
 }
 
+[data-app-ui="true"] .btn-primary:active {
+  background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+  color: #0f172a;
+}
+
 html.dark [data-app-ui="true"] .btn-primary:hover {
   background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
   box-shadow:
     0 5px 0 rgba(14, 165, 233, 0.3),
     0 8px 20px rgba(14, 165, 233, 0.35);
+}
+
+html.dark [data-app-ui="true"] .btn-primary:active {
+  background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+  color: #ffffff;
 }
 
 [data-app-ui="true"] .btn-secondary {
@@ -925,17 +945,29 @@ html.dark [data-app-ui="true"] .btn-secondary {
 [data-app-ui="true"] .btn-secondary:hover {
   border-color: rgba(14, 165, 233, 0.5);
   background: rgba(248, 250, 252, 1);
+  color: #0f172a;
   box-shadow:
     0 5px 0 rgba(14, 165, 233, 0.15),
     0 8px 20px rgba(14, 165, 233, 0.15);
 }
 
+[data-app-ui="true"] .btn-secondary:active {
+  background: rgba(226, 232, 240, 1);
+  color: #0f172a;
+}
+
 html.dark [data-app-ui="true"] .btn-secondary:hover {
   background: rgba(51, 65, 85, 0.9);
   border-color: rgba(56, 189, 248, 0.5);
+  color: #e2e8f0;
   box-shadow:
     0 5px 0 rgba(14, 165, 233, 0.25),
     0 8px 20px rgba(14, 165, 233, 0.2);
+}
+
+html.dark [data-app-ui="true"] .btn-secondary:active {
+  background: rgba(30, 41, 59, 1);
+  color: #e2e8f0;
 }
 
 [data-app-ui="true"] .btn-ghost {

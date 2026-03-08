@@ -274,13 +274,13 @@ export default function Progress({
       {/* Overview Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <GlassPanel delay={0.05}>
-          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="dashboard" size={28} /></div>
+          <div className="text-sky-600 dark:text-sky-400 mb-2"><FeatureIcon name="dashboard" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.currentCamp}</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Current Camp</div>
         </GlassPanel>
 
         <GlassPanel delay={0.1}>
-          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="mountain" size={28} /></div>
+          <div className="text-sky-600 dark:text-sky-400 mb-2"><FeatureIcon name="mountain" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.currentAltitude}%</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Current Altitude</div>
           {stats.estimatedSATScore > 0 && (
@@ -291,7 +291,7 @@ export default function Progress({
         </GlassPanel>
 
         <GlassPanel delay={0.15}>
-          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="progress" size={28} /></div>
+          <div className="text-sky-600 dark:text-sky-400 mb-2"><FeatureIcon name="progress" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
             {stats.elevationGained > 0 ? `+${stats.elevationGained}` : stats.elevationGained}
           </div>
@@ -299,7 +299,7 @@ export default function Progress({
         </GlassPanel>
 
         <GlassPanel delay={0.2}>
-          <div className="text-slate-600 dark:text-slate-400 mb-2"><FeatureIcon name="flame" size={28} /></div>
+          <div className="text-sky-600 dark:text-sky-400 mb-2"><FeatureIcon name="flame" size={28} /></div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">{stats.climbingMomentum}</div>
           <div className="text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium">Days This Week</div>
         </GlassPanel>

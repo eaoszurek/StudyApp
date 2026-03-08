@@ -186,7 +186,7 @@ function DashboardContent() {
                   alert("Failed to start checkout");
                 }
               }}
-              className="px-6 py-3 rounded-2xl bg-gradient-to-b from-sky-400 to-sky-500 hover:from-sky-400 hover:to-sky-600 dark:from-sky-400 dark:to-sky-500 dark:hover:from-sky-400 dark:hover:to-sky-600 text-slate-900 dark:text-slate-900 font-bold transition-all border-3 border-sky-600 dark:border-sky-600 shadow-[0_4px_0_rgba(14,165,233,0.3),0_6px_16px_rgba(14,165,233,0.15)] hover:shadow-[0_5px_0_rgba(14,165,233,0.4),0_8px_20px_rgba(14,165,233,0.2)] active:shadow-[0_2px_0_rgba(14,165,233,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
+              className="px-6 py-3 rounded-2xl bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white font-bold transition-all border-2 border-sky-600 shadow-[0_4px_0_rgba(14,165,233,0.3),0_6px_16px_rgba(14,165,233,0.15)] hover:shadow-[0_5px_0_rgba(14,165,233,0.4),0_8px_20px_rgba(14,165,233,0.2)] active:shadow-[0_2px_0_rgba(14,165,233,0.4)] hover:-translate-y-0.5 active:translate-y-1 whitespace-nowrap"
             >
               Upgrade Now
             </button>
@@ -211,7 +211,7 @@ function DashboardContent() {
           <GlassPanel key={tool.href} delay={idx * 0.05} className="h-full">
             <div className="flex flex-col h-full">
               <div className="flex items-start justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
                   <FeatureIcon name={tool.icon} size={24} />
                 </div>
                 <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 font-semibold">
