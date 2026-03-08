@@ -73,7 +73,7 @@ export default function Login() {
   return (
     <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-white relative">
       {/* Back to Home Logo */}
-      <div className="absolute top-6 left-6 md:top-8 md:left-8 z-10">
+      <div className="absolute top-0 left-0 z-10 p-2">
         <Logo href="/" size="md" />
       </div>
       <div className="w-full auth-shell">

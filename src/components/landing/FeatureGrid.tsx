@@ -51,16 +51,16 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
               transition={{ duration: 0.5, delay: idx * 0.08, ease: "easeOut" }}
             >
               <Link href="/signup" className="block h-full group">
-                <div className="premium-card h-full p-5 relative overflow-hidden">
+                <div className="premium-card feature-card-simple-hover h-full p-5 relative overflow-hidden transition-[background-color] duration-200 group-hover:bg-slate-100">
                   {/* Content */}
                   <div className="relative z-10">
                     {/* Icon */}
-                    <div className="text-slate-600 mb-4 transform group-hover:scale-110 transition-transform duration-300">
+                    <div className="text-slate-600 mb-4">
                       <FeatureIcon name={feature.icon} size={32} />
                     </div>
 
                     {/* Title */}
-                    <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-sky-600 transition-colors">
+                    <h3 className="text-lg font-bold text-slate-900 mb-2">
                       {feature.title}
                     </h3>
 
@@ -70,16 +70,11 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
                     </p>
 
                     {/* Link */}
-                    <div className="flex items-center gap-2 text-sky-600 group-hover:text-sky-700 transition-colors">
+                    <div className="flex items-center gap-2 text-sky-600">
                       <span className="text-sm font-bold">Explore</span>
-                      <span className="transform group-hover:translate-x-1 transition-transform">
-                        →
-                      </span>
+                      <span>→</span>
                     </div>
                   </div>
-
-                  {/* Decorative Corner */}
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-sky-500/5 to-transparent rounded-bl-md opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                 </div>
               </Link>
             </motion.div>

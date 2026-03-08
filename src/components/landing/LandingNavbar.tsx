@@ -26,8 +26,8 @@ export default function LandingNavbar() {
   return (
     <nav className="w-full bg-white/90 backdrop-blur-sm border-b border-slate-200">
       <div className="flex items-center h-14">
-        {/* Logo - positioned at absolute left edge */}
-        <div className="pl-2 flex-shrink-0">
+        {/* Logo - flush top left */}
+        <div className="pl-0 flex-shrink-0">
           <Logo href="/" size="lg" showText={false} />
         </div>
         

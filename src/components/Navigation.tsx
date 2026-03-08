@@ -29,7 +29,7 @@ export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar
   if (variant === "mobile") {
     return (
       <>
-        <nav className="app-navbar md:hidden h-14 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
+        <nav className="app-navbar md:hidden h-14 flex items-center justify-between pl-0 pr-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
           <Logo href="/dashboard" size="md" showText={false} onClick={() => handleNavClick()} />
           <div className="flex items-center gap-1">
             <button
@@ -82,7 +82,7 @@ export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar
   return (
     <>
       <nav className="app-navbar w-full h-full min-h-screen flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
+        <div className="py-4 pr-4 pl-0 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
           <Logo href="/dashboard" size="md" showText={true} />
         </div>
         <div className="flex-1 py-4">
