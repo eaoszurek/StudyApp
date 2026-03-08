@@ -26,8 +26,10 @@ export default function DarkModeInit() {
     }
 
     const saved = localStorage.getItem("darkMode");
-    /* New users / no preference: start in light mode. Only dark if they chose it. */
-    const shouldBeDark = saved === "true";
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    // Use saved preference if it exists, otherwise follow system preference
+    const shouldBeDark = saved !== null ? saved === "true" : prefersDark;
 
     if (shouldBeDark) {
       document.documentElement.classList.add("dark");

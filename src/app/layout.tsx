@@ -70,6 +70,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+        {/* Apply dark/light mode before first paint to prevent flash */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var saved=localStorage.getItem('darkMode');var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var featurePage=/^\/(dashboard|practice|study-plan|flashcards|lessons|progress)/.test(location.pathname);if(featurePage){var dark=saved!==null?saved==='true':prefersDark;if(dark)document.documentElement.classList.add('dark');}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body
         className={`${montserrat.variable} ${geistMono.variable} ${oswald.variable} antialiased`}
