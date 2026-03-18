@@ -31,21 +31,21 @@ export function validateFlashcardFormat(card: any): { valid: boolean; errors: st
   if (!card.back || typeof card.back !== "string") {
     errors.push("Back is required and must be a string");
   } else {
-    const backText = card.back.trim();
+    const backText: string = String(card.back).trim();
     const lines = backText
       .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
+      .map((line: string) => line.trim())
+      .filter((line: string) => Boolean(line));
     if (lines.length < 3 || lines.length > 5) {
       errors.push(`Back must be 3-5 lines (found ${lines.length})`);
     }
     if (lines.length > 0 && lines[0].startsWith("•")) {
       errors.push("First line must be a definition/key idea (not a bullet)");
     }
-    const bulletLines = lines.filter((line) => line.startsWith("•"));
-    const tipLines = bulletLines.filter((line) => /^•\s*Tip:/i.test(line));
-    const exampleLines = bulletLines.filter((line) => /^•\s*Example:/i.test(line));
-    const keyLines = bulletLines.filter((line) => !/^•\s*(Tip|Example):/i.test(line));
+    const bulletLines = lines.filter((line: string) => line.startsWith("•"));
+    const tipLines = bulletLines.filter((line: string) => /^•\s*Tip:/i.test(line));
+    const exampleLines = bulletLines.filter((line: string) => /^•\s*Example:/i.test(line));
+    const keyLines = bulletLines.filter((line: string) => !/^•\s*(Tip|Example):/i.test(line));
 
     if (keyLines.length < 2 || keyLines.length > 3) {
       errors.push(`Back must include 2-3 key-point bullets (found ${keyLines.length})`);
