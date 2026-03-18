@@ -11,6 +11,7 @@ export default function LayoutWrapper({
 }) {
   const pathname = usePathname();
   const [hideNavState, setHideNavState] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
   useEffect(() => {
     // Check if body has data-hide-nav attribute (set by error/not-found pages)
@@ -35,6 +36,25 @@ export default function LayoutWrapper({
     hideNavState ||
     baseNoNavRoutes.includes(pathname) ||
     staticNoNavPrefixes.some((prefix) => pathname.startsWith(prefix));
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("sidebar_collapsed");
+      if (saved === "true") {
+        setSidebarCollapsed(true);
+      }
+    } catch (error) {
+      console.error("Failed to load sidebar preference:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebar_collapsed", String(sidebarCollapsed));
+    } catch (error) {
+      console.error("Failed to save sidebar preference:", error);
+    }
+  }, [sidebarCollapsed]);
 
   return (
     <div
@@ -192,15 +212,29 @@ export default function LayoutWrapper({
       <div className="flex min-h-screen w-full max-w-full">
         {!hideNav && (
           <>
-            <div className="hidden md:block fixed left-0 top-0 bottom-0 z-[100] w-52 lg:w-56">
-              <Navigation variant="sidebar" />
+            <div className={`hidden md:block fixed left-0 top-0 bottom-0 z-[100] transition-[width] duration-200 ${
+              sidebarCollapsed ? "w-20" : "w-52 lg:w-56"
+            }`}>
+              <Navigation
+                variant="sidebar"
+                isCollapsed={sidebarCollapsed}
+                onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+              />
             </div>
             <div className="md:hidden fixed top-0 left-0 right-0 z-[100]">
               <Navigation variant="mobile" />
             </div>
           </>
         )}
-        <div className={`relative z-0 flex-1 min-w-0 w-full ${hideNav ? "" : "pt-14 md:pt-8 md:pl-52 lg:pl-56 pb-6 sm:pb-8 md:pb-10 px-4 sm:px-6 md:px-8"}`}>
+        <div
+          className={`relative z-0 flex-1 min-w-0 w-full ${
+            hideNav
+              ? ""
+              : `pt-14 md:pt-8 pb-6 sm:pb-8 md:pb-10 px-4 sm:px-6 md:px-8 ${
+                  sidebarCollapsed ? "md:pl-20" : "md:pl-52 lg:pl-56"
+                }`
+          }`}
+        >
           {children}
         </div>
       </div>

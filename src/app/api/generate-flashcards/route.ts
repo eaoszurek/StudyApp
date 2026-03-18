@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     // Create completion with timeout
-    const cacheKey = `generate-flashcards:${JSON.stringify({ topic })}`;
+    const cacheKey = `generate-flashcards:v3-strict-back-format:${JSON.stringify({ topic })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
     const completion = cachedResponse
       ? null
@@ -62,43 +62,23 @@ export async function POST(req: Request) {
       messages: [
         {
           role: "system",
-          content: `You are an expert SAT tutor creating flashcards to help students master key concepts. Your explanations should be clear, educational, and supportive - like a tutor explaining concepts to a student. Make the definitions helpful and memorable, not just technical.
+          content: `You are an expert tutor creating flashcards to help students master key concepts. Keep explanations concise, practical, and easy to scan.
 
 CRITICAL FORMAT RULES:
 - Each flashcard must have "front", "back", "difficulty", and "tag". Do not omit any field.
 - difficulty: exactly one of "Easy", "Medium", "Hard". tag: exactly one of "Vocab", "Grammar", "Reading", "Math", "Functions", "Statistics", "Rhetoric".
-- In "back", include each of these exactly ONCE per card (do not repeat the same sections):
-  TERM — **What this tests:** ... (one short line)
-  **How it appears:** ... (one short line)
-  **Quick tip:** ... (one short line)
-  then optionally 1-2 bullet examples (• ...)
-- "front" = SAT skill or rule name (1-4 words). "back" = the three sections above plus optional bullets only.
-- What this tests: 10-24 words. How it appears: 10-24 words. Quick tip: 8-18 words.
-- Use an em dash (—) to separate term and definition. Use **bold** only for the labels (What this tests, How it appears, Quick tip).
-- NO ^ for exponents - use superscripts (x², x³). NO repeating the same section text multiple times.
-- Add 1-2 bullet examples (•) when helpful; keep total back under 100 words.
-
-EXAMPLES OF CORRECT FORMAT:
-- front: "Quadratic Formula"
-  back: "Quadratic Formula — **What this tests:** solving ax² + bx + c = 0 with precise setup
-**How it appears:** choose correct roots, equivalent forms, or valid solving steps
-**Quick tip:** **Identify** a, b, and c before substitution
-• x² + 5x + 6 = 0 → x = -2 or x = -3
-• 2x² - 8x + 6 = 0 → x = 1 or x = 3"
-
-- front: "Parallel Lines"
-  back: "Parallel Lines — **What this tests:** recognizing **equal slopes** and non-intersecting linear relationships
-**How it appears:** compare equations, tables, or graph behavior
-**Quick tip:** match slope first, then check different y-intercepts
-• y = 2x + 3 and y = 2x - 5 are parallel
-• Both have slope m = 2"
-
-- front: "Subject-Verb Agreement"
-  back: "Subject-Verb Agreement — **What this tests:** matching verb number to the sentence's actual subject
-**How it appears:** distractor phrases appear between subject and verb
-**Quick tip:** locate the **true subject** before checking verb form
-• The team wins (singular subject, singular verb)
-• The teams win (plural subject, plural verb)"
+- "front" = concept name (1-4 words).
+- "back" MUST follow this exact structure and line order:
+  1) Definition / Key Idea line (NOT a bullet), 1 short sentence.
+  2) Bullet key point.
+  3) Bullet key point.
+  4) Optional bullet example prefixed exactly with "• Example:" OR a third key-point bullet.
+  5) Bullet tip prefixed exactly with "• Tip:".
+- Keep each key-point bullet under 15 words.
+- No step-by-step solutions. No long explanations. No repeated ideas.
+- Maximum 5 lines total. Must be readable in under 10 seconds.
+- Avoid filler phrases and avoid repeating obvious app/test context words.
+- NO ^ for exponents - use superscripts (x², x³).
 
 OUTPUT FORMAT:
 {
@@ -121,14 +101,17 @@ Generate 10-15 flashcards. Return ONLY valid JSON, no markdown lists or headings
 
 FORMATTING RULES:
 - Keep all text clean and professional
-- No unbroken blobs of text
-- Use line breaks (\n) appropriately for examples
-- Ensure definitions are clear and don't repeat the term unnecessarily
-- Examples should be concise and SAT-appropriate`,
+- Use line breaks (\n) for each required back line
+- Do not merge multiple required lines into one line`,
         },
         {
           role: "user",
-          content: `Create SAT flashcards about: ${topic}. Generate 10-15 flashcards using this format with line breaks: TERM — **What this tests:** ... then **How it appears:** ... then **Quick tip:** .... Add 1-2 bulleted examples (•) when useful. Terms must be 1-4 words. Use actual superscripts for exponents (x² not x^2).`,
+          content: `Create concise flashcards about: ${topic}. Use strict back formatting:
+Line 1 = one-sentence key idea
+Lines 2-3 = two key-point bullets
+Line 4 = optional "• Example:" bullet OR third key-point bullet
+Line 5 = one "• Tip:" bullet.
+No step-by-step solutions. No filler.`,
         },
       ],
       response_format: { type: "json_object" },
@@ -161,13 +144,24 @@ FORMATTING RULES:
       .map((card: any) => {
         // Clean math notation
         if (card.front) card.front = cleanMathNotation(cleanText(card.front));
-        if (card.back) card.back = cleanMathNotation(cleanText(card.back));
+        if (card.back) {
+          card.back = cleanMathNotation(
+            String(card.back)
+              .split("\n")
+              .map((line: string) => cleanText(line))
+              .join("\n")
+          );
+        }
         
         // Truncate if too long (increased limits to preserve examples)
         if (card.front) card.front = truncateText(card.front, 50);
-        if (card.back) card.back = truncateText(card.back, 480);
+        if (card.back) card.back = truncateText(card.back, 320);
         
         const enforced = ensureFlashcardBackFormat(card);
+        if (!enforced.valid) {
+          console.warn("Invalid flashcard back format:", enforced.errors, card);
+          return null;
+        }
         card = enforced.card;
         card.skillCategory = ensureSingleSkill(card.skillCategory || card.front, card.front);
         if (!card.section) {

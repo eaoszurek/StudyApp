@@ -501,21 +501,21 @@ export default function PracticeTests() {
       )}
 
       {!testType && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3 md:items-stretch">
           {sectionCards.map((card, idx) => (
             <button
               key={card.type}
               onClick={() => handleSectionSelect(card.type)}
-              className="text-left"
+              className="text-left h-full flex flex-col"
             >
-              <GlassPanel delay={idx * 0.05}>
-                <div className="flex flex-col gap-2">
+              <GlassPanel delay={idx * 0.05} className="h-full">
+                <div className="flex flex-col gap-2 h-full">
                   <div className="w-10 h-10 flex items-center justify-center text-sky-600 dark:text-sky-400">
                     <FeatureIcon name={card.icon} size={24} />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{card.title}</h3>
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{card.desc}</p>
-                  <span className="text-xs uppercase tracking-[0.4em] text-slate-600 dark:text-slate-400 mt-1 font-semibold">
+                  <span className="text-xs uppercase tracking-[0.4em] text-slate-600 dark:text-slate-400 mt-auto pt-2 font-semibold">
                     Configure test →
                   </span>
                 </div>
@@ -558,7 +558,7 @@ export default function PracticeTests() {
                     onClick={() => setConfig({ ...config, questionCount: count })}
                     className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
                       config.questionCount === count
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.05]"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)]"
                         : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
                     }`}
                   >
@@ -617,7 +617,7 @@ export default function PracticeTests() {
                     onClick={() => setConfig({ ...config, difficulty: diff })}
                     className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
                       config.difficulty === diff
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.05]"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)]"
                         : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
                     }`}
                   >
@@ -802,7 +802,14 @@ export default function PracticeTests() {
                 <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-400 font-semibold">Passage</span>
               </div>
               <div className="text-slate-900 dark:text-slate-100 prose prose-sm max-w-none dark:prose-invert prose-p:text-slate-900 dark:prose-p:text-slate-100 prose-headings:text-slate-900 dark:prose-headings:text-slate-100">
-                {(practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage}
+                {testType === "writing" ? (
+                  <WritingQuestion
+                    question={String((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage)}
+                    className="text-base sm:text-lg font-medium text-slate-900 dark:text-slate-100"
+                  />
+                ) : (
+                  (practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage
+                )}
               </div>
             </div>
           )}
@@ -810,10 +817,18 @@ export default function PracticeTests() {
           <div className="mb-6">
             {testType === "writing" ? (
               <>
-                <WritingQuestion
-                  question={practiceSet.questions[currentQuestion].question}
-                  className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-2"
-                />
+                {((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage) ? (
+                  <p className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                    {practiceSet.questions[currentQuestion].question
+                      .replace(/\[([^\]]+)\]/g, "$1")
+                      .replace(/\*\*(.+?)\*\*/g, "$1")}
+                  </p>
+                ) : (
+                  <WritingQuestion
+                    question={practiceSet.questions[currentQuestion].question}
+                    className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-2"
+                  />
+                )}
                 <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-4">
                   Choose the best revision for the underlined portion.
                 </p>
@@ -843,7 +858,7 @@ export default function PracticeTests() {
                     onClick={() => handleAnswerSelect(optionLetter)}
                     className={`w-full text-left p-4 sm:p-5 rounded-2xl border-2 transition-all font-medium ${
                       isSelected
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
+                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)]"
                         : "border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >

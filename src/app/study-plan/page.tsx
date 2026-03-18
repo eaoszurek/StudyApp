@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import GlassPanel from "@/components/ui/GlassPanel";
 import InputField from "@/components/ui/InputField";
 import PageHeader from "@/components/ui/PageHeader";
@@ -244,6 +244,13 @@ export default function StudyPlanPage() {
   const [freeUsageCount, setFreeUsageCount] = useState(0);
   const [activeWeekIndex, setActiveWeekIndex] = useState(0);
   const [unlockedWeekIndex, setUnlockedWeekIndex] = useState(0);
+  const [calendarWeeks, setCalendarWeeks] = useState<StudyCalendarWeek[]>([]);
+  const [draggedTask, setDraggedTask] = useState<{
+    weekIndex: number;
+    dayId: string;
+    taskId: string;
+  } | null>(null);
+  const [dragOverDayId, setDragOverDayId] = useState<string | null>(null);
   const [performanceData, setPerformanceData] = useState<{
     weakestSection: string | null;
     averageScore: number;
@@ -309,6 +316,20 @@ export default function StudyPlanPage() {
         console.error("Failed to save study plan:", error);
       }
     }
+  }, [plan]);
+
+  useEffect(() => {
+    if (!plan) {
+      setCalendarWeeks([]);
+      return;
+    }
+    if (plan.calendarWeeks && plan.calendarWeeks.length > 0) {
+      setCalendarWeeks(plan.calendarWeeks);
+      return;
+    }
+    const builtWeeks = buildCalendarWeeks(plan);
+    setCalendarWeeks(builtWeeks);
+    setPlan((prev) => (prev ? { ...prev, calendarWeeks: builtWeeks } : prev));
   }, [plan]);
 
   useEffect(() => {
@@ -448,7 +469,9 @@ export default function StudyPlanPage() {
       }
 
       const data = await res.json();
-      setPlan(data);
+      const builtWeeks = buildCalendarWeeks(data as PersonalizedPlan);
+      setPlan({ ...(data as PersonalizedPlan), calendarWeeks: builtWeeks });
+      setCalendarWeeks(builtWeeks);
       setCompletedTasks(new Set());
       setActiveWeekIndex(0);
       setUnlockedWeekIndex(0);
@@ -480,6 +503,9 @@ export default function StudyPlanPage() {
     setCompletedTasks(new Set());
     setActiveWeekIndex(0);
     setUnlockedWeekIndex(0);
+    setCalendarWeeks([]);
+    setDraggedTask(null);
+    setDragOverDayId(null);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(TASKS_STORAGE_KEY);
     localStorage.removeItem(UNLOCKED_WEEK_KEY);
@@ -492,10 +518,57 @@ export default function StudyPlanPage() {
     setCompletedTasks(newCompleted);
   };
 
-  const calendarWeeks = useMemo(() => {
-    if (!plan) return [];
-    return buildCalendarWeeks(plan);
-  }, [plan]);
+  const updateCalendarWeeks = (updater: (prev: StudyCalendarWeek[]) => StudyCalendarWeek[]) => {
+    setCalendarWeeks((prevWeeks) => {
+      const nextWeeks = updater(prevWeeks);
+      setPlan((prevPlan) => (prevPlan ? { ...prevPlan, calendarWeeks: nextWeeks } : prevPlan));
+      return nextWeeks;
+    });
+  };
+
+  const moveTaskToDay = (
+    sourceWeekIndex: number,
+    sourceDayId: string,
+    taskId: string,
+    targetWeekIndex: number,
+    targetDayId: string
+  ) => {
+    if (sourceWeekIndex !== targetWeekIndex || sourceDayId === targetDayId) return;
+    updateCalendarWeeks((prevWeeks) => {
+      const week = prevWeeks[sourceWeekIndex];
+      if (!week) return prevWeeks;
+      const sourceDay = week.days.find((day) => day.id === sourceDayId);
+      const targetDay = week.days.find((day) => day.id === targetDayId);
+      if (!sourceDay || !targetDay) return prevWeeks;
+
+      const sourceTaskIndex = sourceDay.tasks.findIndex((task) => task.id === taskId);
+      if (sourceTaskIndex === -1) return prevWeeks;
+
+      const task = sourceDay.tasks[sourceTaskIndex];
+      const updatedWeek: StudyCalendarWeek = {
+        ...week,
+        days: week.days.map((day) => {
+          if (day.id === sourceDayId) {
+            return {
+              ...day,
+              tasks: day.tasks.filter((existingTask) => existingTask.id !== taskId),
+            };
+          }
+          if (day.id === targetDayId) {
+            return {
+              ...day,
+              tasks: [...day.tasks, task],
+            };
+          }
+          return day;
+        }),
+      };
+
+      return prevWeeks.map((existingWeek, idx) =>
+        idx === sourceWeekIndex ? updatedWeek : existingWeek
+      );
+    });
+  };
 
   const getWeekStats = (week: StudyCalendarWeek) => {
     const total = week.days.reduce((acc, day) => acc + day.tasks.length, 0);
@@ -646,7 +719,7 @@ export default function StudyPlanPage() {
                         onClick={() => handleAnswer(currentQ.id, option)}
                         className={`p-4 rounded-2xl border-2 transition-all text-left font-medium ${
                           isSelected
-                            ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)] scale-[1.02]"
+                            ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)]"
                             : "ai-config-option border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-600 dark:text-slate-100 dark:hover:text-white bg-white dark:bg-slate-900/90"
                         }`}
                       >
@@ -776,7 +849,32 @@ export default function StudyPlanPage() {
                           key={day.id}
                           className={`border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900/70 p-3 border-t-4 ${day.accentClass} ${
                             dayProgress.isComplete ? "ring-1 ring-emerald-400/70 dark:ring-emerald-500/50" : ""
-                          }`}
+                          } ${dragOverDayId === day.id ? "ring-2 ring-sky-400/70 dark:ring-sky-500/60" : ""}`}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            if (draggedTask) {
+                              setDragOverDayId(day.id);
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            if (draggedTask) {
+                              moveTaskToDay(
+                                draggedTask.weekIndex,
+                                draggedTask.dayId,
+                                draggedTask.taskId,
+                                safeWeekIndex,
+                                day.id
+                              );
+                            }
+                            setDraggedTask(null);
+                            setDragOverDayId(null);
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverDayId === day.id) {
+                              setDragOverDayId(null);
+                            }
+                          }}
                         >
                           <div className="flex items-start justify-between mb-3">
                             <div>
@@ -806,13 +904,28 @@ export default function StudyPlanPage() {
                                     isCompleted
                                       ? "border-emerald-200 dark:border-emerald-700 bg-emerald-50/80 dark:bg-emerald-900/25"
                                       : "border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40"
+                                  } ${
+                                    draggedTask?.taskId === task.id
+                                      ? "opacity-60 cursor-grabbing"
+                                      : "cursor-grab"
                                   }`}
+                                  draggable
+                                  onDragStart={() =>
+                                    setDraggedTask({
+                                      weekIndex: safeWeekIndex,
+                                      dayId: day.id,
+                                      taskId: task.id,
+                                    })
+                                  }
+                                  onDragEnd={() => {
+                                    setDraggedTask(null);
+                                    setDragOverDayId(null);
+                                  }}
                                 >
                                   <div className="flex items-center justify-between gap-2 mb-1.5">
                                     <span className="text-[10px] uppercase tracking-[0.16em] font-semibold text-sky-700 dark:text-sky-300">
                                       {formatTaskType(task.type)}
                                     </span>
-                                    <span className="text-[10px] text-slate-500 dark:text-slate-400">{task.estimatedMinutes} min</span>
                                   </div>
                                   <p className="text-xs font-medium text-slate-800 dark:text-slate-100 leading-snug">
                                     {task.skillFocus}

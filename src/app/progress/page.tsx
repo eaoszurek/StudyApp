@@ -33,6 +33,7 @@ export default function Progress({
   params: Promise<any>;
   searchParams: Promise<any>;
 }) {
+  const MIN_TREND_TESTS = 5;
   // Unwrap params/searchParams to prevent React DevTools serialization errors
   React.use(params);
   React.use(searchParams);
@@ -46,6 +47,8 @@ export default function Progress({
     averageCheckpointScore: 0,
     estimatedSATScore: 0,
     recentElevation: [] as number[],
+    trendPoints: [] as Array<{ score: number; dateISO: string }>,
+    trendSessionCount: 0,
     trailPerformance: [
       { name: "Math Trail", altitude: 0, checkpoints: 0 },
       { name: "Reading Trail", altitude: 0, checkpoints: 0 },
@@ -108,7 +111,18 @@ export default function Progress({
       }).length;
 
       // Get recent elevation scores (last 6 sessions, estimated total scores)
-      const recentElevation = scoreTrend.slice(-6);
+      const trendPoints = scoredSessions
+        .map((session) => {
+          const scaled =
+            session.score && typeof session.score === "object" && "scaled" in session.score
+              ? session.score.scaled * 2
+              : 0;
+          if (scaled <= 0) return null;
+          return { score: scaled, dateISO: session.date };
+        })
+        .filter((point): point is { score: number; dateISO: string } => Boolean(point))
+        .slice(-6);
+      const recentElevation = trendPoints.map((point) => point.score);
 
       // Convert skill domain performance to array and sort by average (lowest first - weakest areas)
       const skillDomainsArray = Object.entries(skillPerf)
@@ -125,6 +139,8 @@ export default function Progress({
         averageCheckpointScore: history.averageScore,
         estimatedSATScore: estimatedScore,
         recentElevation,
+        trendPoints,
+        trendSessionCount: scoredSessions.length,
         trailPerformance: [
           { 
             name: "Math Trail", 
@@ -308,36 +324,136 @@ export default function Progress({
       {/* Altitude Trend */}
       <GlassPanel className="mb-8">
         <h2 className="text-xl sm:text-2xl font-bold mb-6 text-slate-900 dark:text-white">Altitude Trend</h2>
-        {stats.recentElevation.length === 0 ? (
+        {stats.trendSessionCount < MIN_TREND_TESTS ? (
           <p className="text-slate-600 dark:text-slate-400 text-center py-10 font-medium">
-            Complete at least {MIN_ESTIMATE_QUESTIONS} questions to see an altitude trend.
+            Complete at least {MIN_TREND_TESTS} scored practice tests to unlock your altitude trend.
           </p>
         ) : (
-          <div className="h-48 sm:h-64 flex items-end justify-between gap-1 sm:gap-2 overflow-x-auto pb-2">
-            {stats.recentElevation.map((score, idx) => {
-              const maxScore = Math.max(...stats.recentElevation, 1600);
-              const height = (score / maxScore) * 100;
+          <div className="overflow-x-auto pb-2">
+            {(() => {
+              const points = stats.trendPoints;
+              const scores = points.map((point) => point.score);
+              const width = 680;
+              const height = 260;
+              const padLeft = 44;
+              const padRight = 16;
+              const padTop = 20;
+              const padBottom = 34;
+              const graphWidth = width - padLeft - padRight;
+              const graphHeight = height - padTop - padBottom;
+
+              const timestamps = points.map((point) => new Date(point.dateISO).getTime());
+              const minTime = Math.min(...timestamps);
+              const maxTime = Math.max(...timestamps);
+              const timeRange = Math.max(1, maxTime - minTime);
+              const minScore = Math.min(...scores);
+              const maxScore = Math.max(...scores);
+              const yMin = Math.max(400, Math.floor((minScore - 40) / 50) * 50);
+              const yMax = Math.min(1600, Math.ceil((maxScore + 40) / 50) * 50);
+              const yRange = Math.max(100, yMax - yMin);
+
+              const xForTimestamp = (ts: number) =>
+                padLeft + ((ts - minTime) / timeRange) * graphWidth;
+              const yFor = (score: number) =>
+                padTop + ((yMax - score) / yRange) * graphHeight;
+
+              const linePoints = points
+                .map((point) => `${xForTimestamp(new Date(point.dateISO).getTime())},${yFor(point.score)}`)
+                .join(" ");
+
+              const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
+                Math.round(yMax - yRange * ratio)
+              );
+              const xTickDates = [0, 0.33, 0.66, 1].map((ratio) => new Date(minTime + timeRange * ratio));
+              const formatDateTick = (date: Date) =>
+                date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
               return (
                 <motion.div
-                  key={idx}
-                  className="flex-1 min-w-[40px] sm:min-w-0 flex flex-col items-center"
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  transition={{ delay: idx * 0.1 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35 }}
+                  className="min-w-[640px]"
                 >
-                  <div className="w-full bg-slate-200 dark:bg-white/5 rounded-t-xl relative" style={{ height: "100%" }}>
-                    <motion.div
-                      className="absolute bottom-0 w-full brand-gradient rounded-t-xl"
-                      initial={{ height: 0 }}
-                      animate={{ height: `${height}%` }}
-                      transition={{ delay: idx * 0.1 + 0.2, duration: 0.5 }}
+                  <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-[220px] sm:h-[260px]">
+                    {yTicks.map((tick) => {
+                      const y = yFor(tick);
+                      return (
+                        <g key={tick}>
+                          <line
+                            x1={padLeft}
+                            y1={y}
+                            x2={width - padRight}
+                            y2={y}
+                            stroke="rgba(148,163,184,0.3)"
+                            strokeDasharray="4 4"
+                          />
+                          <text
+                            x={padLeft - 8}
+                            y={y + 4}
+                            textAnchor="end"
+                            className="fill-slate-500 dark:fill-slate-400 text-[10px] font-medium"
+                          >
+                            {tick}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    <polyline
+                      points={linePoints}
+                      fill="none"
+                      stroke="url(#altitudeTrendGradient)"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     />
-                  </div>
-                  <div className="mt-2 text-xs sm:text-sm font-bold text-slate-900 dark:text-white">{score}</div>
-                  <div className="text-xs text-slate-700 dark:text-slate-300 font-medium">Test {idx + 1}</div>
+
+                    {xTickDates.map((date, idx) => {
+                      const x = xForTimestamp(date.getTime());
+                      return (
+                        <g key={`tick-${idx}`}>
+                          <line
+                            x1={x}
+                            y1={padTop}
+                            x2={x}
+                            y2={height - padBottom}
+                            stroke="rgba(148,163,184,0.18)"
+                            strokeDasharray="3 5"
+                          />
+                          <text
+                            x={x}
+                            y={height - 10}
+                            textAnchor="middle"
+                            className="fill-slate-600 dark:fill-slate-300 text-[10px] font-medium"
+                          >
+                            {formatDateTick(date)}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    {points.map((point, idx) => (
+                      <g key={`${point.score}-${point.dateISO}-${idx}`}>
+                        <circle
+                          cx={xForTimestamp(new Date(point.dateISO).getTime())}
+                          cy={yFor(point.score)}
+                          r="4.5"
+                          className="fill-sky-500 dark:fill-sky-400"
+                        />
+                      </g>
+                    ))}
+
+                    <defs>
+                      <linearGradient id="altitudeTrendGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#0ea5e9" />
+                        <stop offset="100%" stopColor="#10b981" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
                 </motion.div>
               );
-            })}
+            })()}
           </div>
         )}
       </GlassPanel>

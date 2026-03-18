@@ -32,18 +32,46 @@ export function validateFlashcardFormat(card: any): { valid: boolean; errors: st
     errors.push("Back is required and must be a string");
   } else {
     const backText = card.back.trim();
-    const wordCount = backText.split(/\s+/).length;
-    
-    if (!backText.includes("—")) {
-      errors.push("Back must include em dash (—) to separate term and definition");
+    const lines = backText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length < 3 || lines.length > 5) {
+      errors.push(`Back must be 3-5 lines (found ${lines.length})`);
     }
-    
-    if (wordCount < 8) {
-      errors.push(`Back definition is too short (minimum 8 words, found ${wordCount})`);
+    if (lines.length > 0 && lines[0].startsWith("•")) {
+      errors.push("First line must be a definition/key idea (not a bullet)");
     }
-    // Allow up to 130 words so model output with one set of sections + examples passes
-    if (wordCount > 130) {
-      errors.push(`Back definition is too long (maximum 130 words including examples, found ${wordCount})`);
+    const bulletLines = lines.filter((line) => line.startsWith("•"));
+    const tipLines = bulletLines.filter((line) => /^•\s*Tip:/i.test(line));
+    const exampleLines = bulletLines.filter((line) => /^•\s*Example:/i.test(line));
+    const keyLines = bulletLines.filter((line) => !/^•\s*(Tip|Example):/i.test(line));
+
+    if (keyLines.length < 2 || keyLines.length > 3) {
+      errors.push(`Back must include 2-3 key-point bullets (found ${keyLines.length})`);
+    }
+    if (tipLines.length !== 1) {
+      errors.push(`Back must include exactly 1 tip bullet starting with "Tip:" (found ${tipLines.length})`);
+    }
+    if (exampleLines.length > 1) {
+      errors.push(`Back can include at most 1 example bullet (found ${exampleLines.length})`);
+    }
+
+    for (const keyLine of keyLines) {
+      const words = keyLine.replace(/^•\s*/, "").split(/\s+/).filter(Boolean).length;
+      if (words > 15) {
+        errors.push(`Key-point bullets must be <=15 words: "${keyLine}"`);
+      }
+    }
+
+    const lowerSet = new Set<string>();
+    for (const line of lines) {
+      const normalized = line.toLowerCase();
+      if (lowerSet.has(normalized)) {
+        errors.push("Back contains repeated lines");
+        break;
+      }
+      lowerSet.add(normalized);
     }
   }
 
@@ -251,66 +279,90 @@ export function applyBoldToMarkedTarget(text: string): { text: string; valid: bo
 
 export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolean; errors: string[] } {
   const errors: string[] = [];
-  const term = typeof card.front === "string" ? card.front.trim() : "";
+  const term = typeof card.front === "string" ? card.front.trim() : "Concept";
   const rawBack = typeof card.back === "string" ? card.back.trim() : "";
   if (!rawBack) {
     errors.push("Back is required");
     return { card, valid: false, errors };
   }
 
+  const normalizeLine = (text: string, maxWords: number) =>
+    text
+      .replace(/\bSAT\b/gi, "")
+      .replace(/\*\*/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s([,.;:!?])/g, "$1")
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, maxWords)
+      .join(" ")
+      .replace(/[,:;\-–—]\s*$/, "")
+      .trim();
+
   const lines: string[] = rawBack
     .split("\n")
     .map((line: string) => line.trim())
     .filter((line: string) => Boolean(line));
-  const exampleLines = lines.filter((line: string) => line.startsWith("•"));
+
   const contentLines = lines.filter((line: string) => !line.startsWith("•"));
-  let definitionLine = contentLines.find((line: string) => line.includes("—")) || contentLines[0] || "";
-
-  if (!definitionLine.includes("—")) {
-    definitionLine = `${term || "Skill"} — ${definitionLine}`;
-  }
-
-  const defBody = definitionLine.split("—")[1]?.trim() || "";
-  const pipeParts = defBody
-    .split("|")
-    .map((part: string) => part.trim())
-    .filter((part: string) => Boolean(part));
-
-  const fromLine = (regex: RegExp, source: string) => source.match(regex)?.[1]?.trim() || "";
+  const bulletLines = lines.filter((line: string) => line.startsWith("•"));
   const joinedContent = contentLines.join(" | ");
+  const fromLine = (regex: RegExp, source: string) => source.match(regex)?.[1]?.trim() || "";
 
-  const whatTests = truncateWords(
-    fromLine(/(?:SAT tests|What this tests):\s*([^|]+)/i, joinedContent) ||
-    fromLine(/(?:tests?)\s*:\s*([^|]+)/i, joinedContent) ||
-    pipeParts[0] ||
-    defBody ||
-    "the exact SAT skill and decision point",
-    30
-  );
+  const definitionSeed =
+    fromLine(/(?:What this tests|Definition|Key idea):\s*([^|]+)/i, joinedContent) ||
+    contentLines[0] ||
+    `${term} is a high-frequency rule tested in revision questions.`;
+  const definitionLine = normalizeLine(definitionSeed, 20).replace(/\.$/, "") + ".";
 
-  const howAppears = truncateWords(
-    fromLine(/How it appears:\s*([^|]+)/i, joinedContent) ||
-    pipeParts[1] ||
-    "in short passages, equations, or answer-choice comparisons",
-    25
-  );
+  const keyCandidates = [
+    fromLine(/How it appears:\s*([^|]+)/i, joinedContent),
+    fromLine(/What this tests:\s*([^|]+)/i, joinedContent),
+    ...bulletLines
+      .filter((line) => !/^•\s*(Tip|Example):/i.test(line))
+      .map((line) => line.replace(/^•\s*/, "")),
+  ]
+    .map((line) => normalizeLine(line, 15))
+    .filter(Boolean);
 
-  const quickTip = truncateWords(
-    fromLine(/(?:Quick )?Tip:\s*([^|]+)/i, joinedContent) ||
-    pipeParts[2] ||
-    "identify the tested rule before evaluating choices",
-    20
-  );
+  const uniqueKeys: string[] = [];
+  for (const key of keyCandidates) {
+    const normalized = key.toLowerCase();
+    if (!uniqueKeys.some((existing) => existing.toLowerCase() === normalized)) {
+      uniqueKeys.push(key);
+    }
+  }
+  while (uniqueKeys.length < 2) {
+    uniqueKeys.push(
+      uniqueKeys.length === 0
+        ? normalizeLine("identify the grammar rule before checking choices", 15)
+        : normalizeLine("eliminate options that break clarity or correctness", 15)
+    );
+  }
+  const keyLines = uniqueKeys.slice(0, 3).map((line) => `• ${line}`);
 
-  const rebuiltLines = [
-    `${term || "Skill"} — **What this tests:** ${whatTests}`,
-    `**How it appears:** ${howAppears}`,
-    `**Quick tip:** ${quickTip}`,
-  ];
+  const rawExample =
+    bulletLines.find((line) => /^•\s*Example:/i.test(line))?.replace(/^•\s*Example:\s*/i, "") ||
+    (lines.find((line) => /example[:\s]/i.test(line)) || "").replace(/^.*example[:\s]*/i, "");
+  const exampleLine = rawExample ? `• Example: ${normalizeLine(rawExample, 12)}` : "";
 
-  const rebuilt = [...rebuiltLines, ...exampleLines].join("\n");
+  const rawTip =
+    bulletLines.find((line) => /^•\s*Tip:/i.test(line))?.replace(/^•\s*Tip:\s*/i, "") ||
+    fromLine(/(?:Quick\s+)?Tip:\s*([^|]+)/i, joinedContent) ||
+    "underline the key signal word before choosing";
+  const tipLine = `• Tip: ${normalizeLine(rawTip, 12)}`;
+
+  const rebuiltLines = [definitionLine, ...keyLines];
+  if (exampleLine && rebuiltLines.length < 4) {
+    rebuiltLines.push(exampleLine);
+  }
+  rebuiltLines.push(tipLine);
+
+  const rebuilt = rebuiltLines.slice(0, 5).join("\n");
   card.back = rebuilt;
-  return { card, valid: true, errors };
+  const validation = validateFlashcardFormat(card);
+  return { card, valid: validation.valid, errors: validation.errors };
 }
 
 export function ensureTaskDuration(task: string): string {

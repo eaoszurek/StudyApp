@@ -202,6 +202,9 @@ CRITICAL SAT WRITING REQUIREMENTS:
 - Focus on ONE specific grammar rule or writing concept per question
 - Include "NO CHANGE" as an option when appropriate
 - "NO CHANGE" must be correct only sometimes (roughly 20-30% of writing questions). It must NOT be the correct answer for most items in a set.
+- If you include a no-change choice, write it exactly as "NO CHANGE" (not "No change to X", not paraphrased).
+- Never include a second option that is identical to the currently underlined word/phrase when "NO CHANGE" is present.
+- In each 5-question block, vary the four answer choices; do not reuse the same option set across multiple questions.
 - Test common SAT grammar errors, not obscure rules
 - Questions should test editing skills, not just identification
 - Match real SAT question style: clear, unambiguous, test practical editing skills
@@ -211,7 +214,7 @@ CRITICAL SAT WRITING REQUIREMENTS:
 
     // Create completion with timeout
     const shouldUseCache = !existingTestId;
-    const cacheKey = `generate-practice:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
+    const cacheKey = `generate-practice:v2-writing-diversity:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
     const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
     const MAX_BLOCK_ATTEMPTS = 4;
@@ -304,6 +307,8 @@ FORMATTING REQUIREMENTS:
   * WRITING: A short passage with the revision target wrapped in [brackets] inside the passage (example: "The committee [decide] to meet weekly."). Provide a NEW passage every 5 questions.
 - options: array of exactly four answer choices as strings ["A text", "B text", "C text", "D text"].
   * For WRITING: Include "NO CHANGE" as an option when the underlined portion is already correct
+  * For WRITING: If no-change is included, use exact text "NO CHANGE" only.
+  * For WRITING: Do NOT repeat identical option sets within a 5-question block.
 - correctAnswer: one of "A", "B", "C", "D".
 - explanation_correct: 1-2 short sentences.
 - explanation_incorrect: object with short 1-sentence reasons for wrong answers only.
@@ -385,8 +390,12 @@ Do not output anything except the JSON.`,
     const transformQuestions = (rawQuestions: any[], passage?: string): Record<string, any>[] => {
       const transformed: Array<Record<string, any> | null> = rawQuestions
         .map((q: any, index: number) => {
-          const passageForQuestion =
+          const rawPassageForQuestion =
             typeof q.passage === "string" && q.passage.trim().length > 0 ? q.passage.trim() : passage;
+          const passageForQuestion =
+            typeof rawPassageForQuestion === "string" && rawPassageForQuestion.length > 0
+              ? cleanMathNotation(cleanText(rawPassageForQuestion))
+              : rawPassageForQuestion;
 
           // Clean and validate question
           let questionText = cleanMathNotation(cleanText(q.question || ""));
@@ -419,10 +428,19 @@ Do not output anything except the JSON.`,
           // Truncate if too long
           questionText = truncateText(questionText, 500);
 
+          let finalPassage = passageForQuestion;
           if (section === "writing") {
-            const withTargetMarkup = ensureWritingTargetMarkup(questionText);
-            const bolded = applyBoldToMarkedTarget(withTargetMarkup);
-            questionText = bolded.valid ? bolded.text : withTargetMarkup;
+            if (passageForQuestion) {
+              const withTargetMarkup = ensureWritingTargetMarkup(passageForQuestion);
+              const boldedPassage = applyBoldToMarkedTarget(withTargetMarkup);
+              finalPassage = boldedPassage.valid ? boldedPassage.text : withTargetMarkup;
+              // Keep brackets/underlines in the passage, not the question prompt text.
+              questionText = questionText.replace(/\[([^\]]+)\]/g, "$1");
+            } else {
+              const withTargetMarkup = ensureWritingTargetMarkup(questionText);
+              const bolded = applyBoldToMarkedTarget(withTargetMarkup);
+              questionText = bolded.valid ? bolded.text : withTargetMarkup;
+            }
           }
           
           // Clean options
@@ -430,10 +448,10 @@ Do not output anything except the JSON.`,
           if (Array.isArray(q.options)) {
             q.options.forEach((opt: string, i: number) => {
               const letter = String.fromCharCode(65 + i);
-              const normalized = cleanMathNotation(cleanText(truncateText(opt, 200)))
+              const normalizedRaw = cleanMathNotation(cleanText(truncateText(opt, 200)))
                 .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
                 .replace(/^\s*[A-D]\s+/i, "");
-              cleanedOptions[letter] = normalized;
+              cleanedOptions[letter] = normalizedRaw;
             });
           } else {
             // Fallback if already in object format
@@ -449,6 +467,37 @@ Do not output anything except the JSON.`,
             cleanedOptions.D = cleanMathNotation(cleanText(truncateText(q.options.D || q.options[3] || "", 200)))
               .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
               .replace(/^\s*[A-D]\s+/i, "");
+          }
+
+          if (section === "writing") {
+            const targetPhrase = extractMarkedTarget(finalPassage || questionText);
+            const normalizedTarget = normalizeCompare(targetPhrase);
+            const normalizedOptions = Object.entries(cleanedOptions).map(([letter, opt]) => {
+              const normalized = normalizeWritingOption(opt);
+              return [letter, isNoChangeOption(normalized) ? "NO CHANGE" : normalized] as const;
+            });
+            const deduped = new Set(
+              normalizedOptions
+                .map(([, opt]) => normalizeCompare(opt))
+                .filter(Boolean)
+            );
+            if (deduped.size < 4) {
+              return null;
+            }
+            if (normalizedOptions.some(([, opt]) => !normalizeCompare(opt))) {
+              return null;
+            }
+            if (
+              normalizedTarget &&
+              normalizedOptions.some(
+                ([, opt]) => !isNoChangeOption(opt) && normalizeCompare(opt) === normalizedTarget
+              )
+            ) {
+              return null;
+            }
+            normalizedOptions.forEach(([letter, opt]) => {
+              cleanedOptions[letter] = opt;
+            });
           }
           
           // Keep explanations concise for faster generation and rendering
@@ -516,7 +565,7 @@ Do not output anything except the JSON.`,
           strategyTip = ensureBoldEmphasis(strategyTip, skillCategory);
     
           return {
-            passage: passageForQuestion,
+            passage: finalPassage,
             question: questionText,
             options: cleanedOptions,
             correctAnswer: q.correctAnswer,
@@ -542,6 +591,30 @@ Do not output anything except the JSON.`,
         .replace(/\s+/g, " ")
         .trim();
     };
+
+    const normalizeWritingOption = (text: string) =>
+      String(text || "")
+        .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
+        .replace(/^\s*[A-D]\s+/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const isNoChangeOption = (text: string) => /^no\s*change\b/i.test(normalizeWritingOption(text));
+
+    const extractMarkedTarget = (text: string) => {
+      const bracketMatch = String(text || "").match(/\[([^\]]+)\]/);
+      if (bracketMatch?.[1]) return bracketMatch[1].trim();
+      const boldMatch = String(text || "").match(/\*\*([^*]+)\*\*/);
+      if (boldMatch?.[1]) return boldMatch[1].trim();
+      return "";
+    };
+
+    const normalizeCompare = (text: string) =>
+      String(text || "")
+        .replace(/[“”"']/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
 
     const getPassageSignature = (text: string) => {
       return text
@@ -649,11 +722,58 @@ Do not output anything except the JSON.`,
       return true;
     };
 
+    const passesWritingOptionVariety = (questions: any[]) => {
+      if (section !== "writing") return true;
+      const blockSize = 5;
+
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        if (block.length === 0) continue;
+
+        // Avoid repeated identical option sets across a 5-question block.
+        const signatures = block.map((q) => {
+          const opts = Object.values(q?.options || {})
+            .map((opt) => normalizeCompare(normalizeWritingOption(String(opt || ""))))
+            .sort();
+          return opts.join("|");
+        });
+        const uniqueSignatures = new Set(signatures);
+        const minUnique = Math.max(1, block.length - 1);
+        if (uniqueSignatures.size < minUnique) return false;
+
+        // Ensure one canonical NO CHANGE wording only when present, and not overused.
+        let noChangeCount = 0;
+        const optionFrequency: Record<string, number> = {};
+        for (const q of block) {
+          const opts = Object.values(q?.options || {}).map((opt) => normalizeWritingOption(String(opt || "")));
+          const localSeen = new Set<string>();
+          for (const opt of opts) {
+            const normalized = normalizeCompare(opt);
+            if (!normalized) return false;
+            if (isNoChangeOption(opt)) noChangeCount += 1;
+            if (!localSeen.has(normalized)) {
+              optionFrequency[normalized] = (optionFrequency[normalized] || 0) + 1;
+              localSeen.add(normalized);
+            }
+          }
+        }
+        if (noChangeCount > Math.max(2, Math.ceil(block.length * 0.4))) return false;
+
+        // A specific non-"NO CHANGE" option should not repeat in every question of the block.
+        for (const [opt, count] of Object.entries(optionFrequency)) {
+          if (opt !== "no change" && count >= block.length) return false;
+        }
+      }
+
+      return true;
+    };
+
     const passesSetConstraints = (questions: any[]) => {
       return (
         passesPassageRotation(questions) &&
         passesMathVariety(questions) &&
-        passesMathWordProblemQuota(questions)
+        passesMathWordProblemQuota(questions) &&
+        passesWritingOptionVariety(questions)
       );
     };
 

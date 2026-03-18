@@ -504,9 +504,9 @@ export default function Lessons() {
                               disabled={showAnswer}
                               className={`w-full text-left p-3 sm:p-4 rounded-2xl border-2 transition-all font-medium ${
                                 showAnswer && isCorrectOption
-                                  ? "border-green-400 bg-gradient-to-br from-green-100 to-green-50 text-green-900 dark:border-green-400 dark:from-green-900/40 dark:to-green-900/30 dark:text-green-100 shadow-[0_4px_0_rgba(34,197,94,0.15),0_6px_16px_rgba(34,197,94,0.1)] scale-[1.02]"
+                                  ? "border-green-400 bg-gradient-to-br from-green-100 to-green-50 text-green-900 dark:border-green-400 dark:from-green-900/40 dark:to-green-900/30 dark:text-green-100 shadow-[0_4px_0_rgba(34,197,94,0.15),0_6px_16px_rgba(34,197,94,0.1)]"
                                   : isSelected
-                                  ? "border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 text-sky-900 dark:border-sky-400 dark:from-sky-900/40 dark:to-sky-900/30 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)] scale-[1.02]"
+                                  ? "border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 text-sky-900 dark:border-sky-400 dark:from-sky-900/40 dark:to-sky-900/30 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)]"
                                   : "border-slate-200 hover:border-sky-300 text-slate-800 bg-slate-50 hover:bg-sky-50/50 dark:border-slate-600 dark:hover:border-sky-500 dark:text-slate-200 dark:bg-slate-800/90 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
                               }`}
                             >

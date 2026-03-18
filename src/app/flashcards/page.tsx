@@ -455,7 +455,7 @@ export default function Flashcards() {
                           ? "bg-amber-400"
                           : rating === "no-idea"
                           ? "bg-rose-400"
-                          : "bg-white/20"
+                          : "bg-slate-300 dark:bg-white/20"
                       }`}
                     />
                   );
@@ -603,7 +603,7 @@ export default function Flashcards() {
                     onClick={() => handleRating("got-it")}
                     className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "got-it"
-                        ? "border-emerald-400 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-emerald-900/30 text-emerald-900 dark:text-emerald-200 shadow-[0_4px_0_rgba(34,197,94,0.2),0_6px_16px_rgba(34,197,94,0.15)] scale-[1.02]"
+                        ? "border-emerald-400 bg-gradient-to-br from-emerald-100 to-emerald-50 dark:from-emerald-900/40 dark:to-emerald-900/30 text-emerald-900 dark:text-emerald-200 shadow-[0_4px_0_rgba(34,197,94,0.2),0_6px_16px_rgba(34,197,94,0.15)]"
                         : "border-slate-200 dark:border-slate-600 hover:border-emerald-300 dark:hover:border-emerald-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:shadow-[0_3px_0_rgba(34,197,94,0.15),0_4px_12px_rgba(34,197,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
@@ -623,7 +623,7 @@ export default function Flashcards() {
                     onClick={() => handleRating("almost")}
                     className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "almost"
-                        ? "border-amber-400 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-900/30 text-amber-900 dark:text-amber-200 shadow-[0_4px_0_rgba(245,158,11,0.2),0_6px_16px_rgba(245,158,11,0.15)] scale-[1.02]"
+                        ? "border-amber-400 bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-900/40 dark:to-amber-900/30 text-amber-900 dark:text-amber-200 shadow-[0_4px_0_rgba(245,158,11,0.2),0_6px_16px_rgba(245,158,11,0.15)]"
                         : "border-slate-200 dark:border-slate-600 hover:border-amber-300 dark:hover:border-amber-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-amber-50 dark:hover:bg-amber-900/20 hover:shadow-[0_3px_0_rgba(245,158,11,0.15),0_4px_12px_rgba(245,158,11,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >
@@ -643,7 +643,7 @@ export default function Flashcards() {
                     onClick={() => handleRating("no-idea")}
                     className={`flex-1 px-4 py-3 rounded-2xl border-2 transition-all font-bold ${
                       userRatings[currentIndex] === "no-idea"
-                        ? "border-rose-400 bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900/40 dark:to-rose-900/30 text-rose-900 dark:text-rose-200 shadow-[0_4px_0_rgba(244,63,94,0.2),0_6px_16px_rgba(244,63,94,0.15)] scale-[1.02]"
+                        ? "border-rose-400 bg-gradient-to-br from-rose-100 to-rose-50 dark:from-rose-900/40 dark:to-rose-900/30 text-rose-900 dark:text-rose-200 shadow-[0_4px_0_rgba(244,63,94,0.2),0_6px_16px_rgba(244,63,94,0.15)]"
                         : "border-slate-200 dark:border-slate-600 hover:border-rose-300 dark:hover:border-rose-500 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800/90 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:shadow-[0_3px_0_rgba(244,63,94,0.15),0_4px_12px_rgba(244,63,94,0.1)] hover:-translate-y-0.5 active:translate-y-0.5"
                     }`}
                   >

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import SettingsSidebar from "./SettingsSidebar";
 import Logo from "./ui/Logo";
 import FeatureIcon from "./ui/FeatureIcon";
@@ -17,7 +18,15 @@ const navItems = [
   { href: "/progress", label: "Progress", icon: "progress" as const },
 ];
 
-export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar" | "mobile" }) {
+export default function Navigation({
+  variant = "sidebar",
+  isCollapsed = false,
+  onToggleCollapse,
+}: {
+  variant?: "sidebar" | "mobile";
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+}) {
   const pathname = usePathname();
   const [showSettings, setShowSettings] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -29,7 +38,7 @@ export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar
   if (variant === "mobile") {
     return (
       <>
-        <nav className="app-navbar md:hidden h-14 flex items-center justify-between pl-0 pr-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
+        <nav className="app-navbar md:hidden h-14 flex items-center justify-between pl-2 pr-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
           <Logo href="/dashboard" size="md" showText={false} onClick={() => handleNavClick()} />
           <div className="flex items-center gap-1">
             <button
@@ -82,8 +91,20 @@ export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar
   return (
     <>
       <nav className="app-navbar w-full h-full min-h-screen flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
-        <div className="py-4 pr-4 pl-0 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-          <Logo href="/dashboard" size="md" showText={true} />
+        <div className={`py-4 pr-3 border-b border-slate-200 dark:border-slate-800 flex-shrink-0 ${isCollapsed ? "pl-3" : "pl-2"}`}>
+          <div className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between gap-2"}`}>
+            {!isCollapsed && <Logo href="/dashboard" size="md" showText={true} />}
+            {onToggleCollapse && (
+              <button
+                onClick={onToggleCollapse}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex-1 py-4">
           {navItems.map((item) => {
@@ -92,26 +113,33 @@ export default function Navigation({ variant = "sidebar" }: { variant?: "sidebar
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${
+                className={`flex items-center py-2.5 text-sm font-medium transition-colors ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-4"
+                } ${
                   isActive
                     ? "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 border-r-2 border-sky-500"
                     : "text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50"
                 }`}
+                aria-label={item.label}
+                title={isCollapsed ? item.label : undefined}
               >
                 <FeatureIcon name={item.icon} size={20} />
-                {item.label}
+                {!isCollapsed && item.label}
               </Link>
             );
           })}
         </div>
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
+        <div className={`p-3 border-t border-slate-200 dark:border-slate-800 flex-shrink-0 ${isCollapsed ? "flex justify-center" : ""}`}>
           <button
             onClick={() => setShowSettings(true)}
-            className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors"
+            className={`flex items-center text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-lg transition-colors ${
+              isCollapsed ? "justify-center h-10 w-10" : "gap-3 w-full px-4 py-2.5"
+            }`}
             aria-label="Settings"
+            title={isCollapsed ? "Settings" : undefined}
           >
             <FeatureIcon name="settings" size={20} />
-            Settings
+            {!isCollapsed && "Settings"}
           </button>
         </div>
       </nav>

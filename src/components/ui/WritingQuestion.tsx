@@ -8,7 +8,7 @@ interface WritingQuestionProps {
 }
 
 export default function WritingQuestion({ question, className = "" }: WritingQuestionProps) {
-  // Parse the question text to find [underlined] portions
+  // Parse text to find explicit [underlined] portions
   const formatQuestion = (text: string): React.ReactNode[] => {
     const normalizedText = text
       .replace(/\*\*(.+?)\*\*/g, "[$1]")
@@ -45,26 +45,8 @@ export default function WritingQuestion({ question, className = "" }: WritingQue
       );
     }
     
-    // If no markers found, underline a best-effort phrase so the prompt remains usable.
-    if (parts.length === 0) {
-      const fallbackMatch = normalizedText.match(/([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){1,4})/);
-      if (!fallbackMatch) {
-        return [<span key="no-format">{normalizedText}</span>];
-      }
-
-      const target = fallbackMatch[1];
-      const start = normalizedText.indexOf(target);
-      const before = normalizedText.slice(0, start);
-      const after = normalizedText.slice(start + target.length);
-
-      return [
-        <span key="fallback-before">{before}</span>,
-        <u key="fallback-underline" className="underline decoration-2 decoration-sky-600 dark:decoration-sky-400 font-semibold">
-          {target}
-        </u>,
-        <span key="fallback-after">{after}</span>,
-      ];
-    }
+    // No explicit marker => render text as-is.
+    if (parts.length === 0) return [<span key="plain">{normalizedText}</span>];
     
     return parts;
   };
