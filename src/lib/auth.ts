@@ -11,10 +11,23 @@ import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 
 const SESSION_COOKIE_NAME = "auth_session";
 const SESSION_DURATION_DAYS = 30;
 const MAGIC_LINK_TOKEN_EXPIRY_HOURS = 24;
+const SESSION_MAX_AGE_SECONDS = SESSION_DURATION_DAYS * 24 * 60 * 60;
+
+function getSessionCookieOptions(expiresAt: Date): Partial<ResponseCookie> {
+  return {
+    expires: expiresAt,
+    maxAge: SESSION_MAX_AGE_SECONDS,
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  };
+}
 
 export interface SessionUser {
   id: string;
@@ -82,14 +95,8 @@ export async function createSession(userId: string): Promise<string> {
     },
   });
 
-  // Set secure cookie
-  cookieStore.set(SESSION_COOKIE_NAME, session.id, {
-    expires: expiresAt,
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  // Set a persistent secure cookie (survives tab/browser restarts until expiry)
+  cookieStore.set(SESSION_COOKIE_NAME, session.id, getSessionCookieOptions(expiresAt));
 
   return session.id;
 }
@@ -109,8 +116,11 @@ export async function deleteSession(): Promise<void> {
       });
     }
 
-    // Clear cookie
-    cookieStore.delete(SESSION_COOKIE_NAME);
+    // Clear cookie using explicit attributes for consistent browser behavior.
+    cookieStore.set(SESSION_COOKIE_NAME, "", {
+      ...getSessionCookieOptions(new Date(0)),
+      maxAge: 0,
+    });
   } catch (error) {
     console.error("Error deleting session:", error);
   }

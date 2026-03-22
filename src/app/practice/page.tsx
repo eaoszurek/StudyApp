@@ -41,6 +41,9 @@ interface TestConfig {
   difficulty?: "Easy" | "Medium" | "Hard" | "Mixed";
 }
 
+const TEST_RETRY_MESSAGE = "We couldn't generate your test right now. Please retry.";
+const BATCH_RETRY_MESSAGE = "We couldn't load the next questions. Please retry.";
+
 const splitIntoBullets = (text: string): string[] => {
   if (!text) return [];
   const byLine = text.split(/\n|•/).map((line) => line.trim()).filter(Boolean);
@@ -138,6 +141,34 @@ export default function PracticeTests() {
       100
     : 0;
 
+  const fetchPracticeBatchWithRetry = async (
+    payload: Record<string, unknown>,
+    maxRetries: number = 2
+  ): Promise<PracticeSet & { id?: string }> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        const res = await fetch("/api/generate-practice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          throw new Error("practice_request_failed");
+        }
+        return (await res.json()) as PracticeSet & { id?: string };
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
+          continue;
+        }
+      }
+    }
+    throw lastError ?? new Error("practice_request_failed");
+  };
+
   const handleSectionSelect = (type: SectionType) => {
     setTestType(type);
     setShowConfig(true);
@@ -176,32 +207,17 @@ export default function PracticeTests() {
     setTestType(selectedSection);
     setConfig(selectedConfig);
 
-    const requestPracticeBatch = async (count: number) => {
-      const res = await fetch("/api/generate-practice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          section: selectedSection,
-          questionCount: count,
-          topic: selectedConfig.topic || undefined,
-          difficulty: selectedConfig.difficulty === "Mixed" ? undefined : selectedConfig.difficulty,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to generate test.");
-      }
-
-      return (await res.json()) as PracticeSet & { id?: string };
-    };
-
     try {
       const initialCount =
         selectedSection === "writing" || selectedSection === "reading"
           ? Math.min(5, selectedConfig.questionCount)
           : selectedConfig.questionCount;
-      const data = await requestPracticeBatch(initialCount);
+      const data = await fetchPracticeBatchWithRetry({
+        section: selectedSection,
+        questionCount: initialCount,
+        topic: selectedConfig.topic || undefined,
+        difficulty: selectedConfig.difficulty === "Mixed" ? undefined : selectedConfig.difficulty,
+      });
       setCurrentTestId(data.id || null);
       currentTestIdRef.current = data.id || null;
       setPracticeSet(data);
@@ -222,8 +238,8 @@ export default function PracticeTests() {
         localStorage.setItem("free_tier_usage", "0");
         setFreeUsageCount(0);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to generate test.");
+    } catch {
+      setError(TEST_RETRY_MESSAGE);
       setShowConfig(true); // Return to config on error
     } finally {
       setLoading(false);
@@ -262,24 +278,13 @@ export default function PracticeTests() {
       const load = async () => {
         try {
           const batchSize = Math.min(5, remaining);
-          const res = await fetch("/api/generate-practice", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              section: testType,
-              questionCount: batchSize,
-              topic: config.topic || undefined,
-              difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
-              existingTestId: currentTestIdRef.current,
-            }),
+          const nextBatch = await fetchPracticeBatchWithRetry({
+            section: testType,
+            questionCount: batchSize,
+            topic: config.topic || undefined,
+            difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+            existingTestId: currentTestIdRef.current,
           });
-
-          if (!res.ok) {
-            const data = await res.json();
-            throw new Error(data.error || "Failed to load next question batch.");
-          }
-
-          const nextBatch = (await res.json()) as PracticeSet & { id?: string };
           setPracticeSet((prev) => {
             if (!prev) return prev;
             const baseIndex = prev.questions.length;
@@ -293,8 +298,8 @@ export default function PracticeTests() {
               questions: [...prev.questions, ...normalized],
             };
           });
-        } catch (err: any) {
-          setBatchLoadError(err.message || "Failed to load next question batch.");
+        } catch {
+          setBatchLoadError(BATCH_RETRY_MESSAGE);
         } finally {
           batchLoadingRef.current = false;
           setIsBatchLoading(false);
@@ -333,22 +338,13 @@ export default function PracticeTests() {
           try {
             const remaining = targetQuestionCount - practiceSet.questions.length;
             const batchSize = Math.min(5, remaining);
-            const res = await fetch("/api/generate-practice", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                section: testType,
-                questionCount: batchSize,
-                topic: config.topic || undefined,
-                difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
-                existingTestId: currentTestIdRef.current || undefined,
-              }),
+            const nextBatch = await fetchPracticeBatchWithRetry({
+              section: testType,
+              questionCount: batchSize,
+              topic: config.topic || undefined,
+              difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+              existingTestId: currentTestIdRef.current || undefined,
             });
-            if (!res.ok) {
-              const data = await res.json();
-              throw new Error(data.error || "Failed to load next question batch.");
-            }
-            const nextBatch = (await res.json()) as PracticeSet & { id?: string };
             const baseIndex = practiceSet.questions.length;
             const normalized = nextBatch.questions.map((q, idx) => ({
               ...q,
@@ -359,8 +355,8 @@ export default function PracticeTests() {
             setCurrentQuestion(currentQuestion + 1);
             setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
             return;
-          } catch (err: any) {
-            setBatchLoadError(err.message || "Still loading next questions. Please try again.");
+          } catch {
+            setBatchLoadError(BATCH_RETRY_MESSAGE);
             return;
           } finally {
             batchLoadingRef.current = false;

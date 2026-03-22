@@ -217,8 +217,8 @@ CRITICAL SAT WRITING REQUIREMENTS:
     const cacheKey = `generate-practice:v2-writing-diversity:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
     const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
-    const MAX_BLOCK_ATTEMPTS = 4;
-    const MAX_SET_ATTEMPTS = 3;
+    const MAX_BLOCK_ATTEMPTS = 6;
+    const MAX_SET_ATTEMPTS = 4;
 
     const getModelPayload = async (requestedCount: number, extraInstructions = "") => {
       const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
@@ -357,7 +357,7 @@ Do not output anything except the JSON.`,
       ],
       response_format: { type: "json_object" },
         }),
-        2,
+        3,
         timeoutMs
       );
       const responseText = completion.choices[0].message?.content || "{}";
@@ -625,6 +625,32 @@ Do not output anything except the JSON.`,
         .slice(0, 140);
     };
 
+    const getRwSignatureSource = (question: any): string => {
+      return String(question?.passage || question?.question || "");
+    };
+
+    const existingQuestionsForGeneration: any[] = (() => {
+      try {
+        if (!existingPracticeTest?.questions) return [];
+        const parsed = JSON.parse(existingPracticeTest.questions);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })();
+
+    const existingRwSignatures = new Set<string>();
+    if (section === "reading" || section === "writing") {
+      for (let start = 0; start < existingQuestionsForGeneration.length; start += 5) {
+        const firstInBlock = existingQuestionsForGeneration[start];
+        if (!firstInBlock) continue;
+        const signature = getPassageSignature(getRwSignatureSource(firstInBlock));
+        if (signature) {
+          existingRwSignatures.add(signature);
+        }
+      }
+    }
+
     const ensureWritingTargetMarkup = (text: string) => {
       if (!text) return text;
       const normalized = text
@@ -672,10 +698,7 @@ Do not output anything except the JSON.`,
       for (let start = 0; start < questions.length; start += blockSize) {
         const block = questions.slice(start, start + blockSize);
         if (block.length === 0) continue;
-        const sourceText =
-          section === "reading"
-            ? block[0]?.passage
-            : block[0]?.question;
+        const sourceText = getRwSignatureSource(block[0]);
         if (!sourceText || typeof sourceText !== "string") {
           return false;
         }
@@ -826,13 +849,12 @@ Do not output anything except the JSON.`,
           }
           if (unique.length < count) continue;
 
-          const signatureSource = section === "reading"
-            ? String(unique[0]?.passage || "")
-            : String(unique[0]?.question || "");
+          const signatureSource = getRwSignatureSource(unique[0]);
           const signature = getPassageSignature(signatureSource);
           if (!signature) continue;
+          if (existingRwSignatures.has(signature)) continue;
 
-          if (section === "reading" && unique.some((q) => !q.passage)) {
+          if ((section === "reading" || section === "writing") && unique.some((q) => !q.passage)) {
             continue;
           }
 
@@ -840,10 +862,11 @@ Do not output anything except the JSON.`,
         }
 
         if (bestQuestions.length >= count) {
-          const signatureSource = section === "reading"
-            ? String(bestQuestions[0]?.passage || "")
-            : String(bestQuestions[0]?.question || "");
+          const signatureSource = getRwSignatureSource(bestQuestions[0]);
           const signature = getPassageSignature(signatureSource) || `block-${blockIndex}-${Date.now()}`;
+          if (existingRwSignatures.has(signature)) {
+            throw new Error(`Generated block ${blockIndex + 1} repeated a previous passage.`);
+          }
           return { questions: bestQuestions.slice(0, count), passage: bestPassage, signature };
         }
 
@@ -914,7 +937,7 @@ Do not output anything except the JSON.`,
                 invalidIndexes.add(i);
                 continue;
               }
-              if (section === "reading" && block.questions.some((q) => !q.passage)) {
+              if ((section === "reading" || section === "writing") && block.questions.some((q) => !q.passage)) {
                 invalidIndexes.add(i);
                 continue;
               }
