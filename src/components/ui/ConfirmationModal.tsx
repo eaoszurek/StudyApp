@@ -53,7 +53,7 @@ export default function ConfirmationModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[201] w-full max-w-md mx-4"
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[201] w-[calc(100vw-1.5rem)] max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
@@ -72,12 +72,12 @@ export default function ConfirmationModal({
               </div>
               
               {/* Actions */}
-              <div className="p-6 pt-0 flex gap-3 justify-end">
+              <div className="p-6 pt-0 flex flex-col-reverse sm:flex-row gap-3 justify-end">
                 <PrimaryButton
                   onClick={onClose}
                   variant="secondary"
                   disabled={loading}
-                  className="min-w-[100px]"
+                  className="w-full sm:w-auto min-w-[100px]"
                 >
                   {cancelText}
                 </PrimaryButton>
@@ -85,7 +85,7 @@ export default function ConfirmationModal({
                   onClick={handleConfirm}
                   variant={confirmVariant}
                   disabled={loading}
-                  className={`min-w-[100px] ${
+                  className={`w-full sm:w-auto min-w-[100px] ${
                     danger
                       ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-600 hover:border-rose-700"
                       : ""

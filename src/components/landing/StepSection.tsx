@@ -142,7 +142,7 @@ export default function StepSection() {
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: true }}
                       transition={{ duration: 0.7, ease: "easeOut", delay: idx * 0.15 }}
-                      className="flex-1 relative w-full max-w-sm"
+                      className="flex-1 relative w-full max-w-sm overflow-hidden"
                     >
                       {/* Floating Card Effect */}
                       <div className="relative">
@@ -154,7 +154,7 @@ export default function StepSection() {
                         } shadow-2xl`}>
                           <div className="w-full h-full min-h-[200px] relative">
                             {/* Mockup */}
-                            <div className="relative z-10 scale-90">
+                            <div className="relative z-10 scale-[0.82] sm:scale-90 md:scale-95 origin-top">
                               {step.mockup}
                             </div>
                             

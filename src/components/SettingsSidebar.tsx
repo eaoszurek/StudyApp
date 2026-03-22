@@ -193,8 +193,7 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 h-full w-56 shadow-2xl z-[120] overflow-y-auto settings-sidebar"
-              style={{ maxWidth: "280px" }}
+              className="fixed right-0 top-0 h-full w-[88vw] max-w-[320px] sm:w-72 shadow-2xl z-[120] overflow-y-auto settings-sidebar"
             >
             <div className="p-6 settings-sidebar-content min-h-full">
               {/* Header */}

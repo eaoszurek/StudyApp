@@ -125,10 +125,10 @@ export default function Hero({
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-              className="relative z-10 flex items-center justify-center"
+              className="relative z-10 flex items-center justify-center mt-2 sm:mt-4 lg:mt-0"
               aria-label="Hero visual"
             >
-              <div className="relative w-full max-w-xl mx-auto">
+              <div className="relative w-full max-w-[340px] sm:max-w-xl mx-auto">
                 {/* Glow Effect Behind Mockup */}
                 <div className="absolute inset-0 bg-gradient-to-r from-sky-500/20 via-green-500/20 to-sky-500/20 rounded-lg blur-3xl transform scale-110 -z-10" />
                 

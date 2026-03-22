@@ -72,12 +72,12 @@ export default function DeviceMockup({
           <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-16 h-1.5 bg-black rounded-full z-10" />
           
           {/* Screen */}
-          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-lg overflow-hidden relative aspect-video min-h-[400px]">
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-lg overflow-hidden relative aspect-video min-h-[220px] sm:min-h-[300px] md:min-h-[400px]">
             {/* Glow Effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 via-transparent to-green-500/10 pointer-events-none" />
             
             {children || (
-              <div className="w-full h-full flex items-center justify-center p-8">
+              <div className="w-full h-full flex items-center justify-center p-4 sm:p-8">
                 <div className="text-center">
                   <div className="text-slate-500 mb-6"><FeatureIcon name="mountain" size={64} /></div>
                   <p className="text-slate-400">App Preview</p>
@@ -88,7 +88,7 @@ export default function DeviceMockup({
         </div>
         
         {/* Stand */}
-        <div className="mt-2 flex justify-center">
+        <div className="mt-2 hidden sm:flex justify-center">
           <div className="w-32 h-8 bg-gradient-to-b from-slate-600 to-slate-800 rounded-b-lg" />
         </div>
       </div>

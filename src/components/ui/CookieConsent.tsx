@@ -4,17 +4,18 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 
 const CONSENT_KEY = "cookie_consent";
+const CONSENT_VERSION = "v2";
 
 export default function CookieConsent() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     const consent = localStorage.getItem(CONSENT_KEY);
-    if (!consent) setVisible(true);
+    if (consent !== CONSENT_VERSION) setVisible(true);
   }, []);
 
   function accept() {
-    localStorage.setItem(CONSENT_KEY, "accepted");
+    localStorage.setItem(CONSENT_KEY, CONSENT_VERSION);
     setVisible(false);
   }
 

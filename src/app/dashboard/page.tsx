@@ -1,13 +1,19 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import GlassPanel from "@/components/ui/GlassPanel";
 import PageHeader from "@/components/ui/PageHeader";
 import FeatureIcon from "@/components/ui/FeatureIcon";
 import Link from "next/link";
 import { getScoreHistory, getRecentSessions } from "@/utils/scoreTracking";
 import { getPercentile, getScoreInterpretation } from "@/utils/satScoring";
+import type { PersonalizedPlan, StudyCalendarTask } from "@/types";
+
+const STUDY_PLAN_STORAGE_KEY = "sat_study_plan";
+const STUDY_TASKS_STORAGE_KEY = `${STUDY_PLAN_STORAGE_KEY}_tasks`;
+const ACTIVE_WEEK_STORAGE_KEY = `${STUDY_PLAN_STORAGE_KEY}_active_week`;
+const DASHBOARD_FIRST_SEEN_KEY = "dashboard_first_seen_at";
 
 const tools = [
   { href: "/practice", title: "Practice Tests", desc: "Practice tests along your trail with instant feedback and explanations.", icon: "practice" as const },
@@ -19,6 +25,7 @@ const tools = [
 
 function DashboardContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [stats, setStats] = useState([
     { label: "Climbing Momentum", value: "0", trend: "Take your first practice test to get started!" },
     { label: "Estimated SAT Score", value: "—", trend: "Complete practice tests to see your estimated score" },
@@ -27,6 +34,9 @@ function DashboardContent() {
   const [encouragementMessage, setEncouragementMessage] = useState(
     "Welcome aboard. Start with a Practice Test to set your baseline."
   );
+  const [dashboardTitle, setDashboardTitle] = useState("Welcome to Peak Prep.");
+  const [todayTasks, setTodayTasks] = useState<Array<{ task: StudyCalendarTask; completed: boolean }>>([]);
+  const [todayWeekLabel, setTodayWeekLabel] = useState<string | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<{
     subscriptionStatus: string | null;
     hasSubscription: boolean;
@@ -86,6 +96,78 @@ function DashboardContent() {
   }, [fetchSubscription, searchParams, syncAndFetchSubscription]);
 
   useEffect(() => {
+    try {
+      const existing = localStorage.getItem(DASHBOARD_FIRST_SEEN_KEY);
+      if (!existing) {
+        localStorage.setItem(DASHBOARD_FIRST_SEEN_KEY, new Date().toISOString());
+        setDashboardTitle("Welcome to Peak Prep.");
+      } else {
+        const firstSeen = new Date(existing);
+        const elapsedMs = Date.now() - firstSeen.getTime();
+        const oneDayMs = 24 * 60 * 60 * 1000;
+        setDashboardTitle(
+          elapsedMs >= oneDayMs ? "Your Climb Dashboard." : "Welcome to Peak Prep."
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load dashboard greeting state:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const rawPlan = localStorage.getItem(STUDY_PLAN_STORAGE_KEY);
+      if (!rawPlan) return;
+      const parsedPlan = JSON.parse(rawPlan) as PersonalizedPlan;
+      if (!parsedPlan?.calendarWeeks?.length) return;
+      const completedIds = new Set<string>(
+        JSON.parse(localStorage.getItem(STUDY_TASKS_STORAGE_KEY) || "[]") as string[]
+      );
+      const savedWeek = parseInt(localStorage.getItem(ACTIVE_WEEK_STORAGE_KEY) || "0", 10);
+      const fallbackWeek = Number.isNaN(savedWeek) ? 0 : Math.max(0, savedWeek);
+      const now = new Date();
+      const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      let resolvedWeek = parsedPlan.calendarWeeks[fallbackWeek];
+      let resolvedDay = resolvedWeek?.days.find((day) => {
+        const d = new Date(day.dateISO);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === todayDate;
+      });
+
+      if (!resolvedDay) {
+        for (const week of parsedPlan.calendarWeeks) {
+          const day = week.days.find((candidate) => {
+            const d = new Date(candidate.dateISO);
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === todayDate;
+          });
+          if (day) {
+            resolvedWeek = week;
+            resolvedDay = day;
+            break;
+          }
+        }
+      }
+
+      if (!resolvedDay || !resolvedWeek) {
+        setTodayTasks([]);
+        setTodayWeekLabel(null);
+        return;
+      }
+
+      setTodayWeekLabel(resolvedWeek.label);
+      setTodayTasks(
+        resolvedDay.tasks.map((task) => ({
+          task,
+          completed: completedIds.has(task.id),
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to load today's study tasks:", error);
+      setTodayTasks([]);
+      setTodayWeekLabel(null);
+    }
+  }, []);
+
+  useEffect(() => {
     const loadStats = async () => {
       try {
       const history = await getScoreHistory();
@@ -142,11 +224,23 @@ function DashboardContent() {
     loadStats();
   }, []);
 
+  const formatTaskType = (type: StudyCalendarTask["type"]) => {
+    if (type === "flashcards") return "Flashcards";
+    if (type === "practice") return "Practice Test";
+    if (type === "lesson") return "Lesson";
+    return "Review";
+  };
+
+  const launchTask = (task: StudyCalendarTask) => {
+    const params = task.launchTarget.params ? new URLSearchParams(task.launchTarget.params).toString() : "";
+    router.push(params ? `${task.launchTarget.path}?${params}` : task.launchTarget.path);
+  };
+
   return (
     <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full">
       <PageHeader
         eyebrow="Base Camp"
-        title="Welcome to Peak Prep."
+        title={dashboardTitle}
         subtitle="Your expedition headquarters. Plan your route, check your altitude, and prepare for the climb ahead."
       />
 
@@ -233,6 +327,63 @@ function DashboardContent() {
           </GlassPanel>
         ))}
       </div>
+
+      <GlassPanel className="mt-6">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Today's Study Tasks</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+              {todayWeekLabel ? `${todayWeekLabel} • from your study plan` : "Pulled from your active study plan"}
+            </p>
+          </div>
+          <Link
+            href="/study-plan"
+            className="text-xs font-semibold text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300"
+          >
+            Open Study Plan
+          </Link>
+        </div>
+        {todayTasks.length === 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+            No tasks found for today yet. Generate or update your study plan to see daily tasks here.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {todayTasks.map(({ task, completed }) => (
+              <div
+                key={task.id}
+                className={`rounded-xl border p-3 ${
+                  completed
+                    ? "border-emerald-200 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-900/25"
+                    : "border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] uppercase tracking-[0.18em] font-semibold text-sky-700 dark:text-sky-300">
+                      {formatTaskType(task.type)}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white mt-1 break-words">
+                      {task.skillFocus}
+                    </p>
+                  </div>
+                  {completed ? (
+                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Completed</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => launchTask(task)}
+                      className="h-8 px-3 rounded-full text-xs font-semibold bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white transition-colors shrink-0"
+                    >
+                      Start
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassPanel>
     </div>
   );
 }
@@ -243,7 +394,7 @@ export default function Dashboard() {
       <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full">
         <PageHeader
           eyebrow="Base Camp"
-          title="Welcome to Peak Prep."
+          title="Your Climb Dashboard."
           subtitle="Your expedition headquarters. Plan your route, check your altitude, and prepare for the climb ahead."
         />
         <div className="mt-10 text-center text-slate-600 dark:text-slate-400">

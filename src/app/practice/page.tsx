@@ -43,6 +43,21 @@ interface TestConfig {
 
 const TEST_RETRY_MESSAGE = "We couldn't generate your test right now. Please retry.";
 const BATCH_RETRY_MESSAGE = "We couldn't load the next questions. Please retry.";
+const PRACTICE_PROGRESS_KEY = "sat_practice_in_progress_v1";
+
+interface PracticeProgressSnapshot {
+  testType: SectionType;
+  config: TestConfig;
+  practiceSet: PracticeSet & { id?: string };
+  currentTestId: string | null;
+  currentQuestion: number;
+  selectedAnswer: OptionLetter | null;
+  showResults: boolean;
+  score: number;
+  satScore: { scaled: number; raw: number; maxRaw: number } | null;
+  userAnswers: Record<number, OptionLetter>;
+  targetQuestionCount: number;
+}
 
 const splitIntoBullets = (text: string): string[] => {
   if (!text) return [];
@@ -131,6 +146,7 @@ export default function PracticeTests() {
   const [targetQuestionCount, setTargetQuestionCount] = useState(5);
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
+  const [practiceHydrated, setPracticeHydrated] = useState(false);
   const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode =
@@ -140,6 +156,72 @@ export default function PracticeTests() {
         (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
       100
     : 0;
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PRACTICE_PROGRESS_KEY);
+      if (!saved) return;
+      const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
+      if (!parsed || !parsed.practiceSet || !parsed.testType) return;
+
+      setTestType(parsed.testType);
+      setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
+      setPracticeSet(parsed.practiceSet);
+      setCurrentTestId(parsed.currentTestId || null);
+      currentTestIdRef.current = parsed.currentTestId || null;
+      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+      setSelectedAnswer(parsed.selectedAnswer || null);
+      setShowResults(Boolean(parsed.showResults));
+      setScore(parsed.score || 0);
+      setSatScore(parsed.satScore || null);
+      setUserAnswers(parsed.userAnswers || {});
+      setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
+      setShowConfig(false);
+    } catch (restoreError) {
+      console.error("Failed to restore practice progress:", restoreError);
+    } finally {
+      setPracticeHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!practiceHydrated) return;
+    try {
+      if (!practiceSet || !testType) {
+        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        return;
+      }
+      const snapshot: PracticeProgressSnapshot = {
+        testType,
+        config,
+        practiceSet,
+        currentTestId,
+        currentQuestion,
+        selectedAnswer,
+        showResults,
+        score,
+        satScore,
+        userAnswers,
+        targetQuestionCount,
+      };
+      localStorage.setItem(PRACTICE_PROGRESS_KEY, JSON.stringify(snapshot));
+    } catch (saveError) {
+      console.error("Failed to persist practice progress:", saveError);
+    }
+  }, [
+    testType,
+    config,
+    practiceSet,
+    currentTestId,
+    currentQuestion,
+    selectedAnswer,
+    showResults,
+    score,
+    satScore,
+    userAnswers,
+    targetQuestionCount,
+    practiceHydrated,
+  ]);
 
   const fetchPracticeBatchWithRetry = async (
     payload: Record<string, unknown>,
@@ -440,6 +522,7 @@ export default function PracticeTests() {
       topic: "",
       difficulty: "Mixed",
     });
+    localStorage.removeItem(PRACTICE_PROGRESS_KEY);
   };
 
   const sectionCards = [
