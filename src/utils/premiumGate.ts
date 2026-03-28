@@ -33,6 +33,16 @@ function getMonthStart(): Date {
 }
 
 export async function checkPremiumGate(context: AccessContext): Promise<PremiumGateResult> {
+  // Dev-only QA bypass for local smoke tests. Never enable in production.
+  if (process.env.NODE_ENV !== "production" && process.env.BYPASS_PREMIUM_GATE === "true") {
+    return {
+      allowed: true,
+      hasSubscription: true,
+      usageCount: 0,
+      limit: FREE_TIER_LIMIT,
+    };
+  }
+
   if (hasActiveSubscription(context.user)) {
     return {
       allowed: true,

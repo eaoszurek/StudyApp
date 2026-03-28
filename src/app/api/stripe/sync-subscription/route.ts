@@ -96,7 +96,8 @@ export async function POST() {
           });
         }
       } catch (error: any) {
-        console.error("Error fetching subscriptions:", error);
+        const e = error as { code?: string; message?: string };
+        console.error("Error fetching subscriptions:", e?.code || "unknown_error", e?.message || "no_message");
       }
     }
 
@@ -165,7 +166,8 @@ export async function POST() {
           });
         }
       } catch (error) {
-        console.error("Error fetching customer:", error);
+        const e = error as { code?: string; message?: string };
+        console.error("Error fetching customer:", e?.code || "unknown_error", e?.message || "no_message");
       }
     }
 
@@ -176,7 +178,8 @@ export async function POST() {
       message: "No subscription found",
     });
   } catch (error: unknown) {
-    console.error("Error syncing subscription:", error);
+    const e = error as { code?: string; message?: string };
+    console.error("Error syncing subscription:", e?.code || "unknown_error", e?.message || "no_message");
     return NextResponse.json(
       { error: "Failed to sync subscription" },
       { status: 500 }

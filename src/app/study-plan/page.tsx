@@ -112,7 +112,13 @@ const inferEstimatedMinutes = (taskText: string, type: StudyTaskType) => {
   if (minutes) {
     const first = parseInt(minutes[1], 10);
     const second = minutes[2] ? parseInt(minutes[2], 10) : first;
-    return Math.round((first + second) / 2);
+    const parsed = Math.round((first + second) / 2);
+    // Guardrail: older plans often stamp everything as 15–20 min.
+    // Keep type-specific defaults when parsed duration is implausibly generic.
+    if (type === "practice" && parsed < 30) return 45;
+    if (type === "lesson" && parsed < 15) return 20;
+    if (type === "review" && parsed < 8) return 12;
+    return parsed;
   }
   if (type === "practice") return 45;
   if (type === "flashcards") return 15;

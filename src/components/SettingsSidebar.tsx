@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { downloadExport, handleFileImport } from "@/utils/dataExport";
-import { getCurrentUser, signOut } from "@/utils/auth";
 import { useRouter } from "next/navigation";
 import PrimaryButton from "./ui/PrimaryButton";
 import ConfirmationModal from "./ui/ConfirmationModal";
@@ -37,7 +36,7 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // Fetch user from API (new auth system) or fallback to localStorage (old system)
+  // Fetch user from API (server-auth only)
   useEffect(() => {
     const fetchUser = async () => {
       setLoadingUser(true);
@@ -54,17 +53,7 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
       } catch (error) {
         console.error("Failed to fetch user from API:", error);
       }
-      
-      // Fallback to localStorage (old auth system)
-      const localUser = getCurrentUser();
-      if (localUser) {
-        setUser({
-          id: localUser.id,
-          email: localUser.email,
-          name: localUser.name,
-          emailVerified: true,
-        });
-      }
+      setUser(null);
       setLoadingUser(false);
     };
     
@@ -290,14 +279,10 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
                     <PrimaryButton
                       onClick={async () => {
                         try {
-                          // Try new auth system logout
                           await fetch("/api/auth/logout", { method: "POST" });
                         } catch (error) {
                           console.error("Failed to logout via API:", error);
                         }
-                        
-                        // Fallback to localStorage logout
-                        signOut();
                         router.push("/login");
                         onClose();
                       }}

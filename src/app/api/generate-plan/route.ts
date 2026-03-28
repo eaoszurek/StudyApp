@@ -1,7 +1,36 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
+import { zodResponseFormat } from "openai/helpers/zod";
 import { prisma } from "@/lib/prisma";
+
+const TopicSchema = z.object({
+  name: z.string(),
+  skills: z.array(z.string()),
+  studyPlan: z.object({
+    timeEstimateMinutes: z.number(),
+    steps: z.array(z.string())
+  }),
+  milestones: z.array(z.string())
+});
+
+const SubcategorySchema = z.object({
+  name: z.string(),
+  overview: z.string(),
+  topics: z.array(TopicSchema)
+});
+
+const CategorySchema = z.object({
+  name: z.string(),
+  overview: z.string(),
+  subcategories: z.array(SubcategorySchema)
+});
+
+const PlanResponseSchema = z.object({
+  subjectName: z.string(),
+  description: z.string(),
+  categories: z.array(CategorySchema)
+});
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { handleApiError, validateApiKey, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
@@ -48,13 +77,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const cacheKey = `generate-plan:${JSON.stringify({ subject })}`;
+    const cacheKey = `generate-plan:v2-validated:${JSON.stringify({ subject })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
     const completion = cachedResponse
       ? null
       : await withRetry(
       () => getOpenAIClient().chat.completions.create({
         model: "gpt-4o-mini",
+        temperature: 0.4,
+        max_tokens: 3200,
         messages: [
           {
             role: "system",
@@ -115,6 +146,8 @@ RULES FOR CONTENT:
    - 2–4 milestones (things the student should achieve)
 6. Keep explanations short but high-quality.
 7. NEVER include extra text or explanation outside the JSON.
+8. Avoid repeating identical topic names across categories/subcategories.
+9. Keep study steps practical and SAT-style when the subject is SAT-related.
 
 Return ONLY valid JSON, no markdown, no code blocks, just the raw JSON object.`
           },
@@ -123,26 +156,14 @@ Return ONLY valid JSON, no markdown, no code blocks, just the raw JSON object.`
             content: `Generate a complete study plan for: ${subject}`
           }
         ],
-        response_format: { type: "json_object" }
+        response_format: zodResponseFormat(PlanResponseSchema, "study_plan")
       }),
-      2,
+      3,
       60000
     );
 
     const responseText = cachedResponse ? JSON.stringify(cachedResponse) : (completion?.choices[0].message?.content || "{}");
-    let planJSON;
-    
-    try {
-      planJSON = JSON.parse(responseText);
-    } catch (parseError) {
-      // If parsing fails, try to extract JSON from markdown code blocks
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        planJSON = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("Failed to parse JSON response");
-      }
-    }
+    const planJSON = JSON.parse(responseText);
 
     const cleanValue = (value: any): any => {
       if (typeof value === "string") {
@@ -160,6 +181,9 @@ Return ONLY valid JSON, no markdown, no code blocks, just the raw JSON object.`
 
     if (!planJSON?.subjectName || !planJSON?.description || !Array.isArray(planJSON?.categories)) {
       throw new Error("Invalid response format from model.");
+    }
+    if (planJSON.categories.length < 1) {
+      throw new Error("Invalid plan: no categories generated.");
     }
 
     const cleanedPlan = cleanValue(planJSON);

@@ -9,57 +9,47 @@ export default function QuizMockup() {
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* Background */}
-      <rect width="700" height="450" rx="16" fill="#1E293B" stroke="#3A3F47" strokeWidth="2" />
+      <rect width="700" height="450" rx="20" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth="1" />
       
       {/* Header Bar */}
-      <rect x="0" y="0" width="700" height="60" fill="#0F172A" />
+      <rect x="0" y="0" width="700" height="65" fill="white" stroke="#E2E8F0" strokeWidth="1" />
+      <text x="40" y="40" fill="#0F172A" fontSize="16" fontWeight="800">Daily Trek: Math</text>
       
-      {/* Progress Bar */}
-      <rect x="40" y="20" width="420" height="10" rx="5" fill="rgba(255,255,255,0.1)" />
-      <rect x="40" y="20" width="168" height="10" rx="5" fill="#4A90E2" />
-      <text x="480" y="30" fill="#94A3B8" fontSize="12" fontWeight="500">Question 3 / 5</text>
+      <rect x="580" y="22" width="80" height="24" rx="12" fill="#F0F9FF" stroke="#BAE6FD" strokeWidth="1" />
+      <text x="620" y="38" textAnchor="middle" fill="#0369A1" fontSize="11" fontWeight="700">6/12</text>
       
-      {/* Subject Badge */}
-      <rect x="600" y="15" width="60" height="20" rx="6" fill="rgba(74,144,226,0.1)" stroke="#4A90E2" strokeWidth="1" />
-      <text x="630" y="28" textAnchor="middle" fill="#4A90E2" fontSize="11" fontWeight="600">MATH</text>
+      {/* Question Card */}
+      <rect x="30" y="85" width="640" height="280" rx="20" fill="white" stroke="#E2E8F0" strokeWidth="0.5" />
       
-      {/* Question */}
-      <text x="40" y="100" fill="#F2F9FF" fontSize="20" fontWeight="600">
-        If 3x + 7 = 22, what is the value of x?
+      <text x="50" y="125" fill="#64748B" fontSize="12" fontWeight="700">QUESTION 6</text>
+      <text x="50" y="155" fill="#0F172A" fontSize="22" fontWeight="800">
+        If 4k + 7 = 31, what is the value of 8k - 2?
       </text>
       
-      {/* Skill Tags */}
-      <rect x="40" y="120" width="140" height="28" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <text x="110" y="140" textAnchor="middle" fill="#94A3B8" fontSize="11" fontWeight="500">Linear Equations</text>
-      
-      <rect x="200" y="120" width="120" height="28" rx="14" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <text x="260" y="140" textAnchor="middle" fill="#94A3B8" fontSize="11" fontWeight="500">Difficulty: Medium</text>
-      
       {/* Options */}
-      <rect x="40" y="170" width="600" height="50" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <circle cx="60" cy="195" r="8" fill="rgba(255,255,255,0.1)" />
-      <text x="80" y="200" fill="#E2E8F0" fontSize="14" fontWeight="500">A) x = 3</text>
+      <g transform="translate(50, 185)">
+        <rect x="0" y="0" width="600" height="46" rx="12" fill="white" stroke="#E2E8F0" strokeWidth="1" />
+        <circle cx="23" cy="23" r="9" fill="#F1F5F9" />
+        <text x="23" y="27" textAnchor="middle" fill="#64748B" fontSize="11" fontWeight="800">A</text>
+        <text x="45" y="27" fill="#475569" fontSize="14" fontWeight="600">42</text>
+        
+        <rect x="0" y="58" width="600" height="46" rx="12" fill="#F0F9FF" stroke="#0EA5E9" strokeWidth="1.5" />
+        <circle cx="23" cy="81" r="9" fill="#0EA5E9" />
+        <text x="23" y="85" textAnchor="middle" fill="white" fontSize="11" fontWeight="800">B</text>
+        <text x="45" y="85" fill="#0369A1" fontSize="14" fontWeight="700">46</text>
+        
+        <rect x="0" y="116" width="600" height="46" rx="12" fill="white" stroke="#E2E8F0" strokeWidth="1" />
+        <circle cx="23" cy="139" r="9" fill="#F1F5F9" />
+        <text x="23" y="143" textAnchor="middle" fill="#64748B" fontSize="11" fontWeight="800">C</text>
+        <text x="45" y="143" fill="#475569" fontSize="14" fontWeight="600">54</text>
+      </g>
       
-      <rect x="40" y="230" width="600" height="50" rx="12" fill="rgba(74,144,226,0.15)" stroke="#4A90E2" strokeWidth="2" />
-      <circle cx="60" cy="255" r="8" fill="#4A90E2" />
-      <text x="80" y="260" fill="#93C5FD" fontSize="14" fontWeight="600">B) x = 5</text>
-      <text x="550" y="260" textAnchor="end" fill="#4A90E2" fontSize="11" fontWeight="600">Selected</text>
+      {/* Explanation Peek */}
+      <rect x="30" y="380" width="640" height="40" rx="12" fill="#F0FDF4" stroke="#BBF7D0" strokeWidth="1" />
+      <text x="50" y="405" fill="#15803D" fontSize="12" fontWeight="800">✓ Correct! Quadratic foundations are climbing.</text>
       
-      <rect x="40" y="290" width="600" height="50" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <circle cx="60" cy="315" r="8" fill="rgba(255,255,255,0.1)" />
-      <text x="80" y="320" fill="#E2E8F0" fontSize="14" fontWeight="500">C) x = 7</text>
-      
-      <rect x="40" y="350" width="600" height="50" rx="12" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <circle cx="60" cy="375" r="8" fill="rgba(255,255,255,0.1)" />
-      <text x="80" y="380" fill="#E2E8F0" fontSize="14" fontWeight="500">D) x = 9</text>
-      
-      {/* Navigation Buttons */}
-      <rect x="40" y="410" width="100" height="30" rx="8" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
-      <text x="90" y="430" textAnchor="middle" fill="#94A3B8" fontSize="12" fontWeight="500">← Previous</text>
-      
-      <rect x="560" y="410" width="100" height="30" rx="8" fill="#4A90E2" />
-      <text x="610" y="430" textAnchor="middle" fill="#F2F9FF" fontSize="12" fontWeight="600">Next →</text>
-      
+      {/* Footer Nav */}
+      <rect x="0" y="400" width="700" height="50" fill="white" stroke="#E2E8F0" strokeWidth="1" opacity="0.5" />
     </svg>
   );
 }

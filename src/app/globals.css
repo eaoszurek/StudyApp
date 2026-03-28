@@ -133,9 +133,9 @@ body {
   min-height: 100vh;
   position: relative;
   background: 
-    radial-gradient(circle at 20% 20%, rgba(30, 85, 50, 0.03), transparent 45%),
-    radial-gradient(circle at 80% 0%, rgba(74, 144, 226, 0.04), transparent 40%),
-    linear-gradient(180deg, #f5f7fa 0%, #f9fafb 100%);
+    radial-gradient(circle at 20% 20%, rgba(30, 85, 50, 0.08), transparent 45%),
+    radial-gradient(circle at 80% 0%, rgba(74, 144, 226, 0.1), transparent 40%),
+    linear-gradient(180deg, #f0f4f8 0%, #f9fafb 100%);
   color: #0f172a;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-weight: 400;
@@ -483,9 +483,297 @@ html.dark .practice-difficulty-badge,
   color: #e5e7eb;
 }
 
+/* SAT-style practice readability pass */
+.sat-practice-shell {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.05);
+  border-radius: 12px;
+}
+
+html.dark .sat-practice-shell,
+.dark .sat-practice-shell {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.30);
+  box-shadow: 0 4px 16px rgba(2, 6, 23, 0.30);
+}
+
+/* Use app's default sans-serif — no more Times New Roman */
+.sat-passage,
+.sat-passage-text,
+.sat-question-text,
+.sat-option {
+  font-family: inherit;
+}
+
+.sat-passage-text {
+  line-height: 1.65;
+  font-size: 0.9375rem;
+}
+
+.sat-question-text {
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+.sat-option {
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  background: #ffffff;
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.sat-option-unselected:hover {
+  background: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.8);
+}
+
+.sat-option-selected {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+html.dark .sat-option,
+.dark .sat-option {
+  background: rgba(30, 41, 59, 0.70);
+  color: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.5);
+}
+
+html.dark .sat-option-unselected:hover,
+.dark .sat-option-unselected:hover {
+  background: rgba(51, 65, 85, 0.85);
+  border-color: rgba(148, 163, 184, 0.7);
+}
+
+html.dark .sat-option-selected,
+.dark .sat-option-selected {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.sat-option-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: 1.5px solid rgba(100, 116, 139, 0.6);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.sat-option-selected .sat-option-letter {
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+html.dark .sat-option-letter,
+.dark .sat-option-letter {
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+/* Linear progress bar */
+.sat-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+html.dark .sat-progress-track,
+.dark .sat-progress-track {
+  background: rgba(51, 65, 85, 0.8);
+}
+
+.sat-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+/* Inline calculator button */
+.sat-calc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(100, 116, 139, 0.4);
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sat-calc-btn:hover {
+  background: #f1f5f9;
+  border-color: rgba(100, 116, 139, 0.7);
+}
+
+html.dark .sat-calc-btn,
+.dark .sat-calc-btn {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(100, 116, 139, 0.4);
+  color: #94a3b8;
+}
+
+html.dark .sat-calc-btn:hover,
+.dark .sat-calc-btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+/* Subject badge colors */
+.sat-badge-math {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+html.dark .sat-badge-math,
+.dark .sat-badge-math {
+  background: rgba(29, 78, 216, 0.2);
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.sat-badge-english {
+  background: #fce7f3;
+  color: #9d174d;
+  border-color: #fbcfe8;
+}
+html.dark .sat-badge-english,
+.dark .sat-badge-english {
+  background: rgba(157, 23, 77, 0.2);
+  color: #f9a8d4;
+  border-color: rgba(244, 114, 182, 0.3);
+}
+
+/* Difficulty badge colors */
+.sat-badge-easy {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+html.dark .sat-badge-easy,
+.dark .sat-badge-easy {
+  background: rgba(21, 128, 61, 0.2);
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.sat-badge-medium {
+  background: #fef9c3;
+  color: #a16207;
+  border-color: #fde68a;
+}
+html.dark .sat-badge-medium,
+.dark .sat-badge-medium {
+  background: rgba(161, 98, 7, 0.2);
+  color: #fde047;
+  border-color: rgba(250, 204, 21, 0.3);
+}
+
+.sat-badge-hard {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+html.dark .sat-badge-hard,
+.dark .sat-badge-hard {
+  background: rgba(185, 28, 28, 0.2);
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+/* Nav button — solid dark "Next Question" style */
+.sat-btn-next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 28px;
+  border-radius: 8px;
+  background: #1e293b;
+  color: #ffffff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sat-btn-next:hover {
+  background: #0f172a;
+}
+
+.sat-btn-next:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+html.dark .sat-btn-next,
+.dark .sat-btn-next {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+html.dark .sat-btn-next:hover,
+.dark .sat-btn-next:hover {
+  background: #e2e8f0;
+}
+
+/* Nav button — outline "Previous" style */
+.sat-btn-prev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 28px;
+  border-radius: 8px;
+  background: transparent;
+  color: #475569;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  border: 1.5px solid rgba(100, 116, 139, 0.45);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sat-btn-prev:hover {
+  background: #f8fafc;
+  border-color: rgba(100, 116, 139, 0.7);
+}
+
+.sat-btn-prev:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+html.dark .sat-btn-prev,
+.dark .sat-btn-prev {
+  color: #94a3b8;
+  border-color: rgba(100, 116, 139, 0.4);
+}
+
+html.dark .sat-btn-prev:hover,
+.dark .sat-btn-prev:hover {
+  background: rgba(30, 41, 59, 0.5);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
 .text-gradient {
   background: none;
-  -webkit-background-clip: border-box;
+  -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: currentColor;
   color: #0f172a;
 }
@@ -493,26 +781,53 @@ html.dark .practice-difficulty-badge,
 html.dark .text-gradient,
 .dark .text-gradient {
   background: none;
-  -webkit-background-clip: border-box;
+  -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: currentColor;
   color: #e5e7eb;
 }
 
 .text-gradient-hero {
-  background: none;
-  -webkit-background-clip: border-box;
-  -webkit-text-fill-color: currentColor;
-  color: #0f172a;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #0f172a 0%, #1e5532 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  letter-spacing: -0.04em;
 }
 
 html.dark .text-gradient-hero,
 .dark .text-gradient-hero {
-  background: none;
-  -webkit-background-clip: border-box;
-  -webkit-text-fill-color: currentColor;
-  color: #f9fafb;
+  background: linear-gradient(135deg, #f8fafc 0%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.premium-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 10px 30px -10px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.premium-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 
+    0 30px 60px -15px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.premium-card-no-hover {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 
+    0 10px 30px -10px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* Premium Typography Utilities */
@@ -1020,32 +1335,17 @@ html.dark [data-app-ui="true"] .checkpoint-result-card {
 
 [data-app-ui="true"] .ai-config-option,
 [data-app-ui="true"] .ai-config-input {
-  border-width: 1px !important;
-  border-radius: 10px !important;
-  border-color: rgba(148, 163, 184, 0.22) !important;
-  box-shadow:
-    0 2px 0 rgba(15, 23, 42, 0.04),
-    0 3px 8px rgba(15, 23, 42, 0.04);
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-html.dark [data-app-ui="true"] .ai-config-option,
-html.dark [data-app-ui="true"] .ai-config-input {
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow:
-    0 2px 0 rgba(2, 6, 23, 0.3),
-    0 3px 8px rgba(2, 6, 23, 0.25);
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
 }
 
 [data-app-ui="true"] .ai-config-option:hover,
 [data-app-ui="true"] .ai-config-input:hover {
-  transform: translateY(-1px);
-  border-color: rgba(56, 189, 248, 0.4) !important;
+  border-color: rgba(56, 189, 248, 0.6) !important;
 }
 
 html.dark [data-app-ui="true"] .ai-config-option:hover,
 html.dark [data-app-ui="true"] .ai-config-input:hover {
-  border-color: rgba(56, 189, 248, 0.35) !important;
+  border-color: rgba(56, 189, 248, 0.5) !important;
 }
 
 [data-app-ui="true"] .input-field {

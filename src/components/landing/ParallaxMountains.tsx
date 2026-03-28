@@ -23,8 +23,8 @@ export default function ParallaxMountains() {
     >
       {/* Background Layer 1 - Far mountains */}
       <motion.div
-        style={{ y: layer1Y }}
-        className="absolute inset-0 opacity-30"
+        style={{ y: layer1Y, willChange: "transform" }}
+        className="absolute inset-0 opacity-40 transition-opacity duration-1000"
       >
         <svg
           viewBox="0 0 1440 800"
@@ -34,7 +34,7 @@ export default function ParallaxMountains() {
           <defs>
             <linearGradient id="mountain1" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#1E5532" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#0F172A" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="transparent" />
             </linearGradient>
           </defs>
           <path
@@ -46,8 +46,8 @@ export default function ParallaxMountains() {
 
       {/* Background Layer 2 - Middle mountains */}
       <motion.div
-        style={{ y: layer2Y }}
-        className="absolute inset-0 opacity-40"
+        style={{ y: layer2Y, willChange: "transform" }}
+        className="absolute inset-0 opacity-50 transition-opacity duration-1000"
       >
         <svg
           viewBox="0 0 1440 800"
@@ -57,7 +57,7 @@ export default function ParallaxMountains() {
           <defs>
             <linearGradient id="mountain2" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#3A3F47" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#1E5532" stopOpacity="0.2" />
+              <stop offset="100%" stopColor="transparent" />
             </linearGradient>
           </defs>
           <path
@@ -69,8 +69,8 @@ export default function ParallaxMountains() {
 
       {/* Background Layer 3 - Foreground mountains */}
       <motion.div
-        style={{ y: layer3Y }}
-        className="absolute inset-0 opacity-50"
+        style={{ y: layer3Y, willChange: "transform" }}
+        className="absolute inset-0 opacity-60 transition-opacity duration-1000"
       >
         <svg
           viewBox="0 0 1440 800"
@@ -80,7 +80,7 @@ export default function ParallaxMountains() {
           <defs>
             <linearGradient id="mountain3" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#4A90E2" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#3A3F47" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="transparent" />
             </linearGradient>
           </defs>
           <path
@@ -90,8 +90,8 @@ export default function ParallaxMountains() {
         </svg>
       </motion.div>
 
-      {/* Gradient Overlay */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#0F172A]" />
+      {/* Gradient Overlay - Softer bottom fade */}
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#F8FAFC]/50" />
     </div>
   );
 }

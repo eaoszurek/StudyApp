@@ -1,0 +1,5 @@
+LibsqlError: SQL_INPUT_ERROR: SQLite input error: table "User" already exists (at offset 28)
+    at mapHranaError (file:///C:/Users/oszur/study-app/node_modules/@libsql/client/lib-esm/hrana.js:279:16)
+    at file:///C:/Users/oszur/study-app/node_modules/@libsql/client/lib-esm/http.js:180:23
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async run (file:///C:/Users/oszur/study-app/run-turso-migrations.mjs:44:9)

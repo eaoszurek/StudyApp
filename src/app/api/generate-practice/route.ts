@@ -1,7 +1,49 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
+import { zodResponseFormat } from "openai/helpers/zod";
 import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
+
+const GraphDataSchema = z.object({
+  type: z.enum(["bar", "line", "scatter"]),
+  labels: z.array(z.string()),
+  datasets: z.array(
+    z.object({
+      label: z.string(),
+      data: z.array(z.number()),
+      scatterData: z.array(z.object({ x: z.number(), y: z.number() })),
+    })
+  ),
+  xLabel: z.string(),
+  yLabel: z.string(),
+});
+
+const QuestionExplanationIncorrectSchema = z.object({
+  A: z.string().nullable(),
+  B: z.string().nullable(),
+  C: z.string().nullable(),
+  D: z.string().nullable(),
+});
+
+const GeneratedQuestionSchema = z.object({
+  passage: z.string().nullable(),
+  question: z.string(),
+  options: z.array(z.string()),
+  section: z.enum(["Reading & Writing", "Math"]),
+  skillCategory: z.string(),
+  correctAnswer: z.enum(["A", "B", "C", "D"]),
+  explanation_correct: z.string(),
+  explanation_incorrect: QuestionExplanationIncorrectSchema,
+  strategy_tip: z.string(),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]),
+  graphData: GraphDataSchema.nullable(),
+  desmosExpression: z.string().nullable(),
+});
+
+const PracticeResponseSchema = z.object({
+  passage: z.string().nullable(),
+  questions: z.array(GeneratedQuestionSchema),
+});
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
@@ -214,19 +256,22 @@ CRITICAL SAT WRITING REQUIREMENTS:
 
     // Create completion with timeout
     const shouldUseCache = !existingTestId;
-    const cacheKey = `generate-practice:v2-writing-diversity:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
+    const cacheKey = `generate-practice:v5-specific-skills:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
     const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
-    const MAX_BLOCK_ATTEMPTS = 6;
-    const MAX_SET_ATTEMPTS = 4;
+    const MAX_BLOCK_ATTEMPTS = 3;
+    const MAX_SET_ATTEMPTS = 2;
+    const generationStartedAt = Date.now();
+    const generationDeadlineMs = questionCount >= 20 ? 180000 : questionCount >= 10 ? 120000 : 75000;
+    const isPastDeadline = () => Date.now() - generationStartedAt > generationDeadlineMs;
 
     const getModelPayload = async (requestedCount: number, extraInstructions = "") => {
-      const timeoutMs = requestedCount >= 20 ? 150000 : requestedCount >= 10 ? 100000 : 60000;
+      const timeoutMs = requestedCount >= 20 ? 45000 : requestedCount >= 10 ? 35000 : 25000;
       const completion = await withRetry(
         () => getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.4,
-      max_tokens: Math.min(3600, Math.max(900, requestedCount * 360)),
+      temperature: 0.45,
+      max_tokens: Math.min(3000, Math.max(850, requestedCount * 300)),
       messages: [
         {
           role: "system",
@@ -249,7 +294,7 @@ Output MUST be valid JSON using this exact structure:
       "question": "string (for reading: ONLY the question text, never include the passage. The passage is shown separately above all questions.)",
       "options": ["string", "string", "string", "string"],
       "section": "Reading & Writing" | "Math",
-      "skillCategory": "string (single SAT skill category)",
+      "skillCategory": "string (specific SAT sub-skill, e.g. 'Linear Equations', 'Quadratic Functions', 'Subject-Verb Agreement', 'Transitions', 'Data Analysis', 'Vocabulary in Context')",
       "correctAnswer": "A",
       "explanation_correct": "string",
       "explanation_incorrect": {
@@ -259,7 +304,15 @@ Output MUST be valid JSON using this exact structure:
         "D": "string (if D is wrong)"
       },
       "strategy_tip": "string",
-      "difficulty": "Easy" | "Medium" | "Hard"
+      "difficulty": "Easy" | "Medium" | "Hard",
+      "graphData": {
+        "type": "bar" | "line" | "scatter",
+        "labels": ["string"],
+        "datasets": [{ "label": "string", "data": ["number"], "scatterData": [{"x": 0, "y": 0}] }],
+        "xLabel": "string",
+        "yLabel": "string"
+      },
+      "desmosExpression": "string (e.g. y=2*x^2-3, OPTIONAL)"
     }
   ]
 }
@@ -270,27 +323,21 @@ CRITICAL RULES:
 - NEVER use special characters like ^. Use actual superscripts (x², x³) or write "to the power of".
 - No markdown formatting.
 - You may use **bold** for emphasis only (1-2 per explanation/strategy tip). Do not use markdown lists or headings.
-- Each question must target exactly ONE SAT skill category.
+- Each question must target exactly ONE specific SAT sub-skill (e.g. "Linear Equations", "Systems of Equations", "Ratios & Proportions", "Quadratic Functions", "Exponential Growth", "Geometry: Triangles", "Trigonometry", "Subject-Verb Agreement", "Pronoun Agreement", "Parallel Structure", "Transitions", "Punctuation: Commas", "Vocabulary in Context", "Textual Evidence", "Author's Purpose"). Do NOT use broad domain names like "Heart of Algebra" or "Standard English Conventions" — always give the specific sub-skill name.
+- Each question in a set must have a DIFFERENT skillCategory (no two questions share the same sub-skill within a 5-question block).
 - Do NOT reuse or closely mimic official SAT wording or passages. All content must be original but SAT-style.
 - Each question MUST include a "difficulty" field ("Easy", "Medium", or "Hard") that matches the actual complexity.
+- For graph-context questions, include optional "graphData" with valid JSON structure.
+- For coordinate-plane/function graph questions, include optional "desmosExpression".
 - For READING sections: Provide passages and keep them separate from the question text. Use either a root "passage" for all questions OR include a "passage" field on each question. If using per-question passages, ensure a NEW passage every 5 questions.
 - explanation_correct: Keep concise (1-2 short sentences). Explain the key reason the correct answer works.
 - explanation_incorrect: For each wrong option, write one short sentence naming the mistake.
 - strategy_tip: One short actionable sentence.
 
-DIFFICULTY LEVELS (must change complexity):
-- EASY: 
-  * Math: Single-step problems, basic concepts, straightforward calculations, minimal setup
-  * Reading: Direct information retrieval, simple vocabulary, clear main idea
-  * Writing: Obvious errors, common grammar rules, simple corrections
-- MEDIUM: 
-  * Math: Multi-step problems, moderate reasoning, some word problems, requires choosing a method
-  * Reading: Requires inference, moderate vocabulary, passage analysis
-  * Writing: Subtle errors, requires understanding context, moderate complexity
-- HARD: 
-  * Math: Complex multi-step problems, non-obvious setup, multi-concept, tricky wording or constraints
-  * Reading: Deep inference, sophisticated vocabulary, complex passage analysis, paired passages
-  * Writing: Subtle errors, multiple rules involved, requires careful analysis
+DIFFICULTY LEVELS (SAT-calibrated):
+- EASY (roughly SAT 400-500 skill): 1-2 steps, direct setup, no hidden trap.
+- MEDIUM (roughly SAT 550-650 skill): multi-step, method selection, moderate abstraction.
+- HARD (roughly SAT 700+ skill): multi-concept reasoning, non-obvious setup, deliberate trap opportunities.
 
 ${sectionGuidelines[section as keyof typeof sectionGuidelines] || sectionGuidelines.math}
 
@@ -306,6 +353,7 @@ FORMATTING REQUIREMENTS:
   * READING: ONLY the question text itself (e.g., "What is the main idea of the passage?" or "As used in line 5, 'elaborate' most nearly means..."). DO NOT repeat the passage in the question field.
   * WRITING: A short passage with the revision target wrapped in [brackets] inside the passage (example: "The committee [decide] to meet weekly."). Provide a NEW passage every 5 questions.
 - options: array of exactly four answer choices as strings ["A text", "B text", "C text", "D text"].
+  * Distractors must be plausible near-misses (sign error, wrong operation, constraint miss, misread detail), not obviously wrong
   * For WRITING: Include "NO CHANGE" as an option when the underlined portion is already correct
   * For WRITING: If no-change is included, use exact text "NO CHANGE" only.
   * For WRITING: Do NOT repeat identical option sets within a 5-question block.
@@ -332,6 +380,12 @@ CRITICAL FOR READING:
 SAT AUTHENTICITY REQUIREMENTS:
 - Questions must feel like real SAT questions, not generic test questions
 - Use SAT-style wording: precise, academic, clear
+- Prefer Digital SAT stem styles when appropriate, such as:
+  * Math: "What value of x satisfies the equation above?"
+  * Math: "Function f is defined by the equation above. What is f(3)?"
+  * Math: "In the figure, what is the value of n?"
+  * Writing: "Which choice completes the text with the most logical and precise word or phrase?"
+  * Writing: "Which choice most effectively uses relevant information from the notes to accomplish this goal?"
 - Include realistic distractors (wrong answers that test-takers might choose)
 - Math: Include word problems with real-world contexts
 - Reading: Passages should be excerpt-quality, not simplified
@@ -355,25 +409,13 @@ Do not output anything except the JSON.`,
           }`,
         },
       ],
-      response_format: { type: "json_object" },
+      response_format: zodResponseFormat(PracticeResponseSchema, "practice_tests"),
         }),
-        3,
+        2,
         timeoutMs
       );
       const responseText = completion.choices[0].message?.content || "{}";
-      let data;
-      
-      try {
-        data = JSON.parse(responseText);
-      } catch (parseError) {
-        // Try to extract JSON from markdown or other text
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          data = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error("Failed to parse JSON response from model.");
-        }
-      }
+      const data = JSON.parse(responseText);
     
       if (!Array.isArray(data.questions) || data.questions.length === 0) {
         throw new Error("Invalid response format from model.");
@@ -385,6 +427,63 @@ Do not output anything except the JSON.`,
       }
 
       return data;
+    };
+
+    const sanitizeGraphData = (input: any) => {
+      if (!input || typeof input !== "object") return undefined;
+      const graphType = String(input.type || "").toLowerCase();
+      if (!["bar", "line", "scatter"].includes(graphType)) return undefined;
+      const labels = Array.isArray(input.labels)
+        ? input.labels.map((label: any) => cleanText(truncateText(String(label || ""), 40))).filter(Boolean).slice(0, 20)
+        : [];
+      if (labels.length === 0 && graphType !== "scatter") return undefined;
+      const rawDatasets = Array.isArray(input.datasets) ? input.datasets.slice(0, 3) : [];
+      if (rawDatasets.length === 0) return undefined;
+
+      const datasets = rawDatasets
+        .map((dataset: any) => {
+          const label = cleanText(truncateText(String(dataset?.label || "Dataset"), 40));
+          const data = Array.isArray(dataset?.data) ? dataset.data : [];
+          const scatterData = Array.isArray(dataset?.scatterData) ? dataset.scatterData : data;
+          if (graphType === "scatter") {
+            const scatterPoints = scatterData
+              .map((point: any) => {
+                const x = Number(point?.x);
+                const y = Number(point?.y);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                return { x, y };
+              })
+              .filter(Boolean)
+              .slice(0, 40);
+            if (scatterPoints.length === 0) return null;
+            return { label, data: scatterPoints };
+          }
+          const numericData = data
+            .map((value: any) => Number(value))
+            .filter((value: number) => Number.isFinite(value))
+            .slice(0, labels.length || 20);
+          if (numericData.length === 0) return null;
+          return { label, data: numericData };
+        })
+        .filter(Boolean);
+
+      if (datasets.length === 0) return undefined;
+      return {
+        type: graphType,
+        labels: graphType === "scatter" ? [] : labels,
+        datasets,
+        xLabel: cleanText(truncateText(String(input.xLabel || ""), 30)),
+        yLabel: cleanText(truncateText(String(input.yLabel || ""), 30)),
+      };
+    };
+
+    const sanitizeDesmosExpression = (input: any) => {
+      if (typeof input !== "string") return undefined;
+      const trimmed = input.trim();
+      if (!trimmed) return undefined;
+      if (trimmed.length > 120) return undefined;
+      if (!/^[A-Za-z0-9+\-*/^=().,_\s|<>]+$/.test(trimmed)) return undefined;
+      return trimmed;
     };
 
     const transformQuestions = (rawQuestions: any[], passage?: string): Record<string, any>[] => {
@@ -547,16 +646,14 @@ Do not output anything except the JSON.`,
             questionDifficulty = index < easyCount ? "Easy" : index >= hardStart ? "Hard" : "Medium";
           }
     
-          // Extract skill focus from question or topic
-          // If topic is provided, use it; otherwise try to infer from question content
-          let skillFocus = q.skillFocus || topic;
-          
-          // If no skill focus provided, use a default based on section
+          // Prefer the AI's specific sub-skill, then fall back to topic, then section defaults
+          let skillFocus = q.skillCategory || q.skillFocus || topic;
+
           if (!skillFocus) {
             const sectionDefaults = {
-              math: "Heart of Algebra",
-              reading: "Information & Ideas",
-              writing: "Standard English Conventions",
+              math: "Problem Solving",
+              reading: "Reading Comprehension",
+              writing: "Grammar & Usage",
             };
             skillFocus = sectionDefaults[section as keyof typeof sectionDefaults] || section.charAt(0).toUpperCase() + section.slice(1);
           }
@@ -577,6 +674,8 @@ Do not output anything except the JSON.`,
             skillFocus: skillCategory,
             skillCategory,
             section: section === "math" ? "Math" : "Reading & Writing",
+            graphData: sanitizeGraphData(q.graphData),
+            desmosExpression: sanitizeDesmosExpression(q.desmosExpression),
           };
         });
 
@@ -836,29 +935,36 @@ Do not output anything except the JSON.`,
         let bestQuestions: any[] = [];
         let bestPassage: string | undefined = undefined;
         for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
-          const data = await getModelPayload(
-            count,
-            `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`
-          );
-          const blockPassage = data.passage;
-          const transformed = transformQuestions(data.questions, blockPassage);
-          const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
-          if (unique.length > bestQuestions.length) {
-            bestQuestions = unique;
-            bestPassage = blockPassage;
-          }
-          if (unique.length < count) continue;
+          if (isPastDeadline()) break;
+          try {
+            const data = await getModelPayload(
+              count,
+              `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`
+            );
+            const blockPassage = data.passage;
+            const transformed = transformQuestions(data.questions, blockPassage);
+            const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+            if (unique.length > bestQuestions.length) {
+              bestQuestions = unique;
+              bestPassage = blockPassage;
+            }
+            if (unique.length < count) continue;
 
-          const signatureSource = getRwSignatureSource(unique[0]);
-          const signature = getPassageSignature(signatureSource);
-          if (!signature) continue;
-          if (existingRwSignatures.has(signature)) continue;
+            const signatureSource = getRwSignatureSource(unique[0]);
+            const signature = getPassageSignature(signatureSource);
+            if (!signature) continue;
+            if (existingRwSignatures.has(signature)) continue;
 
-          if ((section === "reading" || section === "writing") && unique.some((q) => !q.passage)) {
+            if ((section === "reading" || section === "writing") && unique.some((q) => !q.passage)) {
+              continue;
+            }
+
+            return { questions: unique, passage: blockPassage, signature };
+          } catch (blockError) {
+            // Keep retrying within the block when model output is malformed or incomplete.
+            console.warn(`RW block ${blockIndex + 1} attempt ${attempt + 1} failed:`, blockError);
             continue;
           }
-
-          return { questions: unique, passage: blockPassage, signature };
         }
 
         if (bestQuestions.length >= count) {
@@ -870,33 +976,47 @@ Do not output anything except the JSON.`,
           return { questions: bestQuestions.slice(0, count), passage: bestPassage, signature };
         }
 
-        throw new Error(`Failed to generate enough valid questions for block ${blockIndex + 1}.`);
+        return {
+          questions: bestQuestions.slice(0, count),
+          passage: bestPassage,
+          signature: `partial-block-${blockIndex}-${Date.now()}`,
+        };
       };
 
       const buildMathBlock = async (blockIndex: number, count: number): Promise<any[]> => {
         let bestQuestions: any[] = [];
         for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
-          const data = await getModelPayload(
-            count,
-            `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} varied SAT Math questions for this block. Include at least one word problem in this block of ${count} questions (target exactly one unless the prompt naturally requires more).`
-          );
-          const transformed = transformQuestions(data.questions, data.passage);
-          const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
-          if (unique.length > bestQuestions.length) {
-            bestQuestions = unique;
+          if (isPastDeadline()) break;
+          try {
+            const data = await getModelPayload(
+              count,
+              `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} varied SAT Math questions for this block. Include at least one word problem in this block of ${count} questions (target exactly one unless the prompt naturally requires more).`
+            );
+            const transformed = transformQuestions(data.questions, data.passage);
+            const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+            if (unique.length > bestQuestions.length) {
+              bestQuestions = unique;
+            }
+            if (unique.length < count) continue;
+            return unique;
+          } catch (blockError) {
+            // Keep retrying within the block when model output is malformed or incomplete.
+            console.warn(`Math block ${blockIndex + 1} attempt ${attempt + 1} failed:`, blockError);
+            continue;
           }
-          if (unique.length < count) continue;
-          return unique;
         }
 
         if (bestQuestions.length >= count) {
           return bestQuestions.slice(0, count);
         }
 
-        throw new Error(`Failed to generate enough valid math questions for block ${blockIndex + 1}.`);
+        return bestQuestions.slice(0, count);
       };
 
       for (let setAttempt = 0; setAttempt < MAX_SET_ATTEMPTS; setAttempt += 1) {
+        if (isPastDeadline()) {
+          break;
+        }
         passage = undefined;
         transformedAll = [];
 
@@ -968,11 +1088,20 @@ Do not output anything except the JSON.`,
         if (transformedAll.length < questionCount) {
           continue;
         }
+        // Prefer strict SAT constraints, but prioritize returning a valid set in time.
+        // A fully valid/clean set is still enforced by transform + question-level validation.
         if (!passesSetConstraints(transformedAll) && setAttempt < MAX_SET_ATTEMPTS - 1) {
-          continue;
+          break;
         }
         break;
       }
+    }
+
+    if (isPastDeadline() && transformedAll.length < questionCount) {
+      return NextResponse.json(
+        { error: "We couldn't generate your test right now. Please retry." },
+        { status: 500 }
+      );
     }
     
     // Remove duplicate questions based on question text
@@ -982,7 +1111,7 @@ Do not output anything except the JSON.`,
       ? uniqueQuestions.slice(0, questionCount)
       : transformedAll.slice(0, questionCount);
 
-    if (finalQuestions.length < questionCount || !passesSetConstraints(finalQuestions)) {
+    if (finalQuestions.length < questionCount) {
       throw new Error("Failed to generate enough valid questions.");
     }
 

@@ -9,7 +9,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/ui/Logo";
 import FeatureIcon from "@/components/ui/FeatureIcon";
-import { validateEmail } from "@/utils/auth";
+
+const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 export default function Login() {
   const router = useRouter();

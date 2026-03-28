@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
-import { cleanText, truncateText, ensureTaskDuration, ensureBoldEmphasis } from "@/utils/aiValidation";
+import { cleanText, truncateText, ensureBoldEmphasis } from "@/utils/aiValidation";
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
@@ -144,6 +144,13 @@ RULES (Tutor-like, encouraging approach):
 - WeeklyPlan: 4-8 weeks depending on timeline. Each week has a main focus (1 short phrase) and 4-6 specific, actionable tasks. Make tasks feel achievable and explain their purpose briefly.
 - DailyPlan: Create realistic daily tasks based on time available. Include 7 days (Monday-Sunday) with 1-3 tasks per day. Include lighter days and occasional single longer-task days where appropriate.
 - Each task must start with "Reading & Writing:" or "Math:" so it is easy to scan.
+- Include a realistic duration for every task and vary duration by task type:
+  * Flashcards: 8-15 min
+  * Micro-Lessons: 15-25 min
+  * Review/Progress check: 10-20 min
+  * Practice tests/checkpoints: 35-60 min
+- Do not assign the same duration range to every task.
+- Use workload preference, confidence level, and hours per day to tune intensity and duration.
 - PracticeTests: Schedule full-length tests (every 1-2 weeks). List as strings like "Week 2: Full-length practice test", "Week 4: Full-length practice test". Explain why these checkpoints matter.
 - Strategies: Give encouraging, practical improvement strategies for weak areas (3-5 strategies). Frame them positively (e.g., "Focus on..." rather than "You're weak at..."). Make them specific and actionable.
 - Be concise, structured, and encouraging - never use long paragraphs.
@@ -200,7 +207,51 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
         lower.includes("study plan") ||
         lower.includes("progress");
       if (hasFeature) return task;
-      return `15–20 min: Micro-Lessons on ${actualWeakestSection || "priority SAT skills"}`;
+      return `Micro-Lessons on ${actualWeakestSection || "priority SAT skills"}`;
+    };
+
+    const hasExplicitDuration = (task: string) =>
+      /\b\d{1,2}(?:\s*[-–to]+\s*\d{1,2})?\s*(?:min|mins|minutes)\b/i.test(task);
+
+    const taskDurationRange = (task: string) => {
+      const lower = task.toLowerCase();
+      const type: "practice" | "flashcards" | "lesson" | "review" =
+        /practice test|full-length|checkpoint|timed set|timed practice/i.test(lower)
+          ? "practice"
+          : /flashcard/i.test(lower)
+            ? "flashcards"
+            : /micro-lesson|lesson/i.test(lower)
+              ? "lesson"
+              : "review";
+
+      const baseRanges = {
+        flashcards: [8, 15],
+        lesson: [15, 25],
+        review: [10, 20],
+        practice: [35, 55],
+      } as const;
+      const [baseMin, baseMax] = baseRanges[type];
+
+      const hours = (hoursPerDay || "").toLowerCase();
+      const workload = (workloadPreference || "").toLowerCase();
+      const confidence = (confidenceLevel || "").toLowerCase();
+
+      let delta = 0;
+      if (hours.includes("30 min")) delta -= 4;
+      if (hours.includes("3+")) delta += 6;
+      if (workload.includes("lighter")) delta -= 3;
+      if (workload.includes("weekend push")) delta += 3;
+      if (confidence.includes("foundation")) delta -= 2;
+      if (confidence.includes("harder drills")) delta += 2;
+
+      const min = Math.max(type === "practice" ? 30 : 8, baseMin + delta);
+      const max = Math.max(min + 3, baseMax + delta);
+      return `${min}–${max} min`;
+    };
+
+    const ensureTaskDurationByContext = (task: string): string => {
+      if (hasExplicitDuration(task)) return task;
+      return `${taskDurationRange(task)}: ${task}`;
     };
 
     const getTaskCap = (hours?: string, planType: "daily" | "weekly" = "daily") => {
@@ -238,7 +289,7 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
           (week.tasks || []).map((task: string) =>
             ensureBoldEmphasis(
               addTaskSectionPrefix(
-                ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(task, 200))))
+                ensureTaskDurationByContext(enforceFeatureTask(cleanText(truncateText(task, 200))))
               )
             )
           ),
@@ -251,7 +302,7 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
           (day.tasks || []).map((task: string) =>
             ensureBoldEmphasis(
               addTaskSectionPrefix(
-                ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(task, 200))))
+                ensureTaskDurationByContext(enforceFeatureTask(cleanText(truncateText(task, 200))))
               )
             )
           ),
@@ -259,7 +310,7 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
         ),
       })),
       practiceTests: (planJSON.practiceTests || []).map((test: string) =>
-        ensureBoldEmphasis(ensureTaskDuration(enforceFeatureTask(cleanText(truncateText(test, 150)))))
+        ensureBoldEmphasis(ensureTaskDurationByContext(enforceFeatureTask(cleanText(truncateText(test, 150)))))
       ),
       strategies: (planJSON.strategies || []).map((strategy: string) =>
         ensureBoldEmphasis(cleanText(truncateText(strategy, 200)))

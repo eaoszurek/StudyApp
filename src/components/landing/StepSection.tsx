@@ -23,7 +23,7 @@ const steps = [
     title: "Study smart",
     description: "Get focused practice, flashcards, and explanations built for short sessions.",
     icon: "study-plan" as FeatureIconName,
-    mockup: <RouteMapMockup />,
+    mockup: <QuizMockup />,
     color: "from-green-500/20 to-blue-500/20",
     highlights: ["Short daily sessions", "Skill-focused practice", "Coach-like explanations"],
     accentColor: "green",
@@ -33,7 +33,7 @@ const steps = [
     title: "See progress",
     description: "Track your climb and keep momentum with quick wins and clear feedback.",
     icon: "practice" as FeatureIconName,
-    mockup: <QuizMockup />,
+    mockup: <RouteMapMockup />,
     color: "from-blue-500/20 to-purple-500/20",
     highlights: ["Progress snapshots", "Confidence boosts", "Next-step guidance"],
     accentColor: "blue",
@@ -89,81 +89,84 @@ export default function StepSection() {
                 className="relative"
               >
                 {/* Main Container Card */}
-                <div className={`relative premium-card pricing-card-no-hover p-8 md:p-10 border-2 ${accentClass} overflow-visible max-w-4xl mx-auto`}>
+                <div className="relative group max-w-4xl mx-auto">
+                  {/* Subtle Glow behind the card */}
+                  <div className={`absolute -inset-4 bg-gradient-to-r ${step.color} rounded-[2.5rem] blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -z-10`} />
                   
-                  <div className={`flex flex-col ${
-                    idx % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse"
-                  } gap-10 lg:gap-12 items-center relative z-10`}>
-                    {/* Content */}
-                    <div className="flex-1 space-y-5">
-                      {/* Step Header */}
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="text-slate-600"><FeatureIcon name={step.icon} size={36} /></div>
-                        <div className="flex flex-col">
-                          <div className="text-3xl font-bold text-slate-600">
-                            {step.number}
+                  <div className="relative bg-white/70 backdrop-blur-md border border-slate-200/60 rounded-[2rem] p-8 md:p-10 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.05)] overflow-visible">
+                    
+                    <div className={`flex flex-col ${
+                      idx % 2 === 0 ? "lg:flex-row" : "lg:flex-row-reverse"
+                    } gap-12 lg:gap-16 items-center relative z-10`}>
+                      {/* Content */}
+                      <div className="flex-1 space-y-6">
+                        {/* Step Header */}
+                        <div className="flex items-center gap-4 mb-2">
+                          <div className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-50 border border-slate-100 text-slate-500 shadow-sm">
+                            <FeatureIcon name={step.icon} size={28} />
                           </div>
-                          <div className={`h-1 w-10 mt-1 ${
-                            step.accentColor === "sky" ? "bg-sky-500" :
-                            step.accentColor === "green" ? "bg-green-500" :
-                            "bg-blue-500"
-                          } rounded-full`} />
+                          <div className="flex flex-col">
+                            <span className="text-3xl font-black text-slate-200 leading-none">
+                              {step.number}
+                            </span>
+                            <div className={`h-1.5 w-8 mt-1.5 ${
+                              step.accentColor === "sky" ? "bg-sky-500" :
+                              step.accentColor === "green" ? "bg-green-500" :
+                              "bg-blue-500"
+                            } rounded-full`} />
+                          </div>
+                        </div>
+                        
+                        <h3 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
+                          {step.title}
+                        </h3>
+                        
+                        <p className="text-base md:text-lg text-slate-600 leading-relaxed font-medium">
+                          {step.description}
+                        </p>
+
+                        {/* Feature Highlights */}
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {step.highlights.map((highlight, highlightIdx) => (
+                            <motion.div
+                              key={highlightIdx}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              whileInView={{ opacity: 1, scale: 1 }}
+                              viewport={{ once: true }}
+                              transition={{ duration: 0.4, delay: idx * 0.1 + highlightIdx * 0.05 }}
+                              className="px-4 py-2 rounded-full bg-slate-50 border border-slate-100 text-slate-700 text-xs font-bold shadow-sm"
+                            >
+                              {highlight}
+                            </motion.div>
+                          ))}
                         </div>
                       </div>
-                      
-                      <h3 className="text-2xl md:text-3xl font-bold text-slate-900">
-                        {step.title}
-                      </h3>
-                      
-                      <p className="text-sm md:text-base text-slate-600 leading-relaxed max-w-md">
-                        {step.description}
-                      </p>
 
-                      {/* Feature Highlights */}
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        {step.highlights.map((highlight, highlightIdx) => (
-                          <motion.div
-                            key={highlightIdx}
-                            initial={{ opacity: 0 }}
-                            whileInView={{ opacity: 1 }}
-                            viewport={{ once: true }}
-                            transition={{ duration: 0.5, delay: idx * 0.2 + highlightIdx * 0.1 }}
-                            className={`px-3 py-1.5 rounded border ${highlightClass} backdrop-blur-sm text-xs font-medium`}
-                          >
-                            {highlight}
-                          </motion.div>
-                        ))}
-                      </div>
+                      {/* Mockup Visual */}
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        viewport={{ once: true }}
+                        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                        className="flex-1 relative w-full group/mockup"
+                      >
+                        <div className="relative">
+                          {/* Inner Glow around mockup */}
+                          <div className={`absolute -inset-10 bg-gradient-to-tr ${step.color} rounded-full blur-[60px] opacity-40 group-hover/mockup:opacity-60 transition-opacity duration-1000 -z-10`} />
+                          
+                          <div className="relative bg-white p-2 sm:p-3 rounded-2xl shadow-[0_20px_50px_-15px_rgba(0,0,0,0.1)] border border-slate-100/80">
+                            <div className="w-full relative overflow-hidden rounded-xl bg-slate-50">
+                              {/* Mockup */}
+                              <div className="relative z-10 transition-transform duration-700 group-hover/mockup:scale-105">
+                                {step.mockup}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
                     </div>
 
-                    {/* Mockup Visual */}
-                    <motion.div
-                      initial={{ opacity: 0, x: idx % 2 === 0 ? -30 : 30 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.7, ease: "easeOut", delay: idx * 0.15 }}
-                      className="flex-1 relative w-full max-w-sm overflow-hidden"
-                    >
-                      {/* Floating Card Effect */}
-                      <div className="relative">
-                        {/* Card with Clear Border */}
-                        <div className={`relative premium-card pricing-card-no-hover p-3 border-2 ${
-                          step.accentColor === "sky" ? "border-sky-500/40" :
-                          step.accentColor === "green" ? "border-green-500/40" :
-                          "border-blue-500/40"
-                        } shadow-2xl`}>
-                          <div className="w-full h-full min-h-[200px] relative">
-                            {/* Mockup */}
-                            <div className="relative z-10 scale-[0.82] sm:scale-90 md:scale-95 origin-top">
-                              {step.mockup}
-                            </div>
-                            
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
                   </div>
-
                 </div>
               </motion.div>
             );

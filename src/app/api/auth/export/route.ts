@@ -60,6 +60,8 @@ export async function GET() {
       headers: {
         "Content-Type": "application/json",
         "Content-Disposition": `attachment; filename="peakprep-data-export-${new Date().toISOString().split("T")[0]}.json"`,
+        "Cache-Control": "no-store, no-cache, must-revalidate, private",
+        Pragma: "no-cache",
       },
     });
   } catch (error: unknown) {

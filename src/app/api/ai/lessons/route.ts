@@ -1,7 +1,31 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
+import { zodResponseFormat } from "openai/helpers/zod";
 import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
+
+const LessonExplanationIncorrectSchema = z.object({
+  B: z.string().nullable(),
+  C: z.string().nullable(),
+  D: z.string().nullable()
+});
+
+const LessonPracticeQuestionSchema = z.object({
+  question: z.string(),
+  options: z.array(z.string()),
+  correctAnswer: z.enum(["A", "B", "C", "D"]),
+  explanation: z.string(),
+  explanation_incorrect: LessonExplanationIncorrectSchema
+});
+
+const LessonResponseSchema = z.object({
+  title: z.string(),
+  goal: z.string(),
+  explanation: z.array(z.string()),
+  example: z.string(),
+  practice: z.array(LessonPracticeQuestionSchema),
+  relatedFlashcards: z.array(z.string())
+});
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
@@ -54,17 +78,19 @@ export async function POST(req: Request) {
     }
 
     // Create completion with timeout
-    const cacheKey = `ai-lessons:${JSON.stringify({ topic, difficulty: defaultDifficulty })}`;
+    const cacheKey = `ai-lessons:v2-strict-sat:${JSON.stringify({ topic, difficulty: defaultDifficulty })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
-    const completion = cachedResponse
-      ? null
-      : await withRetry(
-      () => getOpenAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert SAT tutor creating micro-lessons to help students master SAT concepts. Your teaching style should be clear, encouraging, and step-by-step - like a personal tutor explaining concepts. Break down complex topics into digestible pieces, use examples that illustrate the concept clearly, and help students understand the "why" behind the rules, not just the "what". 
+    const MAX_MODEL_ATTEMPTS = 3;
+    const getModelPayload = async (extraInstruction = "") => {
+      const completion = await withRetry(
+        () => getOpenAIClient().chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0.4,
+          max_tokens: 2600,
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert SAT tutor creating micro-lessons to help students master SAT concepts. Your teaching style should be clear, encouraging, and step-by-step - like a personal tutor explaining concepts. Break down complex topics into digestible pieces, use examples that illustrate the concept clearly, and help students understand the "why" behind the rules, not just the "what". 
 
 You MUST output valid JSON only. Do not use markdown lists or headings. You may use **bold** for emphasis only.
 
@@ -101,6 +127,7 @@ RULES (Tutor-like approach):
 - Practice question text should be clean and concise - don't repeat the example or explanation in the question.
 - Each practice question MUST include an "explanation" field that explains why the correct answer is right (2-4 sentences, tutor-like).
 - Each practice question MUST include an "explanation_incorrect" object with explanations for each wrong answer (B, C, D) explaining why students might choose it and what misconception leads to that choice.
+- Keep all answer choices distinct and plausible; no duplicate options.
 - Never output anything other than the JSON object.
 - Never include special characters like ^.
 - Use **bold** sparingly (1-2 per response section) to emphasize key terms or rules.
@@ -121,31 +148,39 @@ DIFFICULTY LEVELS:
 - Hard: Advanced concepts, complex reasoning required
 
 Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
-        },
-        {
-          role: "user",
-          content: `Generate a SAT micro-lesson about: ${topic}. Difficulty: ${defaultDifficulty}.`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      }),
-      2,
-      60000
-    );
+            },
+            {
+              role: "user",
+              content: `Generate a SAT micro-lesson about: ${topic}. Difficulty: ${defaultDifficulty}.${extraInstruction ? ` ${extraInstruction}` : ""}`,
+            },
+          ],
+          response_format: zodResponseFormat(LessonResponseSchema, "micro_lesson"),
+        }),
+        3,
+        60000
+      );
 
-    const responseText = cachedResponse ? JSON.stringify(cachedResponse) : (completion?.choices[0].message?.content || "{}");
-    let data;
-    
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      // Try to extract JSON from markdown or other text
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        data = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("Failed to parse JSON response from model.");
+      const responseText = completion?.choices[0].message?.content || "{}";
+      const data = JSON.parse(responseText);
+      return data;
+    };
+
+    let data: any = cachedResponse || null;
+    if (!data) {
+      for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt += 1) {
+        const candidate = await getModelPayload(
+          attempt === 0
+            ? ""
+            : `Retry attempt ${attempt + 1}: ensure all practice options are unique and SAT-realistic, and keep question stems varied.`
+        );
+        if (candidate?.title && candidate?.goal && Array.isArray(candidate?.explanation)) {
+          data = candidate;
+          break;
+        }
       }
+    }
+    if (!data) {
+      throw new Error("Failed to generate lesson content. Please retry.");
     }
 
     // Validate the response structure
@@ -192,6 +227,9 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
           // Clean question and options
           const questionText = formatEquationLineBreaks(cleanMathNotation(cleanText(truncateText(q.question || "", 600))));
           const cleanedOptions = optionsArray.map(opt => cleanMathNotation(cleanText(truncateText(opt, 250))));
+          if (new Set(cleanedOptions.map((opt) => opt.toLowerCase().trim())).size < 4) {
+            return null;
+          }
           
           // Ensure correctAnswer is A, B, C, or D
           let correctAnswer = q.correctAnswer;
@@ -240,6 +278,9 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
         .filter((q: any) => q !== null); // Remove invalid questions
     } else {
       data.practice = [];
+    }
+    if (data.practice.length === 0) {
+      throw new Error("Failed to generate valid practice questions. Please retry.");
     }
 
     // Ensure relatedFlashcards is an array and clean

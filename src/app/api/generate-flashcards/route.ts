@@ -1,7 +1,26 @@
 import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
+import { zodResponseFormat } from "openai/helpers/zod";
 import { validateFlashcardFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, ensureFlashcardBackFormat, ensureSingleSkill } from "@/utils/aiValidation";
+
+const FlashcardSchema = z.object({
+  front: z.string(),
+  back: z.string(),
+  difficulty: z.enum(["Easy", "Medium", "Hard"]),
+  tag: z.enum(["Vocab", "Grammar", "Reading", "Math", "Functions", "Statistics", "Rhetoric"])
+});
+
+const ReviewIntervalsSchema = z.object({
+  "got-it": z.string(),
+  "almost": z.string(),
+  "no-idea": z.string()
+});
+
+const FlashcardsResponseSchema = z.object({
+  flashcards: z.array(FlashcardSchema),
+  reviewIntervals: ReviewIntervalsSchema
+});
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
@@ -52,13 +71,17 @@ export async function POST(req: Request) {
     }
 
     // Create completion with timeout
-    const cacheKey = `generate-flashcards:v3-strict-back-format:${JSON.stringify({ topic })}`;
+    const cacheKey = `generate-flashcards:v4-strict-back-format:${JSON.stringify({ topic })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
-    const completion = cachedResponse
-      ? null
-      : await withRetry(
-      () => getOpenAIClient().chat.completions.create({
+    const MIN_FLASHCARDS = 8;
+    const MAX_MODEL_ATTEMPTS = 3;
+
+    const getModelPayload = async (extraInstruction = "") => {
+      const completion = await withRetry(
+        () => getOpenAIClient().chat.completions.create({
       model: "gpt-4o-mini",
+      temperature: 0.45,
+      max_tokens: 2800,
       messages: [
         {
           role: "system",
@@ -111,31 +134,32 @@ Line 1 = one-sentence key idea
 Lines 2-3 = two key-point bullets
 Line 4 = optional "• Example:" bullet OR third key-point bullet
 Line 5 = one "• Tip:" bullet.
-No step-by-step solutions. No filler.`,
+No step-by-step solutions. No filler.${extraInstruction ? ` ${extraInstruction}` : ""}`,
         },
       ],
-      response_format: { type: "json_object" },
+      response_format: zodResponseFormat(FlashcardsResponseSchema, "flashcards_response"),
       }),
-      2,
+      3,
       60000
     );
 
-    const responseText = cachedResponse ? JSON.stringify(cachedResponse) : (completion?.choices[0].message?.content || "{}");
-    let data;
-    
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      // Try to extract JSON from markdown or other text
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        data = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("Failed to parse JSON response from model.");
+      const responseText = completion?.choices[0].message?.content || "{}";
+      return JSON.parse(responseText);
+    };
+
+    let data = cachedResponse || null;
+    if (!cachedResponse) {
+      for (let attempt = 0; attempt < MAX_MODEL_ATTEMPTS; attempt += 1) {
+        const candidate = await getModelPayload(
+          attempt === 0 ? "" : `Retry attempt ${attempt + 1}: increase variety and avoid repeated card fronts.`
+        );
+        if (Array.isArray(candidate?.flashcards)) {
+          data = candidate;
+          break;
+        }
       }
     }
-
-    if (!Array.isArray(data.flashcards)) {
+    if (!Array.isArray(data?.flashcards)) {
       throw new Error("Invalid response format from model.");
     }
 
@@ -186,8 +210,8 @@ No step-by-step solutions. No filler.`,
     // Remove duplicates based on front text
     const uniqueFlashcards = removeDuplicates(validatedFlashcards, (card: any) => card.front.toLowerCase().trim());
 
-    // Ensure we have at least 5 cards
-    if (uniqueFlashcards.length < 5) {
+    // Ensure we have enough cards for a usable deck
+    if (uniqueFlashcards.length < MIN_FLASHCARDS) {
       throw new Error("Generated too few valid flashcards. Please try again.");
     }
 

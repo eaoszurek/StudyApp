@@ -237,7 +237,7 @@ function DashboardContent() {
   };
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full">
+    <div className="px-3 sm:px-4 md:px-6 max-w-4xl mx-auto overflow-x-hidden w-full pb-20">
       <PageHeader
         eyebrow="Base Camp"
         title={dashboardTitle}
@@ -300,31 +300,32 @@ function DashboardContent() {
         ))}
       </div>
 
-      <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 xl:grid-cols-3">
-        {tools.map((tool, idx) => (
-          <GlassPanel key={tool.href} delay={idx * 0.05} className="h-full">
-            <div className="flex flex-col h-full">
-              <div className="flex items-start justify-between">
-                <div className="w-12 h-12 rounded-2xl bg-sky-50 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
-                  <FeatureIcon name={tool.icon} size={24} />
+      <div className="grid md:grid-cols-2 lg:grid-cols-2 gap-6 mb-10">
+        {tools.map((tool) => (
+          <Link key={tool.href} href={tool.href} className="group cursor-pointer no-underline block h-full">
+            <div className="premium-card p-6 h-full flex flex-col items-start gap-4">
+              <div className="flex items-start justify-between w-full">
+                <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl text-slate-500 shadow-sm group-hover:scale-110 transition-transform duration-300">
+                  <FeatureIcon name={tool.icon} size={28} />
                 </div>
-                <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-300 font-semibold">
-                  gear
+                <span className="text-[10px] uppercase tracking-[0.3em] text-slate-400 font-bold group-hover:text-sky-500 transition-colors">
+                  Gear
                 </span>
               </div>
-              <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-6">
-                {tool.title}
-              </h3>
-              <p className="text-sm text-slate-700 dark:text-slate-300 mt-3 flex-1 font-medium">{tool.desc}</p>
-              <Link
-                href={tool.href}
-                className="mt-6 inline-flex items-center gap-2 text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 transition font-semibold"
-              >
-                Launch {tool.title.split(" ")[0]}
-                <span aria-hidden>→</span>
-              </Link>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-xl font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
+                  {tool.title}
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                  {tool.desc}
+                </p>
+              </div>
+              <div className="mt-auto pt-4 flex items-center gap-2 text-sky-600 font-bold text-xs uppercase tracking-wider">
+                Launch {tool.title.split(' ')[0]}
+                <span className="group-hover:translate-x-1 transition-transform">→</span>
+              </div>
             </div>
-          </GlassPanel>
+          </Link>
         ))}
       </div>
 

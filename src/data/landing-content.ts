@@ -1,24 +1,24 @@
 export const landingContent = {
   hero: {
     variantA: {
-      headline: "Climb to Your Highest SAT Score One Step at a Time",
-      subhead: "Peak Prep is an AI-powered SAT coach designed for students who feel overwhelmed and want a clear, daily path forward.",
-      ctaPrimary: "Start your climb",
-      ctaSecondary: "See how it works",
+      headline: "Climb to Your Highest SAT Score, One Step at a Time",
+      subhead: "The companion for students who want a clear trail ahead. No more feeling lost—just a daily route map to your peak performance.",
+      ctaPrimary: "Begin your ascent",
+      ctaSecondary: "View the trail map",
     },
     variantB: {
       headline: "SAT Prep That Doesn’t Overwhelm You.",
-      subhead: "Short, guided study sessions that help you stay consistent and keep moving forward.",
-      ctaPrimary: "Start your climb",
-      ctaSecondary: "See how it works",
+      subhead: "Bite-sized study sessions designed to keep your momentum high and your stress low. The summit is closer than you think.",
+      ctaPrimary: "Begin your ascent",
+      ctaSecondary: "View the trail map",
     },
   },
   features: [
-    { id: "route-maps", icon: "study-plan", title: "Personalized Route Maps", description: "AI-generated study plans that adapt to your pace, target score, and timeline.", link: "/study-plan" },
-    { id: "tools-supplies", icon: "flashcards", title: "Tools & Supplies", description: "Spaced repetition flashcards with SAT-accurate content for every concept.", link: "/flashcards" },
-    { id: "checkpoints", icon: "practice", title: "Trail Checkpoints", description: "Timed practice tests with instant feedback and detailed explanations.", link: "/practice" },
-    { id: "micro-lessons", icon: "lessons", title: "Micro-Lessons", description: "Quick 1–2 minute knowledge checkpoints with examples and practice questions.", link: "/lessons" },
-    { id: "backtrack", icon: "progress", title: "Progress", description: "Review analytics and track your elevation gain across all trails.", link: "/progress" },
+    { id: "route-maps", icon: "study-plan", title: "Personalized Route Maps", description: "Smart study plans that adapt to your pace, target elevation, and timeline.", link: "/study-plan" },
+    { id: "tools-supplies", icon: "flashcards", title: "Tools & Supplies", description: "Essential knowledge packs with SAT-accurate content to gear up for every concept.", link: "/flashcards" },
+    { id: "checkpoints", icon: "practice", title: "Trail Checkpoints", description: "Full-length practice tests with instant altitude checks and expert guidance.", link: "/practice" },
+    { id: "micro-lessons", icon: "lessons", title: "Micro-Lessons", description: "Quick 2-minute knowledge bursts to help you master tricky waypoints on the fly.", link: "/lessons" },
+    { id: "backtrack", icon: "progress", title: "Progress Tracker", description: "Monitor your elevation gain and see exactly how far you've climbed.", link: "/progress" },
   ],
   pricing: {
     tiers: [

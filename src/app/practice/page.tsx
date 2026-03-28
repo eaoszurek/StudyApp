@@ -9,8 +9,11 @@ import { motion } from "framer-motion";
 import { calculateSectionScore, getPercentile, getScoreInterpretation } from "@/utils/satScoring";
 import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracking";
 import WritingQuestion from "@/components/ui/WritingQuestion";
-import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import FeatureIcon from "@/components/ui/FeatureIcon";
+import DesmosCalculator from "@/components/ui/DesmosCalculator";
+import { Calculator, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
+import QuestionChart, { type QuestionGraphData } from "@/components/ui/QuestionChart";
+import DesmosGraph from "@/components/ui/DesmosGraph";
 import { getTopicsForSection } from "@/data/topics";
 
 type SectionType = "math" | "reading" | "writing";
@@ -27,6 +30,8 @@ interface PracticeQuestion {
   strategy_tip?: string;
   difficulty: "Easy" | "Medium" | "Hard";
   skillFocus: string;
+  graphData?: QuestionGraphData;
+  desmosExpression?: string;
 }
 
 interface PracticeSet {
@@ -95,6 +100,125 @@ const renderFormattedText = (text: string) => {
   );
 };
 
+// Collapsible question review card used in the results screen
+function ResultCard({
+  question,
+  idx,
+  isCorrect,
+  userAnswer,
+  testType,
+  renderFormattedText,
+}: {
+  question: PracticeQuestion;
+  idx: number;
+  isCorrect: boolean;
+  userAnswer: OptionLetter | undefined;
+  testType: SectionType | null;
+  renderFormattedText: (text: string) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasExplanation = !!(question.explanation_correct || question.explanation);
+
+  return (
+    <div
+      className={`rounded-xl border transition-colors ${
+        isCorrect
+          ? "border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20"
+          : "border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20"
+      }`}
+    >
+      {/* Header row - always visible, click to expand */}
+      <button
+        type="button"
+        className="w-full text-left px-4 py-3 flex items-center justify-between gap-3"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Colored dot */}
+          <span
+            className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+              isCorrect ? "bg-green-500" : "bg-red-500"
+            }`}
+          >
+            {idx + 1}
+          </span>
+          <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+            {question.skillFocus}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span
+            className={`text-xs font-semibold ${
+              isCorrect ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"
+            }`}
+          >
+            {isCorrect ? "Correct" : "Incorrect"}
+          </span>
+          <span className="text-slate-400 dark:text-slate-500 text-xs">
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </span>
+        </div>
+      </button>
+
+      {/* Expanded body */}
+      {open && (
+        <div className="px-4 pb-4 border-t border-slate-200 dark:border-slate-700 space-y-3 pt-3">
+          {/* Question text */}
+          {testType === "writing" ? (
+            <WritingQuestion
+              question={question.question}
+              className="text-sm text-slate-700 dark:text-slate-200"
+            />
+          ) : (
+            <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{question.question}</p>
+          )}
+
+          {/* Answer summary */}
+          <div className="flex flex-wrap gap-3 text-xs">
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border ${
+              isCorrect
+                ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
+                : "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 border-red-200 dark:border-red-700"
+            }`}>
+              Your answer: {userAnswer || "-"}
+            </span>
+            {!isCorrect && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700">
+                Correct: {question.correctAnswer}
+              </span>
+            )}
+          </div>
+
+          {/* Explanation */}
+          {hasExplanation && (
+            <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Explanation</p>
+              {renderFormattedText(question.explanation_correct || question.explanation || "")}
+              {question.explanation_incorrect && Object.keys(question.explanation_incorrect).length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {Object.entries(question.explanation_incorrect).map(([letter, reason]) => (
+                    <div key={letter} className="text-sm text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold text-red-600 dark:text-red-400">Option {letter}:</span>{" "}
+                      {renderFormattedText(reason)}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {question.strategy_tip && (
+                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wide mb-1">Strategy Tip</p>
+                  {renderFormattedText(question.strategy_tip)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PracticeTests() {
   // Check subscription status and free usage
   React.useEffect(() => {
@@ -147,6 +271,7 @@ export default function PracticeTests() {
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
   const [practiceHydrated, setPracticeHydrated] = useState(false);
+  const [showCalculator, setShowCalculator] = useState(false);
   const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode =
@@ -156,6 +281,12 @@ export default function PracticeTests() {
         (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
       100
     : 0;
+
+  useEffect(() => {
+    if (testType !== "math" || showResults || !practiceSet) {
+      setShowCalculator(false);
+    }
+  }, [testType, showResults, practiceSet]);
 
   useEffect(() => {
     try {
@@ -522,6 +653,7 @@ export default function PracticeTests() {
       topic: "",
       difficulty: "Mixed",
     });
+    setShowCalculator(false);
     localStorage.removeItem(PRACTICE_PROGRESS_KEY);
   };
 
@@ -595,7 +727,7 @@ export default function PracticeTests() {
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{card.title}</h3>
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{card.desc}</p>
                   <span className="text-xs uppercase tracking-[0.4em] text-slate-600 dark:text-slate-400 mt-auto pt-2 font-semibold">
-                    Configure test →
+                    Configure test <ArrowRight size={12} className="inline ml-1" />
                   </span>
                 </div>
               </GlassPanel>
@@ -615,7 +747,7 @@ export default function PracticeTests() {
                 }}
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition mb-4 flex items-center gap-2 font-medium"
               >
-                ← Back to trails
+                <ArrowLeft size={14} className="mr-1" /> Back to trails
               </button>
               <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
                 Configure your {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Trail Checkpoint
@@ -635,10 +767,10 @@ export default function PracticeTests() {
                   <button
                     key={count}
                     onClick={() => setConfig({ ...config, questionCount: count })}
-                    className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
+                    className={`px-5 py-2.5 rounded-lg border transition-colors font-semibold text-sm ${
                       config.questionCount === count
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)]"
-                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
+                        ? "border-sky-500 bg-sky-500 text-white"
+                        : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-sky-400 dark:hover:border-sky-500"
                     }`}
                   >
                     {count}
@@ -694,10 +826,10 @@ export default function PracticeTests() {
                   <button
                     key={diff}
                     onClick={() => setConfig({ ...config, difficulty: diff })}
-                    className={`px-5 py-2.5 rounded-2xl border-2 transition-all font-bold ${
+                    className={`px-5 py-2.5 rounded-lg border transition-colors font-semibold text-sm ${
                       config.difficulty === diff
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.2),0_6px_16px_rgba(14,165,233,0.15)]"
-                        : "ai-config-option border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-600 dark:text-slate-100 bg-white dark:bg-slate-900/90"
+                        ? "border-sky-500 bg-sky-500 text-white"
+                        : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:border-sky-400 dark:hover:border-sky-500"
                     }`}
                   >
                     {diff}
@@ -722,7 +854,7 @@ export default function PracticeTests() {
             {loading && (
               <GlassPanel className="mt-8 text-center py-12">
                 <div className="flex flex-col items-center justify-center min-h-[300px]">
-                  <LoadingSpinner size="lg" message="Preparing your checkpoint…" />
+                  <LoadingSpinner size="lg" message="Preparing your checkpoint..." />
                 </div>
               </GlassPanel>
             )}
@@ -733,247 +865,293 @@ export default function PracticeTests() {
         </GlassPanel>
       )}
 
-      {showResults && practiceSet && (
-        <GlassPanel className="mt-8 ai-output-scope checkpoint-results">
-          <div className="text-center space-y-4">
-            <p className="text-xs uppercase tracking-[0.4em] text-slate-600 dark:text-slate-400 font-semibold">Checkpoint Results</p>
-            <div>
-              <p className="text-3xl font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                {score}/{practiceSet.questions.length} Correct
-              </p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 font-medium">
-                Nice work finishing a Practice Test checkpoint. Keep stacking these and you’ll feel the climb.
-              </p>
-              {satScore && (
-                <div className="space-y-3 mt-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-400 font-semibold mb-1">
-                      SAT Scaled Score
+      {showResults && practiceSet && (() => {
+        const skillMap: Record<string, { correct: number; total: number }> = {};
+        practiceSet.questions.forEach((q, idx) => {
+          const skill = q.skillFocus || "General";
+          if (!skillMap[skill]) skillMap[skill] = { correct: 0, total: 0 };
+          skillMap[skill].total += 1;
+          if (userAnswers[idx] === q.correctAnswer) skillMap[skill].correct += 1;
+        });
+        const skillStats = Object.entries(skillMap)
+          .map(([skill, { correct, total }]) => ({
+            skill, correct, total,
+            pct: Math.round((correct / total) * 100),
+          }))
+          .sort((a, b) => a.pct - b.pct);
+        const R = 28;
+        const circumference = 2 * Math.PI * R;
+        return (
+          <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
+            <div className="p-5 sm:p-7 space-y-8">
+              {/* Score header */}
+              <div className="text-center">
+                <p className="text-xs uppercase tracking-[0.4em] text-slate-500 dark:text-slate-400 font-semibold mb-3">Results</p>
+                <p className="text-4xl font-bold text-slate-900 dark:text-white mb-1">
+                  {score}<span className="text-2xl font-normal text-slate-400 dark:text-slate-500">/{practiceSet.questions.length}</span>
+                </p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {Math.round((score / practiceSet.questions.length) * 100)}% correct
+                </p>
+                {satScore && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold">SAT Scaled Score</p>
+                    <p className="text-5xl font-bold text-blue-600 dark:text-blue-400">{satScore.scaled}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Section &middot; 200&ndash;800
                     </p>
-                    <p className="text-5xl font-bold text-gradient">
-                      {satScore.scaled}
-                    </p>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 font-medium">
-                      {testType === "math" ? "Math Section" : testType === "reading" ? "Reading Section" : "Writing Section"} (200-800 scale)
-                    </p>
+                    {testType && practiceSet.questions.length >= MIN_ESTIMATE_QUESTIONS && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Est. Total: <span className="font-bold text-slate-900 dark:text-white">{satScore.scaled * 2}</span> / 1600
+                        {" "}&middot; Top {100 - getPercentile(satScore.scaled * 2)}% &middot; {getScoreInterpretation(satScore.scaled * 2)}
+                      </p>
+                    )}
                   </div>
-                  {testType && (
-                    <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                      {practiceSet.questions.length >= MIN_ESTIMATE_QUESTIONS ? (
-                        <>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                            Estimated Total SAT Score: <span className="font-bold text-slate-900 dark:text-white">{satScore.scaled * 2}</span> / 1600
-                          </p>
-                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 font-medium">
-                            Percentile: Top {100 - getPercentile(satScore.scaled * 2)}% • {getScoreInterpretation(satScore.scaled * 2)}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                          Estimated total SAT score appears after at least {MIN_ESTIMATE_QUESTIONS} questions.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                )}
+              </div>
+
+              {/* Skill performance circles */}
+              {skillStats.length > 0 && (
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Performance by Skill</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {skillStats.map(({ skill, correct, total, pct }) => {
+                      const color = pct >= 80 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
+                      const dashOffset = circumference - (circumference * pct) / 100;
+                      return (
+                        <div key={skill} className="flex flex-col items-center gap-1 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
+                          <div className="relative flex items-center justify-center w-[72px] h-[72px]">
+                            <svg width="72" height="72" viewBox="0 0 72 72" className="-rotate-90">
+                              <circle cx="36" cy="36" r={R} fill="none" stroke="#e2e8f0" strokeWidth="6" className="dark:stroke-slate-700" />
+                              <circle
+                                cx="36" cy="36" r={R}
+                                fill="none"
+                                stroke={color}
+                                strokeWidth="6"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={dashOffset}
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                            <span className="absolute text-base font-bold text-slate-900 dark:text-white">{pct}%</span>
+                          </div>
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 text-center leading-tight mt-1">{skill}</p>
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400">{correct}/{total} correct</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-            </div>
-          </div>
-          <div className="mt-6 space-y-4">
-            {practiceSet.questions.map((q, idx) => {
-              const isCorrect = userAnswers[idx] === q.correctAnswer;
-              return (
-                <div
-                  key={q.id}
-                  className={`checkpoint-result-card rounded-2xl border p-4 ${
-                    isCorrect
-                      ? "is-correct border-green-300 dark:border-green-600 bg-green-50 dark:bg-green-900/30"
-                      : "is-wrong border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/30"
-                  }`}
-                >
-                  <div className="flex justify-between text-sm font-bold mb-2 text-slate-900 dark:text-white">
-                    <span>Question {idx + 1}</span>
-                    <span className={`flex items-center gap-1.5 ${isCorrect ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
-                          {isCorrect ? <><FeatureIcon name="check" size={16} /> Correct</> : <><FeatureIcon name="incorrect" size={16} /> Incorrect</>}
-                        </span>
-                  </div>
-                  {testType === "writing" ? (
-                    <WritingQuestion
-                      question={q.question}
-                      className="text-slate-700 dark:text-slate-200 text-sm font-medium"
+
+              {/* Question review cards */}
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Question Review</p>
+                <div className="space-y-2">
+                  {practiceSet.questions.map((q, idx) => (
+                    <ResultCard
+                      key={q.id}
+                      question={q}
+                      idx={idx}
+                      isCorrect={userAnswers[idx] === q.correctAnswer}
+                      userAnswer={userAnswers[idx]}
+                      testType={testType}
+                      renderFormattedText={renderFormattedText}
                     />
-                  ) : (
-                    <p className="text-slate-700 dark:text-slate-200 text-sm font-medium">{q.question}</p>
-                  )}
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 font-medium">
-                    Your answer: {userAnswers[idx] || "—"} • Correct: {q.correctAnswer}
-                  </p>
-                  {(q.explanation_correct || q.explanation) && (
-                    <div className="mt-4 space-y-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                      <div>
-                        <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
-                          <FeatureIcon name="check" size={14} /> Explanation
-                        </p>
-                        {renderFormattedText(q.explanation_correct || q.explanation || "")}
-                      </div>
-                      
-                      {q.explanation_incorrect && Object.keys(q.explanation_incorrect).length > 0 && (
-                        <div>
-                          <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
-                            <FeatureIcon name="incorrect" size={14} /> Why Other Answers Are Wrong
-                          </p>
-                          <div className="space-y-1.5">
-                            {Object.entries(q.explanation_incorrect).map(([letter, reason]) => (
-                              <div key={letter} className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                                <span className="font-semibold text-red-700 dark:text-red-400">Option {letter}:</span>{" "}
-                                {renderFormattedText(reason)}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {q.strategy_tip && (
-                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                          <p className="text-xs font-bold text-sky-700 dark:text-sky-400 mb-1.5 uppercase tracking-wide flex items-center gap-1.5">
-                            <FeatureIcon name="lightbulb" size={14} /> Strategy Tip
-                          </p>
-                          {renderFormattedText(q.strategy_tip)}
-                        </div>
+                  ))}
+                </div>
+              </div>
+
+              <button type="button" className="sat-btn-next w-full" onClick={resetTest}>
+                Start New Test
+              </button>
+            </div>
+          </GlassPanel>
+        );
+      })()}
+      {practiceSet && !showResults && (() => {
+        const q = practiceSet.questions[currentQuestion];
+        const hasPassage = !!(((q as any)?.passage) || practiceSet.passage);
+        const passageText = (q as any)?.passage || practiceSet.passage || "";
+        const totalQ = isProgressiveMode ? targetQuestionCount : practiceSet.questions.length;
+        const difficultyClass =
+          q.difficulty === "Easy" ? "sat-badge-easy" :
+          q.difficulty === "Hard" ? "sat-badge-hard" : "sat-badge-medium";
+        const subjectClass = testType === "math" ? "sat-badge-math" : "sat-badge-english";
+        const subjectLabel = testType === "math" ? "Math" : "English";
+        const nextLabel = currentQuestion === practiceSet.questions.length - 1
+          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
+          : "Next Question";
+
+        return (
+          <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
+            {isBatchLoading &&
+            isProgressiveMode &&
+            practiceSet.questions.length < targetQuestionCount &&
+            currentQuestion === practiceSet.questions.length - 1 ? (
+              <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center p-8">
+                <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-6" aria-hidden />
+                <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading next 5 questions...</p>
+                <p className="text-sm text-slate-600 dark:text-slate-400">This usually takes a moment.</p>
+              </div>
+            ) : (
+              <div className="p-5 sm:p-7">
+                {/* Header: progress bar + inline calculator */}
+                <div className="mb-5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Question {currentQuestion + 1} of {totalQ}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {Math.round(practiceProgressPercent)}% complete
+                      </span>
+                      {testType === "math" && (
+                        <button
+                          type="button"
+                          className="sat-calc-btn"
+                          onClick={() => setShowCalculator((prev) => !prev)}
+                          aria-label={showCalculator ? "Close calculator" : "Open calculator"}
+                        >
+                          <Calculator size={14} />
+                          {showCalculator ? "Close Calculator" : "Open Calculator"}
+                        </button>
                       )}
                     </div>
-                  )}
+                  </div>
+                  <div className="sat-progress-track">
+                    <div className="sat-progress-fill" style={{ width: `${practiceProgressPercent}%` }} />
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-                <PrimaryButton onClick={resetTest} fullWidth className="mt-6">
-                  Start New Checkpoint
-                </PrimaryButton>
-        </GlassPanel>
-      )}
 
-      {practiceSet && !showResults && (
-        <GlassPanel className="mt-8 space-y-6 ai-output-scope">
-          {isBatchLoading &&
-          isProgressiveMode &&
-          practiceSet.questions.length < targetQuestionCount &&
-          currentQuestion === practiceSet.questions.length - 1 ? (
-            <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center">
-              <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-6" aria-hidden />
-              <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading next 5 questions…</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400">This usually takes a moment.</p>
-            </div>
-          ) : (
-            <>
-          <div className="relative z-10">
-            <div className="flex justify-between items-center text-sm text-slate-600 dark:text-slate-400 mb-3 font-medium">
-              <span>
-                Question {currentQuestion + 1} / {isProgressiveMode ? targetQuestionCount : practiceSet.questions.length}
-              </span>
-              <SubtleProgressCircle progress={practiceProgressPercent} />
-            </div>
-          </div>
+                {/* Main content: two-col with passage, single-col otherwise */}
+                <div className={hasPassage ? "flex flex-col md:flex-row" : ""}>
 
-          {((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage) && (
-            <div className="mt-2 border-2 border-slate-200 dark:border-slate-600 rounded-2xl p-5 sm:p-6 bg-white dark:bg-slate-800/90 text-sm sm:text-base text-slate-900 dark:text-slate-100 whitespace-pre-line font-medium leading-relaxed mb-6 shadow-sm">
-              <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
-                <span className="text-xs uppercase tracking-[0.3em] text-slate-600 dark:text-slate-400 font-semibold">Passage</span>
+                  {/* Left: passage — natural height (no internal scrollbar) */}
+                  {hasPassage && (
+                    <div className="md:w-[50%] shrink-0 md:border-r border-slate-200 dark:border-slate-700 md:pr-6 md:mr-6 mb-4 md:mb-0">
+                      <div className="sat-passage rounded-lg md:rounded-none bg-slate-50 dark:bg-slate-800/40 md:bg-transparent md:dark:bg-transparent p-4 md:p-0">
+                        {testType === "writing" ? (
+                          <WritingQuestion
+                            question={String(passageText)}
+                            className="sat-passage-text text-slate-800 dark:text-slate-200"
+                          />
+                        ) : (
+                          <p className="sat-passage-text text-slate-800 dark:text-slate-200 whitespace-pre-line text-[15px] leading-[1.75]">
+                            {passageText}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Right (or full-width): question + options */}
+                  <div className={hasPassage ? "flex-1 min-w-0" : ""}>
+                    {/* Badges above question */}
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className={`sat-badge-subject inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${subjectClass}`}>
+                        {subjectLabel}
+                      </span>
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${difficultyClass}`}>
+                        {q.difficulty}
+                      </span>
+                    </div>
+
+                    {/* Graph / chart data */}
+                    {q.graphData && (
+                      <QuestionChart data={q.graphData as QuestionGraphData} />
+                    )}
+                    {testType === "math" && q.desmosExpression && (
+                      <DesmosGraph expressions={[q.desmosExpression as string]} />
+                    )}
+
+                    {/* Question text */}
+                    {testType === "writing" ? (
+                      <>
+                        {hasPassage ? (
+                          <p className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-2">
+                            {q.question
+                              .replace(/\[([^\]]+)\]/g, "$1")
+                              .replace(/\*\*(.+?)\*\*/g, "$1")}
+                          </p>
+                        ) : (
+                          <WritingQuestion
+                            question={q.question}
+                            className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-2"
+                          />
+                        )}
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                          Choose the best revision for the underlined portion.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-5 leading-relaxed">
+                        {q.question}
+                      </p>
+                    )}
+
+                    {/* Answer options */}
+                    <div className="space-y-2.5 mb-6">
+                      {(Object.keys(q.options) as OptionLetter[]).map((optionLetter) => {
+                        const isSelected = selectedAnswer === optionLetter;
+                        return (
+                          <button
+                            key={optionLetter}
+                            onClick={() => handleAnswerSelect(optionLetter)}
+                            className={`sat-option w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                              isSelected ? "sat-option-selected" : "sat-option-unselected"
+                            }`}
+                          >
+                            <span className="sat-option-letter shrink-0">{optionLetter}</span>
+                            <span>{q.options[optionLetter]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="flex justify-between items-center gap-4 pt-1">
+                      <button
+                        type="button"
+                        className="sat-btn-prev"
+                        onClick={handlePrevious}
+                        disabled={currentQuestion === 0}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        className="sat-btn-next"
+                        onClick={() => void handleNext()}
+                      >
+                        {nextLabel}
+                      </button>
+                    </div>
+
+                    {isProgressiveMode && (
+                      <div className="pt-3 text-xs text-slate-500 dark:text-slate-400">
+                        {isBatchLoading
+                          ? "Loading next questions in the background..."
+                          : `Loaded ${practiceSet.questions.length} of ${targetQuestionCount} questions.`}
+                      </div>
+                    )}
+                    {batchLoadError && (
+                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
+                        {batchLoadError}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="text-slate-900 dark:text-slate-100 prose prose-sm max-w-none dark:prose-invert prose-p:text-slate-900 dark:prose-p:text-slate-100 prose-headings:text-slate-900 dark:prose-headings:text-slate-100">
-                {testType === "writing" ? (
-                  <WritingQuestion
-                    question={String((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage)}
-                    className="text-base sm:text-lg font-medium text-slate-900 dark:text-slate-100"
-                  />
-                ) : (
-                  (practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="mb-6">
-            {testType === "writing" ? (
-              <>
-                {((practiceSet.questions[currentQuestion] as any)?.passage || practiceSet.passage) ? (
-                  <p className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-2">
-                    {practiceSet.questions[currentQuestion].question
-                      .replace(/\[([^\]]+)\]/g, "$1")
-                      .replace(/\*\*(.+?)\*\*/g, "$1")}
-                  </p>
-                ) : (
-                  <WritingQuestion
-                    question={practiceSet.questions[currentQuestion].question}
-                    className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-2"
-                  />
-                )}
-                <p className="text-sm text-slate-600 dark:text-slate-300 font-medium mb-4">
-                  Choose the best revision for the underlined portion.
-                </p>
-              </>
-            ) : (
-              <p className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white mb-4 leading-relaxed whitespace-pre-line">
-                {practiceSet.questions[currentQuestion].question}
-              </p>
             )}
-            <div className="flex flex-wrap gap-2 text-xs font-medium">
-              <span className="practice-skill-badge px-3 py-1.5 rounded-full border">
-                {practiceSet.questions[currentQuestion].skillFocus}
-              </span>
-              <span className="practice-difficulty-badge px-3 py-1.5 rounded-full border">
-                Difficulty: {practiceSet.questions[currentQuestion].difficulty}
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-3 mb-6">
-            {(Object.keys(practiceSet.questions[currentQuestion].options) as OptionLetter[]).map(
-              (optionLetter) => {
-                const isSelected = selectedAnswer === optionLetter;
-                return (
-                  <button
-                    key={optionLetter}
-                    onClick={() => handleAnswerSelect(optionLetter)}
-                    className={`w-full text-left p-4 sm:p-5 rounded-2xl border-2 transition-all font-medium ${
-                      isSelected
-                        ? "border-sky-400 dark:border-sky-400 bg-gradient-to-br from-sky-100 to-sky-50 dark:from-sky-900/40 dark:to-sky-900/30 text-sky-900 dark:text-sky-100 shadow-[0_4px_0_rgba(14,165,233,0.15),0_6px_16px_rgba(14,165,233,0.1)]"
-                        : "border-slate-200 dark:border-slate-600 hover:border-sky-300 dark:hover:border-sky-500 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-700/90 hover:shadow-[0_3px_0_rgba(14,165,233,0.1),0_4px_12px_rgba(14,165,233,0.08)] hover:-translate-y-0.5 active:translate-y-0.5"
-                    }`}
-                  >
-                    <span className="font-bold mr-3">{optionLetter})</span>
-                    {practiceSet.questions[currentQuestion].options[optionLetter]}
-                  </button>
-                );
-              }
-            )}
-          </div>
-
-          <div className="flex justify-between gap-4 pt-2">
-            <PrimaryButton variant="secondary" onClick={handlePrevious} disabled={currentQuestion === 0}>
-              Previous
-            </PrimaryButton>
-            <PrimaryButton onClick={handleNext}>
-              {currentQuestion === practiceSet.questions.length - 1
-                ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
-                : "Next"}
-            </PrimaryButton>
-          </div>
-          {isProgressiveMode && (
-            <div className="pt-3 text-xs text-slate-600 dark:text-slate-400 font-medium">
-              {isBatchLoading
-                ? "Loading next 5 questions in the background…"
-                : `Loaded ${practiceSet.questions.length} of ${targetQuestionCount} questions.`}
-            </div>
-          )}
-          {batchLoadError && (
-            <p className="text-xs text-rose-700 dark:text-rose-300 font-semibold">
-              {batchLoadError}
-            </p>
-          )}
-            </>
-          )}
-        </GlassPanel>
+          </GlassPanel>
+        );
+      })()}
+      {practiceSet && !showResults && testType === "math" && (
+        <DesmosCalculator
+          isOpen={showCalculator}
+          onToggle={() => setShowCalculator((prev) => !prev)}
+        />
       )}
     </div>
   );

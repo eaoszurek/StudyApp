@@ -88,7 +88,8 @@ export async function GET() {
           });
         }
       } catch (error) {
-        console.error("Error fetching subscriptions:", error);
+        const e = error as { code?: string; message?: string };
+        console.error("Error fetching subscriptions:", e?.code || "unknown_error", e?.message || "no_message");
       }
     }
 
@@ -145,7 +146,8 @@ export async function GET() {
         }
       } catch (error) {
         // If subscription doesn't exist in Stripe, mark as cancelled
-        console.error("Error syncing subscription with Stripe:", error);
+        const e = error as { code?: string; message?: string };
+        console.error("Error syncing subscription with Stripe:", e?.code || "unknown_error", e?.message || "no_message");
         if ((error as any).code === "resource_missing") {
           await prisma.user.update({
             where: { id: session.id },
@@ -167,7 +169,8 @@ export async function GET() {
       hasSubscription: user.subscriptionStatus === "ACTIVE" || user.subscriptionStatus === "TRIALING",
     });
   } catch (error: unknown) {
-    console.error("Error getting subscription status:", error);
+    const e = error as { code?: string; message?: string };
+    console.error("Error getting subscription status:", e?.code || "unknown_error", e?.message || "no_message");
     return NextResponse.json(
       { error: "Failed to get subscription status" },
       { status: 500 }

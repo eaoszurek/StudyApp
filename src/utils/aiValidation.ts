@@ -160,19 +160,16 @@ export function formatEquationLineBreaks(text: string): string {
   if (text === null || text === undefined) return "";
   if (typeof text !== "string") return "";
 
-  let updated = text;
+  let updated = text.replace(/\r\n/g, "\n");
 
-  updated = updated.replace(
-    /\b(Solve(?:\s+for\s+\w+)?|Find|Determine|Calculate|Evaluate|Simplify)\s*:\s*/gi,
-    (match, verb) => `${verb}:\n`
-  );
+  // Keep equation stems on one line when the model inserts accidental breaks
+  // around operators (e.g., "3x +\n5 = 20").
+  updated = updated
+    .replace(/([+\-*/=≤≥≠<>])\s*\n+\s*/g, "$1 ")
+    .replace(/\n+\s*([+\-*/=≤≥≠<>])/g, " $1")
+    .replace(/\n{3,}/g, "\n\n");
 
-  updated = updated.replace(
-    /([^\n])\s*([A-Za-z0-9][A-Za-z0-9\s]*[=≤≥≠<>][A-Za-z0-9\s]+)/g,
-    (match, prefix, expression) => `${prefix}\n${expression.trim()}`
-  );
-
-  return updated;
+  return updated.trim();
 }
 
 /**
