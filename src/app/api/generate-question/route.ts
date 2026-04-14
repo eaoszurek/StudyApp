@@ -27,7 +27,7 @@ const QuestionsResponseSchema = z.object({
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { handleApiError, validateApiKey, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
-import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks, removeDuplicates } from "@/utils/aiValidation";
+import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks, removeDuplicates, isPlaceholderOptionText } from "@/utils/aiValidation";
 
 export const maxDuration = 180;
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(
-        { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+        { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
         { status: 402 }
       );
     }
@@ -93,6 +93,7 @@ export async function POST(req: Request) {
           if (options.length !== 4) return null;
           const normalizedOptions = options.map((opt: string) => opt.toLowerCase().trim());
           if (new Set(normalizedOptions).size < 4) return null;
+          if (options.some((opt: string) => isPlaceholderOptionText(opt))) return null;
           const correctAnswer = ["A", "B", "C", "D"].includes(q.correctAnswer) ? q.correctAnswer : "A";
           const skillCategory = ensureSingleSkill(q.skillCategory || topic, topic);
           const explanation = ensureBoldEmphasis(cleanText(truncateText(q.explanation || "", 500)), skillCategory);
@@ -126,17 +127,37 @@ export async function POST(req: Request) {
     };
 
     const getModelPayload = async (extraInstruction = "") => {
+      const parseModelJson = (responseText: string) => {
+        const text = String(responseText || "{}").trim();
+        if (!text) return {};
+        try {
+          return JSON.parse(text);
+        } catch {
+          const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+          if (fenced?.[1]) {
+            return JSON.parse(fenced[1].trim());
+          }
+          const firstBrace = text.indexOf("{");
+          const lastBrace = text.lastIndexOf("}");
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+          }
+          throw new Error("Invalid response format from model.");
+        }
+      };
+
       const completion = await withRetry(
         () => getOpenAIClient().chat.completions.create({
           model: "gpt-4o-mini",
-          temperature: 0.45,
-          max_tokens: 2600,
+          temperature: 0.35,
+          max_tokens: 2200,
           messages: [
             {
               role: "system",
               content: `
-You are an expert SAT tutor. Given a topic, produce FIVE SAT-style multiple-choice practice questions.
-All content must be original and SAT-inspired (do not mimic real SAT items). Each question targets exactly one SAT skill category.
+You are an expert SAT question generator for the Digital SAT.
+Given a topic, produce FIVE SAT-style multiple-choice practice questions.
+All content must be original and SAT-inspired (do not mimic real SAT items). Each question targets exactly one specific SAT sub-skill.
 Return ONLY valid JSON that matches this schema:
 {
   "questions": [
@@ -158,12 +179,14 @@ Return ONLY valid JSON that matches this schema:
 
 Rules:
 - Questions must be SAT-style and concise.
-- Make distractor choices plausible.
+- Use SAT-like stem wording and varied structures.
+- Make distractor choices plausible but clearly wrong for one specific reason.
 - Explanations must briefly justify the correct answer and be encouraging, like a tutor.
 - Avoid non-SAT topics; reinterpret them into SAT-relevant content if needed.
 - Across the five questions, avoid repeating stems or near-identical scenarios.
 - Ensure all 5 questions are meaningfully different in context and skill focus.
 - Options must be distinct (no duplicates or near-duplicates in the same question).
+- Never output placeholder options such as "text", "string", "option", or "answer".
 - If Math: include at least one word problem and one non-word problem; vary contexts and representations.
 - If Reading/Writing: vary question types (evidence, vocab-in-context, inference, transitions, boundaries).
 - No markdown, no commentary—just the JSON object.
@@ -176,12 +199,12 @@ Rules:
           ],
           response_format: zodResponseFormat(QuestionsResponseSchema, "practice_questions"),
         }),
-        3,
-        60000
+        2,
+        25000
       );
 
       const responseText = completion?.choices[0].message?.content || "{}";
-      const data = JSON.parse(responseText);
+      const data = parseModelJson(responseText);
       if (!Array.isArray(data.questions)) {
         throw new Error("Invalid response format from model.");
       }

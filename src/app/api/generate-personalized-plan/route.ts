@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(
-        { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+        { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
         { status: 402 }
       );
     }
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     const totalSessions = (performanceData && performanceData.totalSessions) ? performanceData.totalSessions : 0;
 
     // Create completion with timeout
-    const cacheKey = `generate-personalized-plan:${JSON.stringify({ answers, performanceData })}`;
+    const cacheKey = `generate-personalized-plan:v2-duration-calibrated:${JSON.stringify({ answers, performanceData })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
     const completion = cachedResponse
       ? null
@@ -210,8 +210,11 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       return `Micro-Lessons on ${actualWeakestSection || "priority SAT skills"}`;
     };
 
-    const hasExplicitDuration = (task: string) =>
-      /\b\d{1,2}(?:\s*[-–to]+\s*\d{1,2})?\s*(?:min|mins|minutes)\b/i.test(task);
+    const stripDurationText = (task: string) =>
+      task
+        .replace(/\b\d{1,2}(?:\s*[-–to]+\s*\d{1,2})?\s*(?:min|mins|minutes)\b\s*:?\s*/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
 
     const taskDurationRange = (task: string) => {
       const lower = task.toLowerCase();
@@ -235,14 +238,21 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       const hours = (hoursPerDay || "").toLowerCase();
       const workload = (workloadPreference || "").toLowerCase();
       const confidence = (confidenceLevel || "").toLowerCase();
+      const style = (studyStyle || "").toLowerCase();
 
       let delta = 0;
       if (hours.includes("30 min")) delta -= 4;
+      if (hours.includes("1 hour")) delta -= 1;
+      if (hours.includes("2 hours")) delta += 3;
       if (hours.includes("3+")) delta += 6;
+      if (workload.includes("balanced")) delta += 0;
       if (workload.includes("lighter")) delta -= 3;
       if (workload.includes("weekend push")) delta += 3;
       if (confidence.includes("foundation")) delta -= 2;
+      if (confidence.includes("mixed")) delta += 0;
       if (confidence.includes("harder drills")) delta += 2;
+      if (style.includes("short daily")) delta -= 2;
+      if (style.includes("longer weekly")) delta += 2;
 
       const min = Math.max(type === "practice" ? 30 : 8, baseMin + delta);
       const max = Math.max(min + 3, baseMax + delta);
@@ -250,8 +260,8 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
     };
 
     const ensureTaskDurationByContext = (task: string): string => {
-      if (hasExplicitDuration(task)) return task;
-      return `${taskDurationRange(task)}: ${task}`;
+      const cleanedTask = stripDurationText(task);
+      return `${taskDurationRange(cleanedTask)}: ${cleanedTask}`;
     };
 
     const getTaskCap = (hours?: string, planType: "daily" | "weekly" = "daily") => {

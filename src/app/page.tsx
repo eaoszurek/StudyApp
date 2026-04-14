@@ -88,6 +88,7 @@ export default function Home() {
       <Testimonials
         testimonials={landingContent.testimonials}
         trustText={landingContent.trustBar.text}
+        disclaimer={landingContent.testimonialsDisclaimer}
       />
 
       {/* 6. Pricing */}
@@ -108,10 +109,10 @@ export default function Home() {
             
             <div className="relative z-10">
               <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-                Ready to start your climb?
+                Ready to raise your score?
               </h2>
               <p className="text-base md:text-lg text-slate-700 mb-10 max-w-2xl mx-auto leading-relaxed font-medium">
-                Join thousands of students on their journey to SAT success. Start free, no credit card required.
+                Get your weak-skill diagnosis, daily plan, and AI help in minutes. Start free, no credit card needed.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Link
@@ -126,13 +127,13 @@ export default function Home() {
                     }
                   }}
                 >
-                  Begin Your Ascent
+                  Start Free Checkpoint
                 </Link>
                 <Link
                   href="/signup"
                   className="px-8 py-3.5 text-sm font-bold text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-md shadow-md hover:shadow-lg transition-all"
                 >
-                  Try a Checkpoint
+                  Unlock Plus for $5
                 </Link>
               </div>
             </div>

@@ -2,7 +2,27 @@ import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { validateQuestionFormat, cleanMathNotation, cleanText, removeDuplicates, truncateText, applyBoldToMarkedTarget, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
+import {
+  validateQuestionFormat,
+  cleanMathNotation,
+  cleanText,
+  removeDuplicates,
+  truncateText,
+  applyBoldToMarkedTarget,
+  ensureSingleSkill,
+  ensureBoldEmphasis,
+  formatEquationLineBreaks,
+  isPlaceholderOptionText,
+  normalizeForSimilarity,
+  areNearDuplicateQuestions,
+  likelySatStyleQuestion,
+  hasGenericSatStem,
+} from "@/utils/aiValidation";
+import { questionAlignsWithLockedTopic } from "@/utils/practiceTopicAlignment";
+import {
+  questionAlignsWithLockedDifficulty,
+  type LockedDifficulty,
+} from "@/utils/practiceDifficultyAlignment";
 
 const GraphDataSchema = z.object({
   type: z.enum(["bar", "line", "scatter"]),
@@ -86,6 +106,12 @@ export async function POST(req: Request) {
     }
 
     const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    const topicTrimmed = (topic ?? "").trim();
+    const topicLocked = Boolean(topicTrimmed);
+    const difficultyLocked = Boolean(difficulty && difficulty !== "Mixed");
+    // Topic lock must remain strict to avoid cross-topic drift.
+    // Difficulty lock can still be respected while allowing fallback completion.
+    const strictConfigNoFallback = topicLocked;
 
     const accessContext = await getAccessContext();
     if (!accessContext.user) {
@@ -118,7 +144,7 @@ export async function POST(req: Request) {
       const gate = await checkPremiumGate(accessContext);
       if (!gate.allowed) {
         return NextResponse.json(
-          { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+          { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
           { status: 402 }
         );
       }
@@ -254,179 +280,289 @@ CRITICAL SAT WRITING REQUIREMENTS:
 - Vary question types within a set (transitions, boundaries, concision, precision, synthesis) and avoid repeating stems`,
     };
 
-    // Create completion with timeout
-    const shouldUseCache = !existingTestId;
-    const cacheKey = `generate-practice:v5-specific-skills:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
-    const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
+    const satRwQuestionTypes = [
+      "Central Ideas & Details",
+      "Command of Evidence (Textual)",
+      "Command of Evidence (Quantitative)",
+      "Inferences",
+      "Words in Context",
+      "Cross-text Connections",
+      "Rhetorical Synthesis",
+      "Transitions",
+      "Boundaries",
+      "Form, Structure & Sense",
+      "Subject-Verb Agreement",
+      "Pronoun-Antecedent Agreement",
+      "Verb Tense & Aspect",
+      "Modifiers",
+      "Linking Clauses",
+    ];
 
-    const MAX_BLOCK_ATTEMPTS = 3;
-    const MAX_SET_ATTEMPTS = 2;
-    const generationStartedAt = Date.now();
-    const generationDeadlineMs = questionCount >= 20 ? 180000 : questionCount >= 10 ? 120000 : 75000;
-    const isPastDeadline = () => Date.now() - generationStartedAt > generationDeadlineMs;
+    const satStemTemplates = [
+      "Which choice completes the text with the most logical and precise word or phrase?",
+      "Which choice most logically completes the text?",
+      "Which finding from the study, if true, would most directly support the researcher's claim?",
+      "Which choice best states the main purpose of the text?",
+      "Which choice best describes the overall structure of the text?",
+      "Which choice best describes the function of the underlined sentence?",
+      "As used in the text, what does the word ___ most nearly mean?",
+      "Based on the texts, how would Author 2 most likely respond to Author 1's claim?",
+      "Which transition word or phrase best connects the two sentences?",
+      "Which choice best maintains the sentence pattern already established in the text?",
+      "For a research report, which choice most effectively uses relevant information from the notes?",
+    ];
 
-    const getModelPayload = async (requestedCount: number, extraInstructions = "") => {
-      const timeoutMs = requestedCount >= 20 ? 45000 : requestedCount >= 10 ? 35000 : 25000;
-      const completion = await withRetry(
-        () => getOpenAIClient().chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.45,
-      max_tokens: Math.min(3000, Math.max(850, requestedCount * 300)),
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert SAT tutor helping a student improve their score. Your role is to create practice questions and provide clear, step-by-step explanations that help students understand not just WHAT the answer is, but WHY it's correct. Think like a high-performing student helping a peer - be encouraging, clear, and educational.
-
-Your explanations should:
-- Break down complex problems into manageable steps
-- Explain the reasoning behind each step
-- Use a supportive but professional tone
-- Help students learn from mistakes, not just memorize answers
-- Provide strategy tips that feel like a tutor's advice
-
-Output MUST be valid JSON using this exact structure:
+    const buildSystemPrompt = (requestedCount: number) => `You are an expert SAT question generator trained on the Digital SAT framework. Create questions that feel authentic and closely match real Digital SAT style in wording, difficulty, and format. Return ONLY valid JSON — no markdown, no extra text.
 
 {
-  "passage": "string (OPTIONAL for reading. For reading, you may include a root passage OR include a 'passage' field per question.)",
+  "passage": "string or null",
   "questions": [
     {
-      "passage": "string (OPTIONAL for reading questions only - 3-6 sentences). If present, the question must reference this passage.",
-      "question": "string (for reading: ONLY the question text, never include the passage. The passage is shown separately above all questions.)",
+      "passage": "string or null",
+      "question": "string",
       "options": ["string", "string", "string", "string"],
       "section": "Reading & Writing" | "Math",
-      "skillCategory": "string (specific SAT sub-skill, e.g. 'Linear Equations', 'Quadratic Functions', 'Subject-Verb Agreement', 'Transitions', 'Data Analysis', 'Vocabulary in Context')",
-      "correctAnswer": "A",
+      "skillCategory": "specific SAT sub-skill (e.g. 'Linear Equations', 'Transitions', 'Vocabulary in Context')",
+      "correctAnswer": "A" | "B" | "C" | "D",
       "explanation_correct": "string",
-      "explanation_incorrect": {
-        "A": "string (if A is wrong)",
-        "B": "string (if B is wrong)",
-        "C": "string (if C is wrong)",
-        "D": "string (if D is wrong)"
-      },
+      "explanation_incorrect": { "A": "string|null", "B": "string|null", "C": "string|null", "D": "string|null" },
       "strategy_tip": "string",
       "difficulty": "Easy" | "Medium" | "Hard",
-      "graphData": {
-        "type": "bar" | "line" | "scatter",
-        "labels": ["string"],
-        "datasets": [{ "label": "string", "data": ["number"], "scatterData": [{"x": 0, "y": 0}] }],
-        "xLabel": "string",
-        "yLabel": "string"
-      },
-      "desmosExpression": "string (e.g. y=2*x^2-3, OPTIONAL)"
+      "graphData": null,
+      "desmosExpression": null
     }
   ]
 }
 
-CRITICAL RULES:
-- Generate exactly the number of questions requested (${requestedCount}).
-- Use ONLY four options: A, B, C, D.
-- NEVER use special characters like ^. Use actual superscripts (x², x³) or write "to the power of".
-- No markdown formatting.
-- You may use **bold** for emphasis only (1-2 per explanation/strategy tip). Do not use markdown lists or headings.
-- Each question must target exactly ONE specific SAT sub-skill (e.g. "Linear Equations", "Systems of Equations", "Ratios & Proportions", "Quadratic Functions", "Exponential Growth", "Geometry: Triangles", "Trigonometry", "Subject-Verb Agreement", "Pronoun Agreement", "Parallel Structure", "Transitions", "Punctuation: Commas", "Vocabulary in Context", "Textual Evidence", "Author's Purpose"). Do NOT use broad domain names like "Heart of Algebra" or "Standard English Conventions" — always give the specific sub-skill name.
-- Each question in a set must have a DIFFERENT skillCategory (no two questions share the same sub-skill within a 5-question block).
-- Do NOT reuse or closely mimic official SAT wording or passages. All content must be original but SAT-style.
-- Each question MUST include a "difficulty" field ("Easy", "Medium", or "Hard") that matches the actual complexity.
-- For graph-context questions, include optional "graphData" with valid JSON structure.
-- For coordinate-plane/function graph questions, include optional "desmosExpression".
-- For READING sections: Provide passages and keep them separate from the question text. Use either a root "passage" for all questions OR include a "passage" field on each question. If using per-question passages, ensure a NEW passage every 5 questions.
-- explanation_correct: Keep concise (1-2 short sentences). Explain the key reason the correct answer works.
-- explanation_incorrect: For each wrong option, write one short sentence naming the mistake.
-- strategy_tip: One short actionable sentence.
+ABSOLUTE RULES:
+- Generate exactly ${requestedCount} questions.
+- Always exactly 4 options (A–D). Never use placeholder text ("text", "string", "option", "answer").
+- Distractors must be plausible near-misses — wrong for one specific, testable reason (sign error, misread detail, wrong operation, constraint miss).
+- Never output anything except the JSON.
+${
+  topicLocked
+    ? `- TOPIC LOCK: Every question tests ONLY "${topicTrimmed}". skillCategory must be "${topicTrimmed}" or a direct sub-skill. Do NOT drift to other SAT domains.`
+    : `- Each question must use a DIFFERENT skillCategory — no two questions in a 5-question block share the same sub-skill. Use specific sub-skill names (e.g. "Linear Equations", "Transitions", "Vocabulary in Context") — not broad domain names.`
+}
+${
+  difficultyLocked && difficulty && difficulty !== "Mixed"
+    ? `- DIFFICULTY LOCK: Every question must be ${difficulty.toUpperCase()} per the rubric below. Do not mix in other difficulties.`
+    : `- Tag each question with its TRUE difficulty. Roughly 20% Easy, 60% Medium, 20% Hard.`
+}
 
-DIFFICULTY LEVELS (SAT-calibrated):
-- EASY (roughly SAT 400-500 skill): 1-2 steps, direct setup, no hidden trap.
-- MEDIUM (roughly SAT 550-650 skill): multi-step, method selection, moderate abstraction.
-- HARD (roughly SAT 700+ skill): multi-concept reasoning, non-obvious setup, deliberate trap opportunities.
+DIFFICULTY RUBRIC (SAT-calibrated):
+- Easy (SAT ~400–500): 1–2 direct steps, no hidden traps, clear unambiguous setup.
+- Medium (SAT ~550–650): 2–3 steps, requires method selection or mild abstraction.
+- Hard (SAT ~700+): Multi-concept reasoning, non-obvious setup, deliberate trap answer included. A short or concise question can still be Hard — length alone does not determine difficulty.
 
 ${sectionGuidelines[section as keyof typeof sectionGuidelines] || sectionGuidelines.math}
 
-${topic ? `- Focus on topic: ${topic}` : ""}
-${difficulty && difficulty !== "Mixed"
-  ? `- All questions must be ${difficulty.toUpperCase()} difficulty and match the SAT-specific difficulty rubric above. Do NOT water down difficulty.`
-  : "- Use realistic SAT distribution: 20% Easy, 60% Medium, 20% Hard. Tag each question with the correct difficulty and make sure the hard questions are genuinely challenging SAT-level items."}
+FORMAT BY SECTION:
+- Math: Self-contained questions. Use Digital SAT stems ("What value of x satisfies…", "Function f is defined by…", "In the xy-plane…"). At least 1 word problem per 5 questions. Vary types (equations, word problems, functions, geometry).
+- Reading: "passage" field = 50–150 words, excerpt style (never "This passage is about…"). "question" field = ONLY the question text, never the passage text. Vary question types (evidence, inference, vocab-in-context, structure, purpose).
+- Writing: "passage" field = sentence/paragraph with revision target in [brackets]. "NO CHANGE" as an option only when original is correct (20–30% of questions max). Never repeat identical option sets within a block.
 
-FORMATTING REQUIREMENTS:
-- For READING questions ONLY: Provide a separate passage that questions reference. Either use the root "passage" or a per-question "passage" field. If using per-question passages, provide a NEW passage every 5 questions.
-- question: 
-  * MATH: The question text with any necessary context or word problem setup
-  * READING: ONLY the question text itself (e.g., "What is the main idea of the passage?" or "As used in line 5, 'elaborate' most nearly means..."). DO NOT repeat the passage in the question field.
-  * WRITING: A short passage with the revision target wrapped in [brackets] inside the passage (example: "The committee [decide] to meet weekly."). Provide a NEW passage every 5 questions.
-- options: array of exactly four answer choices as strings ["A text", "B text", "C text", "D text"].
-  * Distractors must be plausible near-misses (sign error, wrong operation, constraint miss, misread detail), not obviously wrong
-  * For WRITING: Include "NO CHANGE" as an option when the underlined portion is already correct
-  * For WRITING: If no-change is included, use exact text "NO CHANGE" only.
-  * For WRITING: Do NOT repeat identical option sets within a 5-question block.
-- correctAnswer: one of "A", "B", "C", "D".
-- explanation_correct: 1-2 short sentences.
-- explanation_incorrect: object with short 1-sentence reasons for wrong answers only.
+VARIETY: No near-duplicate stems or scenarios. Each question in a set should feel distinct in context and structure.
+
+EXPLANATIONS (keep concise):
+- explanation_correct: 1–2 short sentences on why the answer is correct.
+- explanation_incorrect: one sentence per wrong choice naming the specific mistake.
 - strategy_tip: one short actionable sentence.
 
-DIFFICULTY ENFORCEMENT:
-- Hard questions must not be simple plug-and-chug. Include a non-obvious setup, multiple steps, or conceptual traps.
-- Easy questions must remain truly basic, not medium in disguise.
-- If you cannot produce the requested difficulty, rework the question until it matches.
+${topicLocked ? `TOPIC REMINDER: "${topicTrimmed}" only — every question must stay on this topic.` : topic ? `Focus area: ${topic}` : ""}
+${difficulty && difficulty !== "Mixed"
+  ? `DIFFICULTY REMINDER: All questions must be ${difficulty.toUpperCase()}. Do not water down.`
+  : ""}
+`;
 
-VARIETY REQUIREMENTS (all sections):
+    // Create completion with timeout
+    // Always generate a fresh set so users do not repeatedly receive the same test.
+    const shouldUseCache = false;
+    const cacheKey = `generate-practice:v5-specific-skills:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
+    const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
+
+    const MAX_BLOCK_ATTEMPTS = topicLocked || difficultyLocked ? 4 : 2;
+    const MAX_SET_ATTEMPTS = strictConfigNoFallback ? 2 : 1;
+    const generationStartedAt = Date.now();
+    const generationDeadlineMs = strictConfigNoFallback
+      ? questionCount >= 20
+        ? 180000
+        : questionCount >= 10
+          ? 120000
+          : 90000
+      : questionCount >= 20
+        ? 120000
+        : questionCount >= 10
+          ? 75000
+          : 55000;
+    const isPastDeadline = () => Date.now() - generationStartedAt > generationDeadlineMs;
+
+    const parseModelJson = (responseText: string) => {
+      const text = String(responseText || "{}").trim();
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch {
+        // Common fallback: model wraps JSON in code fences.
+        const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fenced?.[1]) {
+          try {
+            return JSON.parse(fenced[1].trim());
+          } catch {
+            // continue to broad extraction
+          }
+        }
+
+        // Broad fallback: extract first JSON object span.
+        const firstBrace = text.indexOf("{");
+        const lastBrace = text.lastIndexOf("}");
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+          const sliced = text.slice(firstBrace, lastBrace + 1);
+          return JSON.parse(sliced);
+        }
+        throw new Error("Invalid response format from model.");
+      }
+    };
+
+    const modelCandidates = Array.from(
+      new Set(
+        [
+          process.env.OPENAI_PRACTICE_MODEL?.trim(),
+          "gpt-4o-mini",
+          "gpt-4o",
+        ].filter(Boolean) as string[]
+      )
+    );
+
+    const longCriticalSkillRules = topicLocked
+      ? `- Each question must assess ONLY the student-selected topic "${topicTrimmed}" (or a clear sub-skill under it). skillCategory must be "${topicTrimmed}" or a tighter sub-label that obviously belongs under that topic. Do NOT use unrelated SAT skills.\n- Vary stems, numbers, and contexts while staying on-topic; do not vary by jumping to other domains.`
+      : `- Each question must target exactly ONE specific SAT sub-skill (e.g. "Linear Equations", "Systems of Equations", "Ratios & Proportions", "Quadratic Functions", "Exponential Growth", "Geometry: Triangles", "Trigonometry", "Subject-Verb Agreement", "Pronoun Agreement", "Parallel Structure", "Transitions", "Punctuation: Commas", "Vocabulary in Context", "Textual Evidence", "Author's Purpose"). Do NOT use broad domain names like "Heart of Algebra" or "Standard English Conventions" — always give the specific sub-skill name.\n- Each question in a set must have a DIFFERENT skillCategory (no two questions share the same sub-skill within a 5-question block).`;
+
+    const varietyRequirementsBlock = topicLocked
+      ? `VARIETY (topic-locked mode):
+- Change scenarios and wording between questions, but remain 100% on "${topicTrimmed}".
+- Do not introduce other SAT topics to create variety.`
+      : `VARIETY REQUIREMENTS (all sections):
 - Avoid repeating question stems or near-identical scenarios within a set.
 - Math: include at least one word problem per 5 questions, plus non-word problems; vary domains and representations (equations, graphs, tables).
-- Reading/Writing: vary question types across official SAT domains and avoid identical phrasing.
+- Reading/Writing: vary question types across official SAT domains and avoid identical phrasing.`;
 
-CRITICAL FOR READING: 
-- Put the passage in a separate field (root "passage" or per-question "passage")
-- Each question's "question" field should ONLY contain the question text, never the passage
-- If using per-question passages, rotate to a NEW passage every 5 questions
+    const authenticityMathBullet = topicLocked
+      ? `- Math: Authentic Digital SAT style for "${topicTrimmed}" only; word problems only when they genuinely fit this topic (do not use generic algebra word problems as filler).`
+      : `- Math: Include word problems with real-world contexts`;
 
-SAT AUTHENTICITY REQUIREMENTS:
-- Questions must feel like real SAT questions, not generic test questions
-- Use SAT-style wording: precise, academic, clear
-- Prefer Digital SAT stem styles when appropriate, such as:
-  * Math: "What value of x satisfies the equation above?"
-  * Math: "Function f is defined by the equation above. What is f(3)?"
-  * Math: "In the figure, what is the value of n?"
-  * Writing: "Which choice completes the text with the most logical and precise word or phrase?"
-  * Writing: "Which choice most effectively uses relevant information from the notes to accomplish this goal?"
-- Include realistic distractors (wrong answers that test-takers might choose)
-- Math: Include word problems with real-world contexts
-- Reading: Passages should be excerpt-quality, not simplified
-- Writing: Test practical editing skills, not obscure grammar rules
- - Reading questions must target a specific claim, inference, or detail (avoid generic main-idea prompts)
+    const sectionForAlignment = section as "math" | "reading" | "writing";
 
-EXPLANATION QUALITY REQUIREMENTS (Concise but useful):
-- Keep all explanation fields short and direct to reduce verbosity.
-- Prioritize the key reason each answer is right/wrong over long walkthroughs.
-- Use **bold** sparingly for only one key phrase if needed.
+    const applyConfigFilters = <
+      T extends {
+        question?: string;
+        passage?: string | null;
+        skillCategory?: string;
+        skillFocus?: string;
+      },
+    >(
+      list: T[]
+    ): T[] => {
+      let out = list;
+      if (topicLocked) {
+        out = out.filter((q) =>
+          questionAlignsWithLockedTopic(topicTrimmed, sectionForAlignment, {
+            question: String(q.question || ""),
+            skillCategory: q.skillCategory,
+            skillFocus: q.skillFocus,
+          })
+        );
+      }
+      if (difficultyLocked && difficulty && difficulty !== "Mixed") {
+        const lockedDiff = difficulty as LockedDifficulty;
+        out = out.filter((q) =>
+          questionAlignsWithLockedDifficulty({
+            question: String(q.question || ""),
+            passage: q.passage,
+            section: sectionForAlignment,
+            locked: lockedDiff,
+          })
+        );
+      }
+      return out;
+    };
 
-Make questions as similar as possible to actual SAT questions in style, wording, and format.
-Do not output anything except the JSON.`,
+    const getModelPayload = async (
+      requestedCount: number,
+      extraInstructions = "",
+      options: { timeoutMs?: number; attempts?: number } = {}
+    ) => {
+      const timeoutMs =
+        options.timeoutMs ??
+        (strictConfigNoFallback
+          ? requestedCount >= 20
+            ? 55000
+            : requestedCount >= 10
+              ? 45000
+              : 35000
+          : requestedCount >= 20
+            ? 45000
+            : requestedCount >= 10
+              ? 35000
+              : 25000);
+      const attempts = options.attempts ?? (requestedCount >= 15 ? 2 : 1);
+      let lastModelError: unknown;
+      for (const modelName of modelCandidates) {
+        try {
+          const completion = await withRetry(
+            () => getOpenAIClient().chat.completions.create({
+      model: modelName,
+      temperature: 0.45,
+      max_tokens: Math.min(8000, Math.max(2400, requestedCount * 700)),
+      messages: [
+        {
+          role: "system",
+          content: buildSystemPrompt(requestedCount),
         },
         {
           role: "user",
           content: `Generate ${requestedCount} SAT ${section} questions.${
-            topic ? ` Focus on: ${topic}.` : ""
-          }${difficulty && difficulty !== "Mixed" ? ` All questions must be ${difficulty.toUpperCase()} difficulty.` : ""}${
+            topicLocked ? ` REQUIRED TOPIC FOR EVERY QUESTION: "${topicTrimmed}".` : topic ? ` Focus on: ${topic}.` : ""
+          }${difficulty && difficulty !== "Mixed" ? ` All questions must be ${difficulty.toUpperCase()} difficulty (SAT-calibrated); do not water down.` : ""}${
             extraInstructions ? ` ${extraInstructions}` : ""
           }`,
         },
       ],
       response_format: zodResponseFormat(PracticeResponseSchema, "practice_tests"),
-        }),
-        2,
-        timeoutMs
-      );
-      const responseText = completion.choices[0].message?.content || "{}";
-      const data = JSON.parse(responseText);
+            }),
+            attempts,
+            timeoutMs
+          );
+          const responseText = completion.choices[0].message?.content || "{}";
+          const data = parseModelJson(responseText);
     
-      if (!Array.isArray(data.questions) || data.questions.length === 0) {
-        throw new Error("Invalid response format from model.");
-      }
+          if (!Array.isArray(data.questions) || data.questions.length === 0) {
+            throw new Error("Invalid response format from model.");
+          }
     
-      // Clean passage if provided
-      if (data.passage && typeof data.passage === "string") {
-        data.passage = cleanText(truncateText(data.passage, 2000));
-      }
+          // Clean passage if provided
+          if (data.passage && typeof data.passage === "string") {
+            data.passage = cleanText(truncateText(data.passage, 2000));
+          }
 
-      return data;
+          return data;
+        } catch (modelError: any) {
+          lastModelError = modelError;
+          const msg = String(modelError?.message || "").toLowerCase();
+          const isModelSupportError =
+            modelError?.status === 400 &&
+            (msg.includes("model") || msg.includes("unsupported") || msg.includes("not found"));
+          const isTimeout = msg.includes("timeout");
+
+          // Try another model candidate if this one is unavailable or timed out.
+          if (isModelSupportError || isTimeout) {
+            console.warn(`Model ${modelName} failed, trying fallback model.`, modelError?.message || modelError);
+            continue;
+          }
+          throw modelError;
+        }
+      }
+      throw lastModelError ?? new Error("Model generation failed.");
     };
 
     const sanitizeGraphData = (input: any) => {
@@ -517,12 +653,12 @@ Do not output anything except the JSON.`,
             }
           }
 
-          if (section === "reading") {
-            const lowered = questionText.toLowerCase();
-            if (lowered.includes("main idea") || lowered.includes("main purpose")) {
-              questionText = "Which statement is directly supported by the passage?";
-            }
+          // Ensure reading question text never ends up blank after cleanup.
+          if (section === "reading" && (!questionText || questionText.trim().length === 0)) {
+            questionText = "Which choice is best supported by the passage?";
           }
+
+
           
           // Truncate if too long
           questionText = truncateText(questionText, 500);
@@ -541,11 +677,18 @@ Do not output anything except the JSON.`,
               questionText = bolded.valid ? bolded.text : withTargetMarkup;
             }
           }
+
+          if ((section === "reading" || section === "writing") && finalPassage) {
+            const words = String(finalPassage).trim().split(/\s+/).filter(Boolean).length;
+            if (words < 25 || words > 250) {
+              console.warn(`Soft filter: passage word count ${words} outside 25-250 range, keeping question`);
+            }
+          }
           
           // Clean options
           const cleanedOptions: Record<string, string> = {};
           if (Array.isArray(q.options)) {
-            q.options.forEach((opt: string, i: number) => {
+            q.options.slice(0, 4).forEach((opt: string, i: number) => {
               const letter = String.fromCharCode(65 + i);
               const normalizedRaw = cleanMathNotation(cleanText(truncateText(opt, 200)))
                 .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
@@ -566,6 +709,9 @@ Do not output anything except the JSON.`,
             cleanedOptions.D = cleanMathNotation(cleanText(truncateText(q.options.D || q.options[3] || "", 200)))
               .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
               .replace(/^\s*[A-D]\s+/i, "");
+          }
+          if (!cleanedOptions.A || !cleanedOptions.B || !cleanedOptions.C || !cleanedOptions.D) {
+            return null;
           }
 
           if (section === "writing") {
@@ -598,6 +744,57 @@ Do not output anything except the JSON.`,
               cleanedOptions[letter] = opt;
             });
           }
+
+          // Reject placeholder options from model output (e.g., "text", "string", "option")
+          const hasPlaceholderOption = Object.values(cleanedOptions).some((opt) =>
+            isPlaceholderOptionText(String(opt || ""))
+          );
+          if (hasPlaceholderOption) {
+            return null;
+          }
+
+          const normalizedOptionSet = new Set(
+            Object.values(cleanedOptions).map((opt) => normalizeCompare(String(opt || ""))).filter(Boolean)
+          );
+          if (normalizedOptionSet.size < 4) {
+            return null;
+          }
+
+          if (
+            !likelySatStyleQuestion({
+              section,
+              question: questionText,
+              passage: String(finalPassage || ""),
+              options: Object.values(cleanedOptions),
+            })
+          ) {
+            console.warn("Soft filter: question did not pass likelySatStyleQuestion, keeping");
+          }
+
+          if (
+            (section === "reading" || section === "writing") &&
+            hasGenericSatStem(questionText) &&
+            String(finalPassage || "").length < 140
+          ) {
+            console.warn("Soft filter: generic SAT stem with short passage, keeping");
+          }
+
+          if (section === "writing") {
+            const skillLower = String(q.skillCategory || q.skillFocus || "").toLowerCase();
+            const questionLower = String(questionText || "").toLowerCase();
+            const hasTransitionSkillOrPrompt =
+              skillLower.includes("transition") || questionLower.includes("transition");
+            if (hasTransitionSkillOrPrompt) {
+              const passageText = String(finalPassage || "").toLowerCase();
+              const positiveSignals = ["furthermore", "moreover", "additionally", "also"];
+              const contrastSignals = ["however", "nevertheless", "in contrast", "by contrast"];
+              const hasPositive = positiveSignals.some((w) => passageText.includes(w));
+              const hasContrast = contrastSignals.some((w) => passageText.includes(w));
+              if (!hasPositive && !hasContrast) {
+                console.warn("Soft filter: writing transition question lacks transition signals, keeping");
+              }
+            }
+          }
           
           // Keep explanations concise for faster generation and rendering
           let explanationCorrect = cleanText(truncateText(q.explanation_correct || q.explanation || "", 220));
@@ -628,18 +825,16 @@ Do not output anything except the JSON.`,
             return null; // Filter out invalid questions
           }
     
-          // Determine difficulty based on question complexity (if not provided)
+          // Determine difficulty: locked config wins; otherwise trust the model's own difficulty tag
           let questionDifficulty: "Easy" | "Medium" | "Hard" = "Medium";
-          if (difficulty === "Mixed" && section === "math") {
-            const easyCount = Math.max(1, Math.round(questionCount * 0.2));
-            const hardCount = Math.max(1, Math.round(questionCount * 0.2));
-            const hardStart = questionCount - hardCount;
-            questionDifficulty = index < easyCount ? "Easy" : index >= hardStart ? "Hard" : "Medium";
-          } else if (q.difficulty && ["Easy", "Medium", "Hard"].includes(q.difficulty)) {
-            questionDifficulty = q.difficulty;
-          } else if (difficulty && difficulty !== "Mixed") {
+          if (difficulty && difficulty !== "Mixed") {
+            // User selected a specific difficulty — always enforce it
             questionDifficulty = difficulty as "Easy" | "Medium" | "Hard";
-          } else if (difficulty === "Mixed") {
+          } else if (q.difficulty && ["Easy", "Medium", "Hard"].includes(q.difficulty)) {
+            // Trust the model's own assessment — a concise question can still be Hard
+            questionDifficulty = q.difficulty;
+          } else {
+            // Fallback: position-based distribution when model didn't tag
             const easyCount = Math.max(1, Math.round(questionCount * 0.2));
             const hardCount = Math.max(1, Math.round(questionCount * 0.2));
             const hardStart = questionCount - hardCount;
@@ -691,6 +886,13 @@ Do not output anything except the JSON.`,
         .trim();
     };
 
+    const normalizeRwStem = (text: string) =>
+      normalizeForSimilarity(String(text || ""))
+        .replace(/\bwhich choice\b/g, "choice")
+        .replace(/\bbest\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
     const normalizeWritingOption = (text: string) =>
       String(text || "")
         .replace(/^\s*[A-D][\)\.\:\-]\s*/i, "")
@@ -724,8 +926,58 @@ Do not output anything except the JSON.`,
         .slice(0, 140);
     };
 
+    const getOptionSignature = (question: any) => {
+      const options = Object.values(question?.options || {})
+        .map((opt) => normalizeCompare(String(opt || "")))
+        .filter(Boolean)
+        .sort();
+      return options.join("|");
+    };
+
     const getRwSignatureSource = (question: any): string => {
       return String(question?.passage || question?.question || "");
+    };
+
+    const getWritingPatternKey = (question: any) => {
+      const skill = normalizeCompare(String(question?.skillCategory || question?.skillFocus || ""));
+      const questionStem = normalizeRwStem(String(question?.question || ""));
+      const options = getOptionSignature(question);
+      const hasNoChange = Object.values(question?.options || {}).some((opt) =>
+        isNoChangeOption(String(opt || ""))
+      );
+      const transitionLike = /\btransition|connects|best connects|relationship\b/i.test(questionStem);
+      return [skill, hasNoChange ? "has-no-change" : "no-no-change", transitionLike ? "transition" : "non-transition", options].join("::");
+    };
+
+    const isNearDuplicateQuestion = (candidate: any, pool: any[]) => {
+      const candidateStem = String(candidate?.question || "");
+      const candidatePassage = String(candidate?.passage || "");
+      const candidateOptions = getOptionSignature(candidate);
+      return pool.some((existing) => {
+        const existingStem = String(existing?.question || "");
+        const existingPassage = String(existing?.passage || "");
+        const existingOptions = getOptionSignature(existing);
+        const stemNearDuplicate = areNearDuplicateQuestions(candidateStem, existingStem, section === "math" ? 0.9 : 0.8);
+        const passageNearDuplicate =
+          section === "math"
+            ? false
+            : candidatePassage.length > 20 &&
+              existingPassage.length > 20 &&
+              areNearDuplicateQuestions(candidatePassage, existingPassage, 0.82);
+        const optionsSame = candidateOptions && existingOptions && candidateOptions === existingOptions;
+        return (stemNearDuplicate && optionsSame) || (stemNearDuplicate && passageNearDuplicate);
+      });
+    };
+
+    const dedupeAndFilterNearDuplicates = (list: any[]) => {
+      const deduped = removeDuplicates(list, (q: any) => getDedupKey(q));
+      const out: any[] = [];
+      for (const q of deduped) {
+        if (!isNearDuplicateQuestion(q, out)) {
+          out.push(q);
+        }
+      }
+      return out;
     };
 
     const existingQuestionsForGeneration: any[] = (() => {
@@ -885,16 +1137,23 @@ Do not output anything except the JSON.`,
         for (const [opt, count] of Object.entries(optionFrequency)) {
           if (opt !== "no change" && count >= block.length) return false;
         }
+
+        // Do not allow writing items with identical pattern+option signatures.
+        const patternKeys = block.map((q) => getWritingPatternKey(q));
+        if (new Set(patternKeys).size < block.length) return false;
       }
 
       return true;
     };
 
     const passesSetConstraints = (questions: any[]) => {
+      const mathVarietyOk = topicLocked && section === "math" ? true : passesMathVariety(questions);
+      const mathWordProblemsOk =
+        topicLocked && section === "math" ? true : passesMathWordProblemQuota(questions);
       return (
         passesPassageRotation(questions) &&
-        passesMathVariety(questions) &&
-        passesMathWordProblemQuota(questions) &&
+        mathVarietyOk &&
+        mathWordProblemsOk &&
         passesWritingOptionVariety(questions)
       );
     };
@@ -904,8 +1163,18 @@ Do not output anything except the JSON.`,
       if (section === "math") {
         return normalizeMathStem(base);
       }
-      return base;
+      const skill = normalizeCompare(String(question?.skillCategory || question?.skillFocus || ""));
+      return `${normalizeRwStem(base)}::${skill}`;
     };
+
+    const existingQuestionDedupKeys = new Set(
+      existingQuestionsForGeneration.map((q: any) => getDedupKey(q)).filter(Boolean)
+    );
+    const filterAgainstExistingQuestions = (list: any[]) =>
+      list.filter((q: any) => {
+        if (existingQuestionDedupKeys.has(getDedupKey(q))) return false;
+        return !isNearDuplicateQuestion(q, existingQuestionsForGeneration);
+      });
 
     let passage: string | undefined = undefined;
     let transformedAll: any[] = [];
@@ -937,13 +1206,13 @@ Do not output anything except the JSON.`,
         for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
           if (isPastDeadline()) break;
           try {
-            const data = await getModelPayload(
-              count,
-              `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`
-            );
+            const rwBlockExtra = topicLocked
+              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions. TOPIC LOCK: every question must target "${topicTrimmed}" only.${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`
+              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`;
+            const data = await getModelPayload(count, rwBlockExtra, { attempts: 1 });
             const blockPassage = data.passage;
-            const transformed = transformQuestions(data.questions, blockPassage);
-            const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+            const transformed = applyConfigFilters(transformQuestions(data.questions, blockPassage));
+            const unique = dedupeAndFilterNearDuplicates(transformed).slice(0, count);
             if (unique.length > bestQuestions.length) {
               bestQuestions = unique;
               bestPassage = blockPassage;
@@ -970,10 +1239,10 @@ Do not output anything except the JSON.`,
         if (bestQuestions.length >= count) {
           const signatureSource = getRwSignatureSource(bestQuestions[0]);
           const signature = getPassageSignature(signatureSource) || `block-${blockIndex}-${Date.now()}`;
-          if (existingRwSignatures.has(signature)) {
-            throw new Error(`Generated block ${blockIndex + 1} repeated a previous passage.`);
-          }
-          return { questions: bestQuestions.slice(0, count), passage: bestPassage, signature };
+          const finalSignature = existingRwSignatures.has(signature)
+            ? `partial-block-${blockIndex}-${Date.now()}`
+            : signature;
+          return { questions: bestQuestions.slice(0, count), passage: bestPassage, signature: finalSignature };
         }
 
         return {
@@ -988,12 +1257,12 @@ Do not output anything except the JSON.`,
         for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
           if (isPastDeadline()) break;
           try {
-            const data = await getModelPayload(
-              count,
-              `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} varied SAT Math questions for this block. Include at least one word problem in this block of ${count} questions (target exactly one unless the prompt naturally requires more).`
-            );
-            const transformed = transformQuestions(data.questions, data.passage);
-            const unique = removeDuplicates(transformed, (q: any) => getDedupKey(q)).slice(0, count);
+            const mathBlockInstructions = topicLocked
+              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} SAT Math questions. TOPIC LOCK: every question must be "${topicTrimmed}" only (Digital SAT style).${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All questions ${difficulty} difficulty.` : ""} Do not include items from unrelated domains. Include a word problem in this block only if it naturally fits "${topicTrimmed}".`
+              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} varied SAT Math questions for this block. Include at least one word problem in this block of ${count} questions (target exactly one unless the prompt naturally requires more).`;
+            const data = await getModelPayload(count, mathBlockInstructions, { attempts: 1 });
+            const transformed = applyConfigFilters(transformQuestions(data.questions, data.passage));
+            const unique = dedupeAndFilterNearDuplicates(transformed).slice(0, count);
             if (unique.length > bestQuestions.length) {
               bestQuestions = unique;
             }
@@ -1013,7 +1282,35 @@ Do not output anything except the JSON.`,
         return bestQuestions.slice(0, count);
       };
 
-      for (let setAttempt = 0; setAttempt < MAX_SET_ATTEMPTS; setAttempt += 1) {
+      // Fast path: one model call for the full set. This is usually much faster than block retries.
+      try {
+        const fastExtra =
+          topicLocked || difficultyLocked
+            ? `FAST MODE: One response, valid JSON.${topicLocked ? ` TOPIC LOCK "${topicTrimmed}" for every question.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty}.` : ""}`
+            : "FAST MODE: Return a complete, valid set in one response. Prioritize speed while keeping SAT style and valid JSON.";
+        const fastData = await getModelPayload(questionCount, fastExtra, {
+          attempts: 1,
+          timeoutMs: questionCount >= 20 ? 45000 : 35000,
+        });
+        const fastTransformed = dedupeAndFilterNearDuplicates(
+          applyConfigFilters(transformQuestions(fastData.questions, fastData.passage))
+        ).slice(0, questionCount);
+        const hasEnough = fastTransformed.length >= questionCount;
+        const rwHasPassages =
+          section === "math" || fastTransformed.every((q: any) => !!q.passage);
+        if (hasEnough && rwHasPassages) {
+          passage = fastData.passage;
+          transformedAll = fastTransformed;
+        }
+      } catch (fastPathError) {
+        console.warn("Fast-path generation failed, falling back to block mode:", fastPathError);
+      }
+
+      for (
+        let setAttempt = transformedAll.length >= questionCount ? MAX_SET_ATTEMPTS : 0;
+        setAttempt < MAX_SET_ATTEMPTS;
+        setAttempt += 1
+      ) {
         if (isPastDeadline()) {
           break;
         }
@@ -1024,13 +1321,14 @@ Do not output anything except the JSON.`,
           const mathBlocks = await Promise.all(
             blockCounts.map((count, idx) => buildMathBlock(idx, count))
           );
-          transformedAll = removeDuplicates(mathBlocks.flat(), (q: any) => getDedupKey(q)).slice(0, questionCount);
+          transformedAll = dedupeAndFilterNearDuplicates(mathBlocks.flat()).slice(0, questionCount);
         } else {
           const rwBlocks: Array<{ questions: any[]; passage?: string; signature: string } | null> = Array.from(
             { length: blockCounts.length },
             () => null
           );
 
+          let rwRepairPasses = 0;
           while (true) {
             const missingIndexes = rwBlocks
               .map((block, idx) => (block === null ? idx : -1))
@@ -1071,6 +1369,10 @@ Do not output anything except the JSON.`,
             if (invalidIndexes.size === 0) {
               break;
             }
+            rwRepairPasses += 1;
+            if (rwRepairPasses >= 2) {
+              break;
+            }
 
             invalidIndexes.forEach((idx) => {
               rwBlocks[idx] = null;
@@ -1082,7 +1384,7 @@ Do not output anything except the JSON.`,
             passage = orderedBlocks[0].passage;
           }
           transformedAll = orderedBlocks.flatMap((block) => block.questions);
-          transformedAll = removeDuplicates(transformedAll, (q: any) => getDedupKey(q)).slice(0, questionCount);
+          transformedAll = dedupeAndFilterNearDuplicates(transformedAll).slice(0, questionCount);
         }
 
         if (transformedAll.length < questionCount) {
@@ -1097,23 +1399,52 @@ Do not output anything except the JSON.`,
       }
     }
 
-    if (isPastDeadline() && transformedAll.length < questionCount) {
-      return NextResponse.json(
-        { error: "We couldn't generate your test right now. Please retry." },
-        { status: 500 }
-      );
-    }
+    // If deadline is hit, continue with whatever we have and fill the rest using fallback questions.
     
     // Remove duplicate questions based on question text
-    const uniqueQuestions = removeDuplicates(transformedAll, (q: any) => getDedupKey(q));
+    const uniqueQuestions = dedupeAndFilterNearDuplicates(transformedAll);
 
-    const finalQuestions = uniqueQuestions.length >= questionCount
+    let finalQuestions = uniqueQuestions.length >= questionCount
       ? uniqueQuestions.slice(0, questionCount)
       : transformedAll.slice(0, questionCount);
 
-    if (finalQuestions.length < questionCount) {
-      throw new Error("Failed to generate enough valid questions.");
+    finalQuestions = filterAgainstExistingQuestions(finalQuestions);
+
+    // Single top-up pass if the first generation came up short.
+    if (finalQuestions.length < questionCount && !isPastDeadline()) {
+      try {
+        const missing = questionCount - finalQuestions.length;
+        const chunkSize = Math.min(5, missing);
+        const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct from prior stems. Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
+        const topUpData = await getModelPayload(chunkSize, topUpExtra, {
+          attempts: 1,
+          timeoutMs: 30000,
+        });
+        const topUpTransformed = applyConfigFilters(
+          transformQuestions(topUpData.questions, topUpData.passage)
+        );
+        const combined = dedupeAndFilterNearDuplicates([...finalQuestions, ...topUpTransformed]);
+        finalQuestions = filterAgainstExistingQuestions(combined).slice(0, questionCount);
+      } catch (topUpError) {
+        console.warn("Practice generation top-up failed:", topUpError);
+      }
     }
+
+    if (finalQuestions.length === 0) {
+      return NextResponse.json(
+        {
+          error: "Could not generate any valid questions this attempt. Please try again.",
+          requested: questionCount,
+          received: 0,
+        },
+        { status: 503 }
+      );
+    }
+
+    const partialWarning =
+      finalQuestions.length < questionCount
+        ? `Generated ${finalQuestions.length} of ${questionCount} requested questions.`
+        : undefined;
 
     if (section === "reading" && !passage && finalQuestions.every((q: any) => !q.passage)) {
       throw new Error("Reading passage is required for reading questions.");
@@ -1180,10 +1511,11 @@ Do not output anything except the JSON.`,
       : { passage, questions: normalizedQuestions };
 
     return NextResponse.json({
-      id: practiceTestId, // Return test ID so we can update score later
+      id: practiceTestId,
       section: section,
       passage: existingPracticeTest ? responsePassage : responseBody.passage,
       questions: existingPracticeTest ? responseQuestions : responseBody.questions,
+      ...(partialWarning && { warning: partialWarning }),
     });
   } catch (error: any) {
     return handleApiError(error);

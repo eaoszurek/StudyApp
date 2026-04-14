@@ -11,11 +11,10 @@ import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracki
 import WritingQuestion from "@/components/ui/WritingQuestion";
 import FeatureIcon from "@/components/ui/FeatureIcon";
 import DesmosCalculator from "@/components/ui/DesmosCalculator";
-import { Calculator, ChevronDown, ChevronUp, ArrowRight, ArrowLeft } from "lucide-react";
+import { Calculator, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import QuestionChart, { type QuestionGraphData } from "@/components/ui/QuestionChart";
 import DesmosGraph from "@/components/ui/DesmosGraph";
 import { getTopicsForSection } from "@/data/topics";
-
 type SectionType = "math" | "reading" | "writing";
 type OptionLetter = "A" | "B" | "C" | "D";
 
@@ -38,6 +37,7 @@ interface PracticeSet {
   section: SectionType;
   passage?: string;
   questions: PracticeQuestion[];
+  warning?: string;
 }
 
 interface TestConfig {
@@ -100,125 +100,6 @@ const renderFormattedText = (text: string) => {
   );
 };
 
-// Collapsible question review card used in the results screen
-function ResultCard({
-  question,
-  idx,
-  isCorrect,
-  userAnswer,
-  testType,
-  renderFormattedText,
-}: {
-  question: PracticeQuestion;
-  idx: number;
-  isCorrect: boolean;
-  userAnswer: OptionLetter | undefined;
-  testType: SectionType | null;
-  renderFormattedText: (text: string) => React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const hasExplanation = !!(question.explanation_correct || question.explanation);
-
-  return (
-    <div
-      className={`rounded-xl border transition-colors ${
-        isCorrect
-          ? "border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20"
-          : "border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20"
-      }`}
-    >
-      {/* Header row - always visible, click to expand */}
-      <button
-        type="button"
-        className="w-full text-left px-4 py-3 flex items-center justify-between gap-3"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          {/* Colored dot */}
-          <span
-            className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-              isCorrect ? "bg-green-500" : "bg-red-500"
-            }`}
-          >
-            {idx + 1}
-          </span>
-          <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-            {question.skillFocus}
-          </span>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <span
-            className={`text-xs font-semibold ${
-              isCorrect ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"
-            }`}
-          >
-            {isCorrect ? "Correct" : "Incorrect"}
-          </span>
-          <span className="text-slate-400 dark:text-slate-500 text-xs">
-            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </span>
-        </div>
-      </button>
-
-      {/* Expanded body */}
-      {open && (
-        <div className="px-4 pb-4 border-t border-slate-200 dark:border-slate-700 space-y-3 pt-3">
-          {/* Question text */}
-          {testType === "writing" ? (
-            <WritingQuestion
-              question={question.question}
-              className="text-sm text-slate-700 dark:text-slate-200"
-            />
-          ) : (
-            <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{question.question}</p>
-          )}
-
-          {/* Answer summary */}
-          <div className="flex flex-wrap gap-3 text-xs">
-            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border ${
-              isCorrect
-                ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
-                : "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 border-red-200 dark:border-red-700"
-            }`}>
-              Your answer: {userAnswer || "-"}
-            </span>
-            {!isCorrect && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700">
-                Correct: {question.correctAnswer}
-              </span>
-            )}
-          </div>
-
-          {/* Explanation */}
-          {hasExplanation && (
-            <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-              <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Explanation</p>
-              {renderFormattedText(question.explanation_correct || question.explanation || "")}
-              {question.explanation_incorrect && Object.keys(question.explanation_incorrect).length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {Object.entries(question.explanation_incorrect).map(([letter, reason]) => (
-                    <div key={letter} className="text-sm text-slate-600 dark:text-slate-400">
-                      <span className="font-semibold text-red-600 dark:text-red-400">Option {letter}:</span>{" "}
-                      {renderFormattedText(reason)}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {question.strategy_tip && (
-                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wide mb-1">Strategy Tip</p>
-                  {renderFormattedText(question.strategy_tip)}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function PracticeTests() {
   // Check subscription status and free usage
   React.useEffect(() => {
@@ -272,10 +153,16 @@ export default function PracticeTests() {
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
   const [practiceHydrated, setPracticeHydrated] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
+  const [selectedReviewIndex, setSelectedReviewIndex] = useState<number | null>(null);
+  const [trailBuddyQuestion, setTrailBuddyQuestion] = useState("");
+  const [trailBuddyReply, setTrailBuddyReply] = useState("");
+  const [trailBuddyLoading, setTrailBuddyLoading] = useState(false);
+  const [trailBuddyError, setTrailBuddyError] = useState<string | null>(null);
+  const [trailBuddyStepMode, setTrailBuddyStepMode] = useState(false);
+  const [reviewExplanationOpen, setReviewExplanationOpen] = useState(false);
   const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
-  const isProgressiveMode =
-    (testType === "writing" || testType === "reading") && targetQuestionCount > 5;
+  const isProgressiveMode = targetQuestionCount > 5;
   const practiceProgressPercent = practiceSet
     ? ((currentQuestion + 1) /
         (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
@@ -368,15 +255,37 @@ export default function PracticeTests() {
         });
 
         if (!res.ok) {
-          throw new Error("practice_request_failed");
+          let message = "practice_request_failed";
+          let shouldRetry = false;
+          try {
+            const data = await res.json();
+            if (data?.error && typeof data.error === "string") {
+              message = data.error;
+            }
+          } catch {
+            /* ignore */
+          }
+          // Retry only transient failures. Validation/config errors (4xx like 422)
+          // should surface immediately so users can adjust settings.
+          if (res.status === 429 || res.status >= 500) {
+            shouldRetry = true;
+          }
+          const error = new Error(message) as Error & { shouldRetry?: boolean };
+          error.shouldRetry = shouldRetry;
+          throw error;
         }
         return (await res.json()) as PracticeSet & { id?: string };
       } catch (error) {
         lastError = error;
-        if (attempt < maxRetries) {
+        const shouldRetry =
+          error instanceof Error &&
+          "shouldRetry" in error &&
+          Boolean((error as Error & { shouldRetry?: boolean }).shouldRetry);
+        if (attempt < maxRetries && shouldRetry) {
           await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
           continue;
         }
+        break;
       }
     }
     throw lastError ?? new Error("practice_request_failed");
@@ -401,7 +310,7 @@ export default function PracticeTests() {
     const FREE_TIER_LIMIT = 1;
     if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
       setError(
-        `You've used your free feature access. Upgrade to Premium for unlimited access to all features!`
+        `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
       );
       return;
     }
@@ -417,14 +326,20 @@ export default function PracticeTests() {
     setUserAnswers({});
     setShowConfig(false);
     setTargetQuestionCount(selectedConfig.questionCount);
+    setSelectedReviewIndex(null);
+    setTrailBuddyQuestion("");
+    setTrailBuddyReply("");
+    setTrailBuddyError(null);
+    setTrailBuddyStepMode(false);
+    setReviewExplanationOpen(false);
     setTestType(selectedSection);
     setConfig(selectedConfig);
 
     try {
-      const initialCount =
-        selectedSection === "writing" || selectedSection === "reading"
-          ? Math.min(5, selectedConfig.questionCount)
-          : selectedConfig.questionCount;
+      const shouldProgressive = selectedConfig.questionCount > 5;
+      const initialCount = shouldProgressive
+        ? Math.min(2, selectedConfig.questionCount)
+        : selectedConfig.questionCount;
       const data = await fetchPracticeBatchWithRetry({
         section: selectedSection,
         questionCount: initialCount,
@@ -451,8 +366,11 @@ export default function PracticeTests() {
         localStorage.setItem("free_tier_usage", "0");
         setFreeUsageCount(0);
       }
-    } catch {
-      setError(TEST_RETRY_MESSAGE);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(
+        msg && msg !== "practice_request_failed" ? msg : TEST_RETRY_MESSAGE
+      );
       setShowConfig(true); // Return to config on error
     } finally {
       setLoading(false);
@@ -482,8 +400,8 @@ export default function PracticeTests() {
     const remaining = targetQuestionCount - loaded;
     const questionsLeftInLoadedBatch = loaded - (currentQuestion + 1);
 
-    // Keep one batch ahead while the user works through the current 5.
-    if (remaining > 0 && questionsLeftInLoadedBatch <= 4 && !batchLoadingRef.current) {
+    // Start with 1-2 questions, then keep a buffer ahead in background.
+    if (remaining > 0 && questionsLeftInLoadedBatch <= 2 && !batchLoadingRef.current) {
       batchLoadingRef.current = true;
       setIsBatchLoading(true);
       setBatchLoadError(null);
@@ -511,8 +429,11 @@ export default function PracticeTests() {
               questions: [...prev.questions, ...normalized],
             };
           });
-        } catch {
-          setBatchLoadError(BATCH_RETRY_MESSAGE);
+        } catch (e) {
+          const m = e instanceof Error ? e.message : "";
+          setBatchLoadError(
+            m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
+          );
         } finally {
           batchLoadingRef.current = false;
           setIsBatchLoading(false);
@@ -568,8 +489,11 @@ export default function PracticeTests() {
             setCurrentQuestion(currentQuestion + 1);
             setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
             return;
-          } catch {
-            setBatchLoadError(BATCH_RETRY_MESSAGE);
+          } catch (e) {
+            const m = e instanceof Error ? e.message : "";
+            setBatchLoadError(
+              m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
+            );
             return;
           } finally {
             batchLoadingRef.current = false;
@@ -653,8 +577,71 @@ export default function PracticeTests() {
       topic: "",
       difficulty: "Mixed",
     });
+    setSelectedReviewIndex(null);
+    setTrailBuddyQuestion("");
+    setTrailBuddyReply("");
+    setTrailBuddyError(null);
+    setTrailBuddyStepMode(false);
+    setReviewExplanationOpen(false);
     setShowCalculator(false);
     localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+  };
+
+  const askTrailBuddy = async ({
+    section,
+    question,
+    passage,
+    options,
+    correctAnswer,
+    userAnswer,
+    explanationCorrect,
+    explanationIncorrect,
+    strategyTip,
+    studentQuestion,
+    responseStyle = "quick",
+  }: {
+    section: SectionType;
+    question: string;
+    passage?: string;
+    options: Record<OptionLetter, string>;
+    correctAnswer: OptionLetter;
+    userAnswer?: OptionLetter;
+    explanationCorrect?: string;
+    explanationIncorrect?: Record<string, string>;
+    strategyTip?: string;
+    studentQuestion: string;
+    responseStyle?: "quick" | "step_list";
+  }) => {
+    setTrailBuddyLoading(true);
+    setTrailBuddyError(null);
+    try {
+      const res = await fetch("/api/practice-trail-buddy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testType: section,
+          question,
+          passage,
+          options,
+          correctAnswer,
+          userAnswer: userAnswer || null,
+          explanationCorrect,
+          explanationIncorrect,
+          strategyTip,
+          studentQuestion,
+          responseStyle,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("trail_buddy_failed");
+      }
+      const data = await res.json();
+      setTrailBuddyReply(String(data.reply || "").trim());
+    } catch {
+      setTrailBuddyError("Trail Buddy is having trouble right now. Try again in a moment.");
+    } finally {
+      setTrailBuddyLoading(false);
+    }
   };
 
   const sectionCards = [
@@ -664,7 +651,7 @@ export default function PracticeTests() {
   ];
 
   return (
-    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-4xl mx-auto overflow-x-hidden w-full">
+    <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-6xl mx-auto overflow-x-hidden w-full">
       {!showConfig && !loading && !practiceSet && (
         <PageHeader
           eyebrow="Practice Tests"
@@ -678,10 +665,10 @@ export default function PracticeTests() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                {freeUsageCount >= 1 ? "Free Trial Used" : "Free Trial: 1 use remaining"}
+                {freeUsageCount >= 1 ? "Free Starter Used" : "Free Starter: 1 checkpoint remaining"}
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 font-medium">
-                Upgrade to Premium for unlimited access to all features
+                Unlock unlimited practice tests, adaptive plans, and Trail Buddy for $5/month
               </p>
             </div>
             <button
@@ -883,31 +870,35 @@ export default function PracticeTests() {
         const circumference = 2 * Math.PI * R;
         return (
           <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
-            <div className="p-5 sm:p-7 space-y-8">
-              {/* Score header */}
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-[0.4em] text-slate-500 dark:text-slate-400 font-semibold mb-3">Results</p>
-                <p className="text-4xl font-bold text-slate-900 dark:text-white mb-1">
-                  {score}<span className="text-2xl font-normal text-slate-400 dark:text-slate-500">/{practiceSet.questions.length}</span>
-                </p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {Math.round((score / practiceSet.questions.length) * 100)}% correct
-                </p>
-                {satScore && (
-                  <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-1">
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold">SAT Scaled Score</p>
-                    <p className="text-5xl font-bold text-blue-600 dark:text-blue-400">{satScore.scaled}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Section &middot; 200&ndash;800
+            <div className="p-4 sm:p-6 space-y-5">
+              {/* Results + scaled score in one row */}
+              <div>
+                <div className={`grid gap-3 ${satScore ? "md:grid-cols-2" : "grid-cols-1"}`}>
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 text-center">
+                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold mb-2">Results</p>
+                    <p className="text-4xl font-bold text-slate-900 dark:text-white mb-1">
+                      {score}<span className="text-2xl font-normal text-slate-400 dark:text-slate-500">/{practiceSet.questions.length}</span>
                     </p>
-                    {testType && practiceSet.questions.length >= MIN_ESTIMATE_QUESTIONS && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Est. Total: <span className="font-bold text-slate-900 dark:text-white">{satScore.scaled * 2}</span> / 1600
-                        {" "}&middot; Top {100 - getPercentile(satScore.scaled * 2)}% &middot; {getScoreInterpretation(satScore.scaled * 2)}
-                      </p>
-                    )}
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {Math.round((score / practiceSet.questions.length) * 100)}% correct
+                    </p>
                   </div>
-                )}
+                  {satScore && (
+                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 text-center space-y-1">
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold">SAT Scaled Score</p>
+                      <p className="text-5xl font-bold text-blue-600 dark:text-blue-400">{satScore.scaled}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Section &middot; 200&ndash;800
+                      </p>
+                      {testType && practiceSet.questions.length >= MIN_ESTIMATE_QUESTIONS && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          Est. Total: <span className="font-bold text-slate-900 dark:text-white">{satScore.scaled * 2}</span> / 1600
+                          {" "}&middot; Top {100 - getPercentile(satScore.scaled * 2)}% &middot; {getScoreInterpretation(satScore.scaled * 2)}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Skill performance circles */}
@@ -944,22 +935,250 @@ export default function PracticeTests() {
                 </div>
               )}
 
-              {/* Question review cards */}
+              {/* Question review grid + detail */}
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Question Review</p>
-                <div className="space-y-2">
-                  {practiceSet.questions.map((q, idx) => (
-                    <ResultCard
-                      key={q.id}
-                      question={q}
-                      idx={idx}
-                      isCorrect={userAnswers[idx] === q.correctAnswer}
-                      userAnswer={userAnswers[idx]}
-                      testType={testType}
-                      renderFormattedText={renderFormattedText}
-                    />
-                  ))}
-                </div>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Question Review Grid</p>
+                {(() => {
+                  const firstIncorrect = practiceSet.questions.findIndex((q, idx) => userAnswers[idx] !== q.correctAnswer);
+                  const activeIdxRaw = selectedReviewIndex ?? (firstIncorrect >= 0 ? firstIncorrect : 0);
+                  const activeIdx = Math.max(0, Math.min(activeIdxRaw, practiceSet.questions.length - 1));
+                  const activeQuestion = practiceSet.questions[activeIdx];
+                  const activeIsCorrect = userAnswers[activeIdx] === activeQuestion.correctAnswer;
+                  const activeUserAnswer = userAnswers[activeIdx];
+                  const activePassage = (activeQuestion as any)?.passage || practiceSet.passage;
+                  const hasExplanation = !!(activeQuestion.explanation_correct || activeQuestion.explanation);
+                  const getOptionText = (letter?: string) => {
+                    if (!letter) return "-";
+                    const normalized = letter.toUpperCase() as OptionLetter;
+                    return activeQuestion.options?.[normalized] || letter;
+                  };
+                  const activeUserAnswerText = activeUserAnswer ? getOptionText(activeUserAnswer) : "-";
+                  const activeCorrectAnswerText = getOptionText(activeQuestion.correctAnswer);
+
+                  return (
+                    <div className="grid gap-3 md:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.7fr)] items-start">
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40 p-4">
+                        <div className="grid grid-cols-5 gap-2">
+                          {practiceSet.questions.map((q, idx) => {
+                            const isCorrect = userAnswers[idx] === q.correctAnswer;
+                            const isActive = idx === activeIdx;
+                            return (
+                              <button
+                                key={q.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedReviewIndex(idx);
+                                  setTrailBuddyReply("");
+                                  setTrailBuddyQuestion("");
+                                  setTrailBuddyError(null);
+                                  setTrailBuddyStepMode(false);
+                                  setReviewExplanationOpen(false);
+                                }}
+                                className={`h-11 rounded-lg text-sm font-bold border transition-colors ${
+                                  isCorrect
+                                    ? "bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700 text-green-800 dark:text-green-300"
+                                    : "bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300"
+                                } ${
+                                  isActive
+                                    ? "ring-2 ring-sky-400 dark:ring-sky-500"
+                                    : "hover:opacity-90"
+                                }`}
+                                aria-label={`Question ${idx + 1} ${isCorrect ? "correct" : "incorrect"}`}
+                              >
+                                {idx + 1}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center gap-3 mt-4 text-xs font-semibold">
+                          <span className="inline-flex items-center gap-1.5 text-green-700 dark:text-green-300">
+                            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            Correct
+                          </span>
+                          <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-300">
+                            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                            Incorrect
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-4 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                            Question {activeIdx + 1} - {activeQuestion.skillFocus}
+                          </p>
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                            activeIsCorrect
+                              ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
+                              : "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 border-red-200 dark:border-red-700"
+                          }`}>
+                            {activeIsCorrect ? "Correct" : "Incorrect"}
+                          </span>
+                        </div>
+
+                        {activePassage && (
+                          <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3">
+                            {testType === "writing" ? (
+                              <WritingQuestion
+                                question={String(activePassage)}
+                                className="text-sm text-slate-700 dark:text-slate-200"
+                              />
+                            ) : (
+                              <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                                {String(activePassage)}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {testType === "writing" ? (
+                          <WritingQuestion
+                            question={activeQuestion.question}
+                            className="text-sm text-slate-700 dark:text-slate-200"
+                          />
+                        ) : (
+                          <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{activeQuestion.question}</p>
+                        )}
+
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border ${
+                            activeIsCorrect
+                              ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
+                              : "bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-300 border-red-200 dark:border-red-700"
+                          }`}>
+                            Your answer: {activeUserAnswerText}
+                          </span>
+                          {!activeIsCorrect && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700">
+                              Correct: {activeCorrectAnswerText}
+                            </span>
+                          )}
+                        </div>
+
+                        {hasExplanation && (
+                          <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 p-3">
+                            <button
+                              type="button"
+                              onClick={() => setReviewExplanationOpen((v) => !v)}
+                              className="w-full flex items-center justify-between text-left"
+                              aria-expanded={reviewExplanationOpen}
+                            >
+                              <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Why this is right</p>
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {reviewExplanationOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              </span>
+                            </button>
+                            <div
+                              className={`overflow-hidden transition-all duration-300 ease-out ${
+                                reviewExplanationOpen ? "max-h-[900px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
+                              }`}
+                            >
+                              {renderFormattedText(activeQuestion.explanation_correct || activeQuestion.explanation || "")}
+                              {activeQuestion.explanation_incorrect && Object.keys(activeQuestion.explanation_incorrect).length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                  {Object.entries(activeQuestion.explanation_incorrect).map(([letter, reason]) => (
+                                    <div key={letter} className="text-sm text-slate-600 dark:text-slate-400">
+                                      <span className="font-semibold text-red-600 dark:text-red-400">Option {letter} ({getOptionText(letter)}):</span>{" "}
+                                      {renderFormattedText(reason)}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {activeQuestion.strategy_tip && (
+                                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wide mb-1">Strategy Tip</p>
+                                  {renderFormattedText(activeQuestion.strategy_tip)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
+                          <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400 font-semibold mb-2">Trail Buddy Question Box</p>
+                          <div className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50/70 dark:bg-sky-900/20 p-3">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <input
+                                value={trailBuddyQuestion}
+                                onChange={(e) => setTrailBuddyQuestion(e.target.value)}
+                                placeholder="Ask Trail Buddy what confused you..."
+                                className="ai-config-input flex-1 rounded-lg px-3 py-2 text-sm"
+                              />
+                              <button
+                                type="button"
+                                disabled={trailBuddyLoading}
+                                onClick={() => {
+                                  const trimmed = trailBuddyQuestion.trim();
+                                  if (!trimmed) return;
+                                  setTrailBuddyStepMode(false);
+                                  void askTrailBuddy({
+                                    section: testType || "math",
+                                    question: activeQuestion.question,
+                                    passage: activePassage ? String(activePassage) : undefined,
+                                    options: activeQuestion.options,
+                                    correctAnswer: activeQuestion.correctAnswer,
+                                    userAnswer: activeUserAnswer,
+                                    explanationCorrect: activeQuestion.explanation_correct || activeQuestion.explanation,
+                                    explanationIncorrect: activeQuestion.explanation_incorrect,
+                                    strategyTip: activeQuestion.strategy_tip,
+                                    studentQuestion: trimmed,
+                                    responseStyle: "quick",
+                                  });
+                                }}
+                                className="sat-btn-next sm:w-auto px-4 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {trailBuddyLoading ? "Thinking..." : "Ask"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={trailBuddyLoading}
+                                onClick={() => {
+                                  setTrailBuddyStepMode(true);
+                                  void askTrailBuddy({
+                                    section: testType || "math",
+                                    question: activeQuestion.question,
+                                    passage: activePassage ? String(activePassage) : undefined,
+                                    options: activeQuestion.options,
+                                    correctAnswer: activeQuestion.correctAnswer,
+                                    userAnswer: activeUserAnswer,
+                                    explanationCorrect: activeQuestion.explanation_correct || activeQuestion.explanation,
+                                    explanationIncorrect: activeQuestion.explanation_incorrect,
+                                    strategyTip: activeQuestion.strategy_tip,
+                                    studentQuestion: "Give me a step-by-step on how to solve this question clearly.",
+                                    responseStyle: "step_list",
+                                  });
+                                }}
+                                  className="rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-semibold transition-all duration-200 hover:bg-sky-100 dark:hover:bg-sky-900/30 hover:-translate-y-0.5 hover:shadow-sm active:translate-y-0 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                Step-by-step
+                              </button>
+                            </div>
+                            {trailBuddyError && (
+                              <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{trailBuddyError}</p>
+                            )}
+                            {trailBuddyReply && (
+                              trailBuddyStepMode ? (
+                                <ol className="mt-2 space-y-1 list-decimal pl-5 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                  {trailBuddyReply
+                                    .split(/\n+/)
+                                    .map((line) => line.replace(/^\s*\d+[\).\-\s]*/, "").trim())
+                                    .filter(Boolean)
+                                    .map((line, idx) => (
+                                      <li key={idx}>{line}</li>
+                                    ))}
+                                </ol>
+                              ) : (
+                                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                                  {trailBuddyReply}
+                                </p>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <button type="button" className="sat-btn-next w-full" onClick={resetTest}>
@@ -991,11 +1210,16 @@ export default function PracticeTests() {
             currentQuestion === practiceSet.questions.length - 1 ? (
               <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center p-8">
                 <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-6" aria-hidden />
-                <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading next 5 questions...</p>
+                <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading more questions...</p>
                 <p className="text-sm text-slate-600 dark:text-slate-400">This usually takes a moment.</p>
               </div>
             ) : (
               <div className="p-5 sm:p-7">
+                {practiceSet.warning && (
+                  <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200 font-medium">
+                    {practiceSet.warning}
+                  </div>
+                )}
                 {/* Header: progress bar + inline calculator */}
                 <div className="mb-5">
                   <div className="flex items-center justify-between mb-2">

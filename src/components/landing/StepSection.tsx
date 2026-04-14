@@ -10,32 +10,32 @@ import AssessmentMockup from "./mockups/AssessmentMockup";
 const steps = [
   {
     number: "01",
-    title: "Set your goal",
-    description: "Tell Peak Prep what you’re working on so your next step is always clear.",
+    title: "Take a quick checkpoint",
+    description: "Get a fast baseline and see exactly where you are losing points.",
     icon: "dashboard" as FeatureIconName,
     mockup: <AssessmentMockup />,
     color: "from-sky-500/20 to-green-500/20",
-    highlights: ["2-minute setup", "Clear target score", "Stress-free start"],
+    highlights: ["Fast baseline", "Weak-skill diagnosis", "Quick start"],
     accentColor: "sky",
   },
   {
     number: "02",
-    title: "Study smart",
-    description: "Get focused practice, flashcards, and explanations built for short sessions.",
+    title: "Get your personal climb plan",
+    description: "Daily tasks adapt to your weak skills, timeline, and target score.",
     icon: "study-plan" as FeatureIconName,
     mockup: <QuizMockup />,
     color: "from-green-500/20 to-blue-500/20",
-    highlights: ["Short daily sessions", "Skill-focused practice", "Coach-like explanations"],
+    highlights: ["15-minute daily plan", "Adaptive tasks", "Focused weak-skill practice"],
     accentColor: "green",
   },
   {
     number: "03",
-    title: "See progress",
-    description: "Track your climb and keep momentum with quick wins and clear feedback.",
+    title: "Improve faster with instant help",
+    description: "Use Trail Buddy for clear explanations and step-by-step guidance right when you need it.",
     icon: "practice" as FeatureIconName,
     mockup: <RouteMapMockup />,
     color: "from-blue-500/20 to-purple-500/20",
-    highlights: ["Progress snapshots", "Confidence boosts", "Next-step guidance"],
+    highlights: ["Question review grid", "Step-by-step AI help", "Clear next action"],
     accentColor: "blue",
   },
 ];
@@ -56,10 +56,10 @@ export default function StepSection() {
             How It Works
           </p>
           <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">
-            SAT prep that doesn’t overwhelm you
+            How Peak Prep works
           </h2>
           <p className="text-base text-slate-700 leading-relaxed font-medium">
-            A clear, daily path forward built for 10–30 minute study bursts
+            A fast 3-step loop built to raise your score without wasting time.
           </p>
         </motion.div>
 

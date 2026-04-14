@@ -20,7 +20,6 @@ import type {
   StudyTaskType,
 } from "@/types";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-
 const STORAGE_KEY = "sat_study_plan";
 const TASKS_STORAGE_KEY = `${STORAGE_KEY}_tasks`;
 const UNLOCKED_WEEK_KEY = `${STORAGE_KEY}_unlocked_week`;
@@ -432,7 +431,7 @@ export default function StudyPlanPage() {
     const FREE_TIER_LIMIT = 1;
     if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
       setError(
-        `You've used your free feature access. Upgrade to Premium for unlimited access to all features!`
+        `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
       );
       return;
     }
@@ -653,10 +652,10 @@ export default function StudyPlanPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                {freeUsageCount >= 1 ? "Free Trial Used" : "Free Trial: 1 use remaining"}
+                {freeUsageCount >= 1 ? "Free Starter Used" : "Free Starter: 1 checkpoint remaining"}
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 font-medium">
-                Upgrade to Premium for unlimited access to all features
+                Unlock unlimited practice tests, adaptive plans, and Trail Buddy for $5/month
               </p>
             </div>
             <button

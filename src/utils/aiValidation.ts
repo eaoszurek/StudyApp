@@ -381,3 +381,129 @@ export function ensureBoldEmphasis(text: string, keyword?: string): string {
   return words.join(" ");
 }
 
+export function isPlaceholderOptionText(text: string): boolean {
+  const normalized = String(text || "")
+    .toLowerCase()
+    .replace(/^[a-d][\)\.\:\-\s]+/i, "")
+    .replace(/^[a-d]\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return ["text", "string", "option", "answer", "placeholder"].includes(normalized);
+}
+
+export function normalizeForSimilarity(text: string): string {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenSet(text: string): Set<string> {
+  const stopwords = new Set([
+    "the",
+    "a",
+    "an",
+    "of",
+    "to",
+    "and",
+    "or",
+    "in",
+    "on",
+    "for",
+    "with",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "that",
+    "which",
+    "what",
+    "from",
+    "as",
+    "by",
+    "at",
+    "it",
+    "this",
+    "these",
+    "those",
+  ]);
+  return new Set(
+    normalizeForSimilarity(text)
+      .split(" ")
+      .filter((w) => w.length >= 3 && !stopwords.has(w))
+  );
+}
+
+export function jaccardSimilarity(a: string, b: string): number {
+  const aSet = tokenSet(a);
+  const bSet = tokenSet(b);
+  if (aSet.size === 0 || bSet.size === 0) return 0;
+  let intersection = 0;
+  for (const token of aSet) {
+    if (bSet.has(token)) intersection += 1;
+  }
+  const union = new Set([...aSet, ...bSet]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+export function areNearDuplicateQuestions(a: string, b: string, threshold = 0.82): boolean {
+  const normA = normalizeForSimilarity(a);
+  const normB = normalizeForSimilarity(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.includes(normB) || normB.includes(normA)) {
+    const ratio = Math.min(normA.length, normB.length) / Math.max(normA.length, normB.length);
+    if (ratio >= 0.84) return true;
+  }
+  return jaccardSimilarity(normA, normB) >= threshold;
+}
+
+export function hasGenericSatStem(text: string): boolean {
+  const t = normalizeForSimilarity(text);
+  if (!t) return true;
+  return (
+    /\bwhich choice is best\b/.test(t) ||
+    /\bwhich choice best\b/.test(t) ||
+    /\bwhat is the best answer\b/.test(t) ||
+    /\bselect the best answer\b/.test(t)
+  );
+}
+
+export function likelySatStyleQuestion(params: {
+  section: "math" | "reading" | "writing";
+  question: string;
+  passage?: string;
+  options: string[];
+}): boolean {
+  const { section, question, passage = "", options } = params;
+  const q = String(question || "").trim();
+  if (!q || q.length < 20) return false;
+  if (!Array.isArray(options) || options.length !== 4) return false;
+  if (options.some((opt) => !String(opt || "").trim())) return false;
+
+  if (section === "math") {
+    const hasMathSignal =
+      /[0-9=+\-*/^%]/.test(q) ||
+      /\b(linear|quadratic|function|equation|system|triangle|probability|ratio|percent|slope|graph)\b/i.test(q);
+    return hasMathSignal;
+  }
+
+  const p = String(passage || "").trim();
+  if (!p || p.length < 80) return false;
+  if (hasGenericSatStem(q) && p.length < 120) return false;
+
+  if (section === "writing") {
+    const hasEditingSignal =
+      /\b(revision|sentence|punctuation|grammar|transition|concise|concision|standard written english|underlined|replace)\b/i.test(
+        q
+      );
+    return hasEditingSignal;
+  }
+
+  const hasReadingSignal =
+    /\b(passage|author|evidence|supports|implies|suggests|infer|central idea|purpose|tone|according to)\b/i.test(q);
+  return hasReadingSignal;
+}
+

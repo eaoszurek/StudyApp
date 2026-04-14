@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getOpenAIClient } from "@/lib/openai";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
-import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks } from "@/utils/aiValidation";
+import { validateQuestionFormat, cleanMathNotation, cleanText, truncateText, ensureSingleSkill, ensureBoldEmphasis, formatEquationLineBreaks, isPlaceholderOptionText } from "@/utils/aiValidation";
 
 const LessonExplanationIncorrectSchema = z.object({
   B: z.string().nullable(),
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(
-        { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+        { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
         { status: 402 }
       );
     }
@@ -82,11 +82,30 @@ export async function POST(req: Request) {
     const cachedResponse = getCachedValue<any>(cacheKey);
     const MAX_MODEL_ATTEMPTS = 3;
     const getModelPayload = async (extraInstruction = "") => {
+      const parseModelJson = (responseText: string) => {
+        const text = String(responseText || "{}").trim();
+        if (!text) return {};
+        try {
+          return JSON.parse(text);
+        } catch {
+          const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+          if (fenced?.[1]) {
+            return JSON.parse(fenced[1].trim());
+          }
+          const firstBrace = text.indexOf("{");
+          const lastBrace = text.lastIndexOf("}");
+          if (firstBrace >= 0 && lastBrace > firstBrace) {
+            return JSON.parse(text.slice(firstBrace, lastBrace + 1));
+          }
+          throw new Error("Invalid response format from model.");
+        }
+      };
+
       const completion = await withRetry(
         () => getOpenAIClient().chat.completions.create({
           model: "gpt-4o-mini",
-          temperature: 0.4,
-          max_tokens: 2600,
+          temperature: 0.35,
+          max_tokens: 2200,
           messages: [
             {
               role: "system",
@@ -128,6 +147,7 @@ RULES (Tutor-like approach):
 - Each practice question MUST include an "explanation" field that explains why the correct answer is right (2-4 sentences, tutor-like).
 - Each practice question MUST include an "explanation_incorrect" object with explanations for each wrong answer (B, C, D) explaining why students might choose it and what misconception leads to that choice.
 - Keep all answer choices distinct and plausible; no duplicate options.
+- Never output placeholder options such as "text", "string", "option", or "answer".
 - Never output anything other than the JSON object.
 - Never include special characters like ^.
 - Use **bold** sparingly (1-2 per response section) to emphasize key terms or rules.
@@ -156,12 +176,12 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
           ],
           response_format: zodResponseFormat(LessonResponseSchema, "micro_lesson"),
         }),
-        3,
-        60000
+        2,
+        30000
       );
 
       const responseText = completion?.choices[0].message?.content || "{}";
-      const data = JSON.parse(responseText);
+      const data = parseModelJson(responseText);
       return data;
     };
 
@@ -228,6 +248,9 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
           const questionText = formatEquationLineBreaks(cleanMathNotation(cleanText(truncateText(q.question || "", 600))));
           const cleanedOptions = optionsArray.map(opt => cleanMathNotation(cleanText(truncateText(opt, 250))));
           if (new Set(cleanedOptions.map((opt) => opt.toLowerCase().trim())).size < 4) {
+            return null;
+          }
+          if (cleanedOptions.some((opt) => isPlaceholderOptionText(opt))) {
             return null;
           }
           

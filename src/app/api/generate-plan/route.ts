@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const gate = await checkPremiumGate(accessContext);
     if (!gate.allowed) {
       return NextResponse.json(
-        { error: "Free tier limit reached. Upgrade to Premium for unlimited access." },
+        { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
         { status: 402 }
       );
     }

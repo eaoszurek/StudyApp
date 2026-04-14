@@ -40,13 +40,13 @@ export default function Pricing({ tiers, faq }: PricingProps) {
         className="text-center max-w-2xl mx-auto mb-20"
       >
         <p className="text-xs uppercase tracking-[0.4em] text-slate-600 mb-3 font-semibold">
-          Choose Your Route
+          Affordable Prep
         </p>
         <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-          Pricing that scales with your climb
+          Affordable prep for real score gains
         </h2>
         <p className="text-base text-slate-700 leading-relaxed font-medium">
-          Start free, upgrade when you're ready to accelerate your ascent.
+          Start free, then unlock unlimited adaptive prep for just $5/month.
         </p>
       </motion.div>
 

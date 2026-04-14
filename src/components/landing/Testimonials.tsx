@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 
 interface Testimonial {
@@ -13,16 +13,15 @@ interface Testimonial {
 interface TestimonialsProps {
   testimonials: Testimonial[];
   trustText?: string;
+  disclaimer?: string;
 }
 
 export default function Testimonials({
   testimonials,
   trustText = "Built by a student, for students.",
+  disclaimer = "Representative student experiences.",
 }: TestimonialsProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const x = useMotionValue(0);
-  const springConfig = { stiffness: 100, damping: 30, mass: 0.5 };
-  const xSpring = useSpring(x, springConfig);
 
   // Auto-rotate carousel
   useEffect(() => {
@@ -33,11 +32,6 @@ export default function Testimonials({
 
     return () => clearInterval(interval);
   }, [testimonials.length]);
-
-  // Update x value when currentIndex changes
-  useEffect(() => {
-    x.set(-currentIndex * 100);
-  }, [currentIndex, x]);
 
   if (testimonials.length === 0) {
     return null;
@@ -68,7 +62,10 @@ export default function Testimonials({
   };
 
   return (
-    <section id="testimonials" className="relative px-6 md:px-12 lg:px-16 section-spacing bg-gradient-to-b from-transparent to-slate-900/20">
+    <section
+      id="testimonials"
+      className="relative px-6 md:px-12 lg:px-16 pt-[var(--spacing-section)] pb-28 md:pb-40 bg-gradient-to-b from-transparent to-slate-900/20"
+    >
       <div className="max-w-7xl mx-auto">
         {/* Section Header */}
         <motion.div
@@ -92,12 +89,20 @@ export default function Testimonials({
               {trustText}
             </p>
           )}
+          {disclaimer && (
+            <p className="text-xs text-slate-500 mt-2 font-normal">
+              {disclaimer}
+            </p>
+          )}
         </motion.div>
 
 
         {/* Carousel Container */}
-        <div className="relative mb-8">
-          <div className="relative h-[380px] md:h-[380px] overflow-visible" style={{ perspective: "1000px", transformStyle: "preserve-3d" }}>
+        <div className="relative mb-8 pb-6 md:pb-10">
+          <div
+            className="relative h-[460px] md:h-[480px] overflow-visible"
+            style={{ perspective: "1000px", transformStyle: "preserve-3d" }}
+          >
             <div className="relative w-full h-full flex items-center justify-center" style={{ willChange: "transform" }}>
               {testimonials.map((testimonial, index) => {
                 const position = getCardPosition(index);
@@ -116,7 +121,7 @@ export default function Testimonials({
                 return (
                   <motion.div
                     key={index}
-                    className="absolute w-[380px] h-[380px] px-4"
+                    className="absolute w-[380px] h-[440px] md:h-[460px] px-4"
                     animate={{
                       x: translateX,
                       scale: scale,
@@ -200,7 +205,7 @@ export default function Testimonials({
         </div>
 
         {/* Dots Indicator */}
-        <div className="flex justify-center items-center gap-2">
+        <div className="flex justify-center items-center gap-2 pt-4 pb-2">
           {testimonials.map((_, index) => (
             <button
               key={index}

@@ -42,7 +42,7 @@ export default function Hero({
       <ParallaxMountains />
 
       <section
-        className="relative px-6 md:px-12 lg:px-16 section-spacing min-h-[80vh] flex items-center overflow-hidden"
+        className="relative px-6 md:px-12 lg:px-16 section-spacing min-h-[80vh] flex items-center overflow-x-hidden overflow-y-visible"
         aria-label="Hero section"
       >
         <div className="max-w-5xl mx-auto w-full">
@@ -58,7 +58,7 @@ export default function Hero({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
-                className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-gradient-hero leading-[1.1] font-bold"
+                className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-gradient-hero font-extrabold tracking-[-0.03em] leading-[1.15] pb-1.5 [overflow:visible]"
               >
                 {headline.split(",").map((line, idx) => (
                   <span key={idx} className="block">
@@ -71,7 +71,7 @@ export default function Hero({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8, delay: 0.4 }}
-                className="text-base md:text-lg text-slate-700 max-w-xl leading-relaxed font-medium"
+                className="text-base md:text-lg text-slate-700 max-w-xl leading-relaxed font-medium mx-auto lg:mx-0"
               >
                 {subhead}
               </motion.p>
@@ -94,7 +94,7 @@ export default function Hero({
                     {ctaPrimary}
                   </Link>
                 </motion.div>
-                
+
                 <motion.div
                   whileHover={{ scale: 1.02, y: -2 }}
                   whileTap={{ scale: 0.98 }}

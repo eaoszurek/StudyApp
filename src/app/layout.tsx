@@ -73,7 +73,7 @@ export default function RootLayout({
         {/* Apply dark/light mode before first paint to prevent flash */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var saved=localStorage.getItem('darkMode');var featurePage=/^\/(dashboard|practice|study-plan|flashcards|lessons|progress)/.test(location.pathname);if(featurePage&&saved==='true'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var saved=localStorage.getItem('darkMode');var path=location.pathname;var featurePrefixes=['/dashboard','/practice','/study-plan','/flashcards','/lessons','/progress'];var featurePage=featurePrefixes.some(function(prefix){return path===prefix||path.indexOf(prefix + '/')===0;});if(featurePage&&saved==='true'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
       </head>

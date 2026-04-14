@@ -1,16 +1,18 @@
 export const landingContent = {
   hero: {
     variantA: {
-      headline: "Climb to Your Highest SAT Score, One Step at a Time",
-      subhead: "The companion for students who want a clear trail ahead. No more feeling lost—just a daily route map to your peak performance.",
-      ctaPrimary: "Begin your ascent",
-      ctaSecondary: "View the trail map",
+      headline: "Higher score, less guesswork.",
+      subhead:
+        "Peak Prep finds your weak skills, builds your daily 15-minute climb, and gives instant explanations when you miss a question.",
+      ctaPrimary: "Start Free Checkpoint",
+      ctaSecondary: "See How It Works",
     },
     variantB: {
-      headline: "SAT Prep That Doesn’t Overwhelm You.",
-      subhead: "Bite-sized study sessions designed to keep your momentum high and your stress low. The summit is closer than you think.",
-      ctaPrimary: "Begin your ascent",
-      ctaSecondary: "View the trail map",
+      headline: "From confused to confident in 15 minutes a day.",
+      subhead:
+        "Stop guessing what to study. Get a personalized SAT climb plan that updates with your progress.",
+      ctaPrimary: "Start Free Checkpoint",
+      ctaSecondary: "See How It Works",
     },
   },
   features: [
@@ -24,34 +26,32 @@ export const landingContent = {
     tiers: [
       {
         id: "free",
-        name: "Base Camp",
+        name: "Free Starter",
         price: "$0",
         period: "forever",
         features: [
-          "1 free practice checkpoint",
-          "1 free Route Map study plan",
-          "1 free flashcard pack",
-          "1 free micro-lesson",
-          "Progress tracking",
-          "Anonymous session support",
+          "Limited checkpoints",
+          "Basic skill report",
+          "Preview of your study plan",
+          "No credit card needed",
         ],
         cta: "Start Free",
         popular: false,
       },
       {
         id: "pro",
-        name: "Peak",
+        name: "Peak Prep Plus",
         price: "$5",
         period: "month",
         features: [
-          "Unlimited practice checkpoints",
-          "Advanced Route Map customization",
-          "Unlimited flashcards",
-          "Unlimited micro-lessons",
-          "Detailed analytics & insights",
-          "Priority AI generation",
+          "Unlimited practice tests",
+          "Full adaptive study plan",
+          "Trail Buddy AI help on every question",
+          "Detailed skill tracking",
+          "Faster path to your target score",
+          "Cancel anytime",
         ],
-        cta: "Start Free Trial",
+        cta: "Unlock Plus for $5",
         popular: true,
       },
     ],
@@ -70,7 +70,27 @@ export const landingContent = {
       },
     ],
   },
-  testimonials: [],
+  testimonials: [
+    {
+      name: "Jordan K.",
+      scoreImprovement: "+90 pts",
+      quote:
+        "Not gonna pretend I love flashcards. I just needed someone to tell me what to do each day. I open it, do the chunk, done—way less spinning my wheels.",
+    },
+    {
+      name: "Alex M.",
+      scoreImprovement: "+120 pts",
+      quote:
+        "Full practice runs are what helped. When I missed one it actually walked through the reasoning instead of just marking it wrong.",
+    },
+    {
+      name: "Riley T.",
+      scoreImprovement: "+100 pts",
+      quote:
+        "Shooting for pretty picky schools. The plan + regular tests makes it harder to lie to myself about what I still don't get.",
+    },
+  ],
+  testimonialsDisclaimer: "Representative student experiences.",
   trustBar: {
     text: "Built by a student, for students.",
   },

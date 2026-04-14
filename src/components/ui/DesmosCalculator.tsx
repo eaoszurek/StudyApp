@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calculator, GripHorizontal, X } from "lucide-react";
+import { GripHorizontal, X } from "lucide-react";
 
 interface DesmosCalculatorProps {
   isOpen: boolean;
@@ -39,16 +39,6 @@ export default function DesmosCalculator({ isOpen, onToggle }: DesmosCalculatorP
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="fixed bottom-5 right-5 z-[130] h-12 w-12 rounded-full bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white shadow-lg border border-sky-400/60 inline-flex items-center justify-center transition-colors"
-        aria-label={isOpen ? "Close calculator" : "Open calculator"}
-        title={isOpen ? "Close calculator" : "Open calculator"}
-      >
-        {isOpen ? <X size={20} /> : <Calculator size={20} />}
-      </button>
-
       <AnimatePresence>
         {isOpen && (
           <motion.div
