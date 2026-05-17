@@ -40,10 +40,10 @@ export async function GET() {
             updatedAt: true,
           },
         }),
-        prisma.flashcardSet.findMany({ where: { userId: user.id }, take: 1000 }),
-        prisma.practiceTest.findMany({ where: { userId: user.id }, take: 1000 }),
-        prisma.studyPlan.findMany({ where: { userId: user.id }, take: 1000 }),
-        prisma.microLesson.findMany({ where: { userId: user.id }, take: 1000 }),
+        prisma.flashcardSet.findMany({ where: { userId: user.id } }),
+        prisma.practiceTest.findMany({ where: { userId: user.id } }),
+        prisma.studyPlan.findMany({ where: { userId: user.id } }),
+        prisma.microLesson.findMany({ where: { userId: user.id } }),
       ]);
 
     const exportData = {
