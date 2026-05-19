@@ -69,6 +69,18 @@ import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
 
+const MAX_PRACTICE_TEST_QUESTIONS = 50;
+
+const parseStoredPracticeQuestions = (questions: string | null): any[] => {
+  try {
+    if (!questions) return [];
+    const parsed = JSON.parse(questions);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
 
@@ -82,7 +94,7 @@ const PracticeRequestSchema = z.object({
   section: z.enum(["math", "reading", "writing"], {
     message: "Section must be math, reading, or writing",
   }),
-  questionCount: z.number().int().min(1).max(50).default(5),
+  questionCount: z.number().int().min(1).max(MAX_PRACTICE_TEST_QUESTIONS).default(5),
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
@@ -138,6 +150,14 @@ export async function POST(req: Request) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+
+      const existingQuestionCount = parseStoredPracticeQuestions(existingPracticeTest.questions).length;
+      if (existingQuestionCount + questionCount > MAX_PRACTICE_TEST_QUESTIONS) {
+        return NextResponse.json(
+          { error: `Practice tests are limited to ${MAX_PRACTICE_TEST_QUESTIONS} questions.` },
+          { status: 400 }
         );
       }
     } else {
@@ -981,13 +1001,7 @@ ${difficulty && difficulty !== "Mixed"
     };
 
     const existingQuestionsForGeneration: any[] = (() => {
-      try {
-        if (!existingPracticeTest?.questions) return [];
-        const parsed = JSON.parse(existingPracticeTest.questions);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
+      return parseStoredPracticeQuestions(existingPracticeTest?.questions ?? null);
     })();
 
     const existingRwSignatures = new Set<string>();
@@ -1175,6 +1189,8 @@ ${difficulty && difficulty !== "Mixed"
         if (existingQuestionDedupKeys.has(getDedupKey(q))) return false;
         return !isNearDuplicateQuestion(q, existingQuestionsForGeneration);
       });
+    const hasRequiredPassage = (q: any) =>
+      section === "math" || (typeof q?.passage === "string" && q.passage.trim().length > 0);
 
     let passage: string | undefined = undefined;
     let transformedAll: any[] = [];
@@ -1403,10 +1419,12 @@ ${difficulty && difficulty !== "Mixed"
     
     // Remove duplicate questions based on question text
     const uniqueQuestions = dedupeAndFilterNearDuplicates(transformedAll);
+    const uniqueQuestionsWithRequiredPassages = uniqueQuestions.filter(hasRequiredPassage);
+    const transformedQuestionsWithRequiredPassages = transformedAll.filter(hasRequiredPassage);
 
-    let finalQuestions = uniqueQuestions.length >= questionCount
-      ? uniqueQuestions.slice(0, questionCount)
-      : transformedAll.slice(0, questionCount);
+    let finalQuestions = uniqueQuestionsWithRequiredPassages.length >= questionCount
+      ? uniqueQuestionsWithRequiredPassages.slice(0, questionCount)
+      : transformedQuestionsWithRequiredPassages.slice(0, questionCount);
 
     finalQuestions = filterAgainstExistingQuestions(finalQuestions);
 
@@ -1422,7 +1440,7 @@ ${difficulty && difficulty !== "Mixed"
         });
         const topUpTransformed = applyConfigFilters(
           transformQuestions(topUpData.questions, topUpData.passage)
-        );
+        ).filter(hasRequiredPassage);
         const combined = dedupeAndFilterNearDuplicates([...finalQuestions, ...topUpTransformed]);
         finalQuestions = filterAgainstExistingQuestions(combined).slice(0, questionCount);
       } catch (topUpError) {
@@ -1446,8 +1464,8 @@ ${difficulty && difficulty !== "Mixed"
         ? `Generated ${finalQuestions.length} of ${questionCount} requested questions.`
         : undefined;
 
-    if (section === "reading" && !passage && finalQuestions.every((q: any) => !q.passage)) {
-      throw new Error("Reading passage is required for reading questions.");
+    if ((section === "reading" || section === "writing") && finalQuestions.some((q: any) => !hasRequiredPassage(q))) {
+      throw new Error("Passage is required for reading and writing questions.");
     }
 
     const normalizedQuestions = finalQuestions.map((q: any, idx: number) => ({ ...q, id: idx + 1 }));
@@ -1464,13 +1482,7 @@ ${difficulty && difficulty !== "Mixed"
 
     if (existingPracticeTest) {
       const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
+        return parseStoredPracticeQuestions(existingPracticeTest?.questions ?? null);
       })();
 
       const offset = existingQuestions.length;

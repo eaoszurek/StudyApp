@@ -184,10 +184,19 @@ export default function PracticeTests() {
 
       setTestType(parsed.testType);
       setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
+      const restoredQuestionCount = Array.isArray(parsed.practiceSet.questions)
+        ? parsed.practiceSet.questions.length
+        : 0;
+      if (restoredQuestionCount === 0) return;
+      const restoredQuestionIndex = Math.min(
+        Math.max(0, parsed.currentQuestion || 0),
+        restoredQuestionCount - 1
+      );
+
       setPracticeSet(parsed.practiceSet);
       setCurrentTestId(parsed.currentTestId || null);
       currentTestIdRef.current = parsed.currentTestId || null;
-      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+      setCurrentQuestion(restoredQuestionIndex);
       setSelectedAnswer(parsed.selectedAnswer || null);
       setShowResults(Boolean(parsed.showResults));
       setScore(parsed.score || 0);
@@ -531,7 +540,7 @@ export default function PracticeTests() {
       // Save score to backend if we have a test ID
       if (currentTestId) {
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const res = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -540,6 +549,9 @@ export default function PracticeTests() {
               maxRawScore: questions.length,
             }),
           });
+          if (!res.ok) {
+            throw new Error(`score_save_failed:${res.status}`);
+          }
         } catch (error) {
           console.error("Failed to save score to backend:", error);
           // Fallback to localStorage for anonymous users or on error
@@ -1190,6 +1202,18 @@ export default function PracticeTests() {
       })()}
       {practiceSet && !showResults && (() => {
         const q = practiceSet.questions[currentQuestion];
+        if (!q) {
+          return (
+            <GlassPanel className="mt-8 p-8 text-center">
+              <p className="text-slate-700 dark:text-slate-300 mb-4">
+                We could not restore this practice question.
+              </p>
+              <button type="button" className="sat-btn-next" onClick={resetTest}>
+                Start New Test
+              </button>
+            </GlassPanel>
+          );
+        }
         const hasPassage = !!(((q as any)?.passage) || practiceSet.passage);
         const passageText = (q as any)?.passage || practiceSet.passage || "";
         const totalQ = isProgressiveMode ? targetQuestionCount : practiceSet.questions.length;
