@@ -78,11 +78,13 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 // Zod schema for input validation
+const MAX_PRACTICE_QUESTIONS = 50;
+
 const PracticeRequestSchema = z.object({
   section: z.enum(["math", "reading", "writing"], {
     message: "Section must be math, reading, or writing",
   }),
-  questionCount: z.number().int().min(1).max(50).default(5),
+  questionCount: z.number().int().min(1).max(MAX_PRACTICE_QUESTIONS).default(5),
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
@@ -126,18 +128,53 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    let existingPracticeTest: {
+      id: string;
+      section: string;
+      questions: string | null;
+      passage: string | null;
+      completedAt: Date | null;
+    } | null = null;
+    let existingQuestionsForAppend: any[] = [];
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: { id: true, section: true, questions: true, passage: true, completedAt: true },
       });
 
       if (!existingPracticeTest) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+      if (existingPracticeTest.completedAt) {
+        return NextResponse.json(
+          { error: "Completed practice tests cannot be modified." },
+          { status: 409 }
+        );
+      }
+      if (existingPracticeTest.section !== section) {
+        return NextResponse.json(
+          { error: "New questions must match the existing practice test section." },
+          { status: 400 }
+        );
+      }
+
+      try {
+        if (existingPracticeTest.questions) {
+          const parsed = JSON.parse(existingPracticeTest.questions);
+          existingQuestionsForAppend = Array.isArray(parsed) ? parsed : [];
+        }
+      } catch {
+        existingQuestionsForAppend = [];
+      }
+
+      if (existingQuestionsForAppend.length + questionCount > MAX_PRACTICE_QUESTIONS) {
+        return NextResponse.json(
+          { error: `Practice tests cannot exceed ${MAX_PRACTICE_QUESTIONS} questions.` },
+          { status: 400 }
         );
       }
     } else {
@@ -1463,22 +1500,12 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
-        }
-      })();
-
-      const offset = existingQuestions.length;
+      const offset = existingQuestionsForAppend.length;
       const appended = normalizedQuestions.map((q: any, idx: number) => ({
         ...q,
         id: offset + idx + 1,
       }));
-      const mergedQuestions = [...existingQuestions, ...appended];
+      const mergedQuestions = [...existingQuestionsForAppend, ...appended];
       const mergedPassage = existingPracticeTest.passage || passage || null;
 
       await prisma.practiceTest.update({
