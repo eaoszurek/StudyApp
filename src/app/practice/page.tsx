@@ -457,6 +457,12 @@ export default function PracticeTests() {
     setUserAnswers({ ...userAnswers, [currentQuestion]: answer });
   };
 
+  const finishWithLoadedQuestions = async () => {
+    if (!practiceSet) return;
+    await calculateScore(practiceSet.questions);
+    setShowResults(true);
+  };
+
   const handleNext = async () => {
     if (!practiceSet) return;
     if (currentQuestion < practiceSet.questions.length - 1) {
@@ -1201,6 +1207,12 @@ export default function PracticeTests() {
         const nextLabel = currentQuestion === practiceSet.questions.length - 1
           ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
           : "Next Question";
+        const canFinishWithLoadedQuestions =
+          isProgressiveMode &&
+          practiceSet.questions.length < targetQuestionCount &&
+          currentQuestion === practiceSet.questions.length - 1 &&
+          Boolean(batchLoadError) &&
+          !isBatchLoading;
 
         return (
           <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
@@ -1350,6 +1362,15 @@ export default function PracticeTests() {
                       >
                         {nextLabel}
                       </button>
+                      {canFinishWithLoadedQuestions && (
+                        <button
+                          type="button"
+                          className="sat-btn-prev"
+                          onClick={() => void finishWithLoadedQuestions()}
+                        >
+                          Finish with loaded questions
+                        </button>
+                      )}
                     </div>
 
                     {isProgressiveMode && (
