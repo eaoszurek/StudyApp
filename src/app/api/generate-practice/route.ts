@@ -141,12 +141,12 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string } | null = null;
+    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true },
+        select: { id: true, questions: true, passage: true },
       });
 
       if (!existingPracticeTest) {
