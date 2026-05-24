@@ -127,7 +127,8 @@ export async function POST(req: Request) {
     if (!accessContext.user) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
-    const rlKey = `ai:${accessContext.user.id}`;
+    const authenticatedUserId = accessContext.user.id;
+    const rlKey = `ai:${authenticatedUserId}`;
     const rl = rateLimit(rlKey, { limit: 25, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
@@ -157,7 +158,7 @@ export async function POST(req: Request) {
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
-        where: { id: existingTestId, userId: accessContext.user.id },
+        where: { id: existingTestId, userId: authenticatedUserId },
         select: {
           id: true,
           questions: true,
@@ -1520,7 +1521,7 @@ ${difficulty && difficulty !== "Mixed"
       > => {
         for (let attempt = 0; attempt < MAX_APPEND_SAVE_ATTEMPTS; attempt += 1) {
           const currentPracticeTest = await prisma.practiceTest.findFirst({
-            where: { id: existingPracticeTest.id, userId: accessContext.user.id },
+            where: { id: existingPracticeTest.id, userId: authenticatedUserId },
             select: { id: true, questions: true, passage: true },
           });
 
@@ -1562,7 +1563,7 @@ ${difficulty && difficulty !== "Mixed"
           const updateResult = await prisma.practiceTest.updateMany({
             where: {
               id: currentPracticeTest.id,
-              userId: accessContext.user.id,
+              userId: authenticatedUserId,
               questions: currentPracticeTest.questions,
             },
             data: {
