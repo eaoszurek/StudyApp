@@ -181,13 +181,21 @@ export default function PracticeTests() {
       if (!saved) return;
       const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
       if (!parsed || !parsed.practiceSet || !parsed.testType) return;
+      const restoredQuestions = Array.isArray(parsed.practiceSet.questions)
+        ? parsed.practiceSet.questions
+        : [];
+      if (restoredQuestions.length === 0) return;
+      const restoredCurrentQuestion = Math.min(
+        Math.max(0, parsed.currentQuestion || 0),
+        restoredQuestions.length - 1
+      );
 
       setTestType(parsed.testType);
       setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
-      setPracticeSet(parsed.practiceSet);
+      setPracticeSet({ ...parsed.practiceSet, questions: restoredQuestions });
       setCurrentTestId(parsed.currentTestId || null);
       currentTestIdRef.current = parsed.currentTestId || null;
-      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+      setCurrentQuestion(restoredCurrentQuestion);
       setSelectedAnswer(parsed.selectedAnswer || null);
       setShowResults(Boolean(parsed.showResults));
       setScore(parsed.score || 0);
@@ -240,6 +248,15 @@ export default function PracticeTests() {
     targetQuestionCount,
     practiceHydrated,
   ]);
+
+  useEffect(() => {
+    if (!practiceSet || showResults || practiceSet.questions.length === 0) return;
+    if (currentQuestion >= practiceSet.questions.length) {
+      const safeIndex = practiceSet.questions.length - 1;
+      setCurrentQuestion(safeIndex);
+      setSelectedAnswer(userAnswers[safeIndex] || null);
+    }
+  }, [currentQuestion, practiceSet, showResults, userAnswers]);
 
   const fetchPracticeBatchWithRetry = async (
     payload: Record<string, unknown>,
@@ -558,6 +575,12 @@ export default function PracticeTests() {
         }
       }
     }
+  };
+
+  const finishLoadedQuestions = async () => {
+    if (!practiceSet || practiceSet.questions.length === 0) return;
+    await calculateScore(practiceSet.questions);
+    setShowResults(true);
   };
 
   const resetTest = () => {
@@ -1190,6 +1213,18 @@ export default function PracticeTests() {
       })()}
       {practiceSet && !showResults && (() => {
         const q = practiceSet.questions[currentQuestion];
+        if (!q) {
+          return (
+            <GlassPanel className="mt-8 text-center py-10">
+              <p className="text-sm text-slate-700 dark:text-slate-300 font-medium mb-4">
+                We could not restore this checkpoint safely.
+              </p>
+              <button type="button" className="sat-btn-next" onClick={resetTest}>
+                Start New Test
+              </button>
+            </GlassPanel>
+          );
+        }
         const hasPassage = !!(((q as any)?.passage) || practiceSet.passage);
         const passageText = (q as any)?.passage || practiceSet.passage || "";
         const totalQ = isProgressiveMode ? targetQuestionCount : practiceSet.questions.length;
@@ -1360,9 +1395,23 @@ export default function PracticeTests() {
                       </div>
                     )}
                     {batchLoadError && (
-                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
-                        {batchLoadError}
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-rose-600 dark:text-rose-400">
+                          {batchLoadError}
+                        </p>
+                        {isProgressiveMode &&
+                          currentQuestion === practiceSet.questions.length - 1 &&
+                          practiceSet.questions.length > 0 &&
+                          practiceSet.questions.length < targetQuestionCount && (
+                            <button
+                              type="button"
+                              className="rounded-lg border border-slate-300 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              onClick={() => void finishLoadedQuestions()}
+                            >
+                              Finish with {practiceSet.questions.length} loaded questions
+                            </button>
+                          )}
+                      </div>
                     )}
                   </div>
                 </div>
