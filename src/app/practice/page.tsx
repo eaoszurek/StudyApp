@@ -206,7 +206,6 @@ export default function PracticeTests() {
     if (!practiceHydrated) return;
     try {
       if (!practiceSet || !testType) {
-        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
         return;
       }
       const snapshot: PracticeProgressSnapshot = {
@@ -308,7 +307,23 @@ export default function PracticeTests() {
 
     // Check free tier limit (1 use total across all features)
     const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
+    let isSubscribedForRequest = Boolean(subscriptionStatus?.hasSubscription);
+    if (!subscriptionStatus && freeUsageCount >= FREE_TIER_LIMIT) {
+      try {
+        const response = await fetch("/api/stripe/subscription-status");
+        if (response.ok) {
+          const data = await response.json();
+          isSubscribedForRequest = Boolean(data.hasSubscription);
+          setSubscriptionStatus({
+            subscriptionStatus: data.subscriptionStatus,
+            hasSubscription: data.hasSubscription,
+          });
+        }
+      } catch (subscriptionError) {
+        console.error("Failed to refresh subscription status:", subscriptionError);
+      }
+    }
+    if (!isSubscribedForRequest && freeUsageCount >= FREE_TIER_LIMIT) {
       setError(
         `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
       );
@@ -351,7 +366,7 @@ export default function PracticeTests() {
       setPracticeSet(data);
 
       // Increment free tier usage ONLY for free users (premium users have unlimited)
-      if (!subscriptionStatus?.hasSubscription) {
+      if (!isSubscribedForRequest) {
         const newCount = freeUsageCount + 1;
         setFreeUsageCount(newCount);
         localStorage.setItem("free_tier_usage", newCount.toString());
@@ -505,6 +520,19 @@ export default function PracticeTests() {
       await calculateScore(practiceSet.questions);
       setShowResults(true);
     }
+  };
+
+  const finishLoadedQuestions = async () => {
+    if (!practiceSet || practiceSet.questions.length === 0) return;
+    setBatchLoadError(null);
+    if (isProgressiveMode && practiceSet.questions.length < targetQuestionCount) {
+      setPracticeSet({
+        ...practiceSet,
+        warning: `Scored ${practiceSet.questions.length} loaded questions because the remaining questions could not be loaded.`,
+      });
+    }
+    await calculateScore(practiceSet.questions);
+    setShowResults(true);
   };
 
   const handlePrevious = () => {
@@ -1360,9 +1388,20 @@ export default function PracticeTests() {
                       </div>
                     )}
                     {batchLoadError && (
-                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
-                        {batchLoadError}
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-rose-600 dark:text-rose-400">
+                          {batchLoadError}
+                        </p>
+                        {isProgressiveMode && practiceSet.questions.length > 0 && (
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline"
+                            onClick={() => void finishLoadedQuestions()}
+                          >
+                            Finish with {practiceSet.questions.length} loaded questions
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

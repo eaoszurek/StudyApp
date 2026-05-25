@@ -155,7 +155,23 @@ export default function Lessons() {
 
     // Check free tier limit (1 use total across all features)
     const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
+    let isSubscribedForRequest = Boolean(subscriptionStatus?.hasSubscription);
+    if (!subscriptionStatus && freeUsageCount >= FREE_TIER_LIMIT) {
+      try {
+        const response = await fetch("/api/stripe/subscription-status");
+        if (response.ok) {
+          const data = await response.json();
+          isSubscribedForRequest = Boolean(data.hasSubscription);
+          setSubscriptionStatus({
+            subscriptionStatus: data.subscriptionStatus,
+            hasSubscription: data.hasSubscription,
+          });
+        }
+      } catch (subscriptionError) {
+        console.error("Failed to refresh subscription status:", subscriptionError);
+      }
+    }
+    if (!isSubscribedForRequest && freeUsageCount >= FREE_TIER_LIMIT) {
       setError(
         `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
       );
@@ -184,7 +200,7 @@ export default function Lessons() {
       setLesson(data);
 
       // Increment free tier usage for free users
-      if (!subscriptionStatus?.hasSubscription) {
+      if (!isSubscribedForRequest) {
         const newCount = freeUsageCount + 1;
         setFreeUsageCount(newCount);
         localStorage.setItem("free_tier_usage", newCount.toString());
