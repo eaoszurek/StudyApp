@@ -71,6 +71,7 @@ import { prisma } from "@/lib/prisma";
 
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
+const MAX_STORED_PRACTICE_QUESTIONS = 50;
 
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
@@ -126,18 +127,46 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    let existingPracticeTest: {
+      id: string;
+      questions: string | null;
+      passage: string | null;
+      completedAt: Date | null;
+    } | null = null;
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: { id: true, questions: true, passage: true, completedAt: true },
       });
 
       if (!existingPracticeTest) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+      if (existingPracticeTest.completedAt) {
+        return NextResponse.json(
+          { error: "Completed practice tests cannot be extended." },
+          { status: 409 }
+        );
+      }
+
+      const existingQuestionCount = (() => {
+        try {
+          if (!existingPracticeTest?.questions) return 0;
+          const parsed = JSON.parse(existingPracticeTest.questions);
+          return Array.isArray(parsed) ? parsed.length : 0;
+        } catch {
+          return 0;
+        }
+      })();
+
+      if (existingQuestionCount + questionCount > MAX_STORED_PRACTICE_QUESTIONS) {
+        return NextResponse.json(
+          { error: `Practice tests are limited to ${MAX_STORED_PRACTICE_QUESTIONS} questions.` },
+          { status: 400 }
         );
       }
     } else {
