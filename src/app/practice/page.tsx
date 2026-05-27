@@ -161,6 +161,7 @@ export default function PracticeTests() {
   const [trailBuddyStepMode, setTrailBuddyStepMode] = useState(false);
   const [reviewExplanationOpen, setReviewExplanationOpen] = useState(false);
   const batchLoadingRef = React.useRef(false);
+  const autostartHandledRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode = targetQuestionCount > 5;
   const practiceProgressPercent = practiceSet
@@ -181,19 +182,32 @@ export default function PracticeTests() {
       if (!saved) return;
       const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
       if (!parsed || !parsed.practiceSet || !parsed.testType) return;
+      const questions = Array.isArray(parsed.practiceSet.questions)
+        ? parsed.practiceSet.questions
+        : [];
+      if (questions.length === 0) {
+        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        return;
+      }
+      const restoredQuestion = typeof parsed.currentQuestion === "number" ? parsed.currentQuestion : 0;
+      const clampedQuestion = Math.max(0, Math.min(restoredQuestion, questions.length - 1));
+      const restoredTarget = Math.max(
+        questions.length,
+        parsed.targetQuestionCount || parsed.config?.questionCount || 5
+      );
 
       setTestType(parsed.testType);
       setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
       setPracticeSet(parsed.practiceSet);
       setCurrentTestId(parsed.currentTestId || null);
       currentTestIdRef.current = parsed.currentTestId || null;
-      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+      setCurrentQuestion(clampedQuestion);
       setSelectedAnswer(parsed.selectedAnswer || null);
       setShowResults(Boolean(parsed.showResults));
       setScore(parsed.score || 0);
       setSatScore(parsed.satScore || null);
       setUserAnswers(parsed.userAnswers || {});
-      setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
+      setTargetQuestionCount(restoredTarget);
       setShowConfig(false);
     } catch (restoreError) {
       console.error("Failed to restore practice progress:", restoreError);
@@ -378,10 +392,22 @@ export default function PracticeTests() {
   };
 
   useEffect(() => {
+    if (!practiceHydrated || autostartHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("autostart") !== "1") return;
+    if (params.get("autostart") !== "1") {
+      autostartHandledRef.current = true;
+      return;
+    }
+    if (practiceSet) {
+      autostartHandledRef.current = true;
+      window.history.replaceState({}, "", "/practice");
+      return;
+    }
     const sectionParam = params.get("section");
-    if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) return;
+    if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) {
+      autostartHandledRef.current = true;
+      return;
+    }
 
     const parsedConfig: TestConfig = {
       questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
@@ -389,10 +415,11 @@ export default function PracticeTests() {
       difficulty: (params.get("difficulty") as TestConfig["difficulty"]) || "Mixed",
     };
     const section = sectionParam as SectionType;
+    autostartHandledRef.current = true;
     window.history.replaceState({}, "", "/practice");
     void generateTest({ section, config: parsedConfig });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [practiceHydrated, practiceSet]);
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
@@ -465,6 +492,11 @@ export default function PracticeTests() {
     } else {
       // In progressive mode, wait for remaining batches before finishing.
       if (isProgressiveMode && practiceSet.questions.length < targetQuestionCount) {
+        if (batchLoadError) {
+          await calculateScore(practiceSet.questions);
+          setShowResults(true);
+          return;
+        }
         setBatchLoadError(null);
         if (!batchLoadingRef.current) {
           batchLoadingRef.current = true;
@@ -527,11 +559,25 @@ export default function PracticeTests() {
     if (testType) {
       const sectionScore = calculateSectionScore(testType, correct, questions.length);
       setSatScore(sectionScore);
+      const saveScoreLocally = () => {
+        const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
+        savePracticeSession({
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          section: testType,
+          score: sectionScore,
+          correct,
+          total: questions.length,
+          difficulty: config.difficulty,
+          skillDomains: skillDomains,
+          topic: config.topic || undefined,
+        });
+      };
       
       // Save score to backend if we have a test ID
       if (currentTestId) {
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const response = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -540,22 +586,15 @@ export default function PracticeTests() {
               maxRawScore: questions.length,
             }),
           });
+          if (!response.ok) {
+            throw new Error(`score_save_failed_${response.status}`);
+          }
         } catch (error) {
           console.error("Failed to save score to backend:", error);
-          // Fallback to localStorage for anonymous users or on error
-          const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
-          savePracticeSession({
-            id: Date.now().toString(),
-            date: new Date().toISOString(),
-            section: testType,
-            score: sectionScore,
-            correct,
-            total: questions.length,
-            difficulty: config.difficulty,
-            skillDomains: skillDomains,
-            topic: config.topic || undefined,
-          });
+          saveScoreLocally();
         }
+      } else {
+        saveScoreLocally();
       }
     }
   };
@@ -633,12 +672,26 @@ export default function PracticeTests() {
         }),
       });
       if (!res.ok) {
-        throw new Error("trail_buddy_failed");
+        let message = "trail_buddy_failed";
+        try {
+          const data = await res.json();
+          if (typeof data?.error === "string") {
+            message = data.error;
+          }
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
       }
       const data = await res.json();
       setTrailBuddyReply(String(data.reply || "").trim());
-    } catch {
-      setTrailBuddyError("Trail Buddy is having trouble right now. Try again in a moment.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      setTrailBuddyError(
+        message && message !== "trail_buddy_failed"
+          ? message
+          : "Trail Buddy is having trouble right now. Try again in a moment."
+      );
     } finally {
       setTrailBuddyLoading(false);
     }
@@ -1190,6 +1243,18 @@ export default function PracticeTests() {
       })()}
       {practiceSet && !showResults && (() => {
         const q = practiceSet.questions[currentQuestion];
+        if (!q) {
+          return (
+            <GlassPanel className="mt-8">
+              <p className="text-sm text-rose-600 dark:text-rose-400 mb-4">
+                This saved practice session could not be restored.
+              </p>
+              <button type="button" className="sat-btn-next" onClick={resetTest}>
+                Start New Test
+              </button>
+            </GlassPanel>
+          );
+        }
         const hasPassage = !!(((q as any)?.passage) || practiceSet.passage);
         const passageText = (q as any)?.passage || practiceSet.passage || "";
         const totalQ = isProgressiveMode ? targetQuestionCount : practiceSet.questions.length;
@@ -1199,7 +1264,9 @@ export default function PracticeTests() {
         const subjectClass = testType === "math" ? "sat-badge-math" : "sat-badge-english";
         const subjectLabel = testType === "math" ? "Math" : "English";
         const nextLabel = currentQuestion === practiceSet.questions.length - 1
-          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
+          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount
+            ? (batchLoadError ? "Finish Loaded Questions" : "Load Next 5")
+            : "Finish")
           : "Next Question";
 
         return (
