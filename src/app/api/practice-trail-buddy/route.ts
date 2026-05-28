@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOpenAIClient } from "@/lib/openai";
 import { validateApiKey, handleApiError, withRetry, checkOrigin } from "@/utils/apiHelpers";
-import { getAccessContext } from "@/utils/premiumGate";
+import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { rateLimit } from "@/lib/rate-limit";
 
 const TrailBuddyRequestSchema = z.object({
@@ -36,6 +36,14 @@ export async function POST(req: Request) {
     const accessContext = await getAccessContext();
     if (!accessContext.user) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+
+    const gate = await checkPremiumGate(accessContext);
+    if (!gate.hasSubscription) {
+      return NextResponse.json(
+        { error: "Trail Buddy is a Plus feature. Unlock Plus for $5/month to continue." },
+        { status: 402 }
+      );
     }
 
     const rl = rateLimit(`trail-buddy:${accessContext.user.id}`, { limit: 30, windowSeconds: 60 });
