@@ -72,6 +72,9 @@ import { prisma } from "@/lib/prisma";
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
 
+const MAX_PRACTICE_TEST_QUESTIONS = 50;
+const MAX_APPEND_SAVE_ATTEMPTS = 5;
+
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
@@ -82,7 +85,7 @@ const PracticeRequestSchema = z.object({
   section: z.enum(["math", "reading", "writing"], {
     message: "Section must be math, reading, or writing",
   }),
-  questionCount: z.number().int().min(1).max(50).default(5),
+  questionCount: z.number().int().min(1).max(MAX_PRACTICE_TEST_QUESTIONS).default(5),
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
@@ -980,15 +983,17 @@ ${difficulty && difficulty !== "Mixed"
       return out;
     };
 
-    const existingQuestionsForGeneration: any[] = (() => {
+    const parseStoredQuestions = (storedQuestions: string | null | undefined): any[] => {
       try {
-        if (!existingPracticeTest?.questions) return [];
-        const parsed = JSON.parse(existingPracticeTest.questions);
+        if (!storedQuestions) return [];
+        const parsed = JSON.parse(storedQuestions);
         return Array.isArray(parsed) ? parsed : [];
       } catch {
         return [];
       }
-    })();
+    };
+
+    const existingQuestionsForGeneration: any[] = parseStoredQuestions(existingPracticeTest?.questions);
 
     const existingRwSignatures = new Set<string>();
     if (section === "reading" || section === "writing") {
@@ -1463,34 +1468,100 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
+      const originalOffset = parseStoredQuestions(existingPracticeTest.questions).length;
+      let savedAppend:
+        | {
+            appended: any[];
+            mergedPassage: string | null;
+          }
+        | null = null;
+
+      for (let attempt = 0; attempt < MAX_APPEND_SAVE_ATTEMPTS; attempt += 1) {
+        const currentPracticeTest =
+          attempt === 0
+            ? existingPracticeTest
+            : await prisma.practiceTest.findFirst({
+                where: { id: existingPracticeTest.id, userId: user.id },
+                select: { id: true, questions: true, passage: true },
+              });
+
+        if (!currentPracticeTest) {
+          return NextResponse.json(
+            { error: "Existing practice test not found for this user/session." },
+            { status: 404 }
+          );
         }
-      })();
 
-      const offset = existingQuestions.length;
-      const appended = normalizedQuestions.map((q: any, idx: number) => ({
-        ...q,
-        id: offset + idx + 1,
-      }));
-      const mergedQuestions = [...existingQuestions, ...appended];
-      const mergedPassage = existingPracticeTest.passage || passage || null;
+        const currentQuestions = parseStoredQuestions(currentPracticeTest.questions);
+        const concurrentlyAppended = currentQuestions.slice(originalOffset);
+        const remainingCapacity = Math.max(0, MAX_PRACTICE_TEST_QUESTIONS - currentQuestions.length);
+        const appendCandidates = normalizedQuestions
+          .filter((q: any) => {
+            if (currentQuestions.some((existing) => getDedupKey(existing) === getDedupKey(q))) {
+              return false;
+            }
+            return !isNearDuplicateQuestion(q, currentQuestions);
+          })
+          .slice(0, remainingCapacity);
 
-      await prisma.practiceTest.update({
-        where: { id: existingPracticeTest.id },
-        data: {
-          questions: JSON.stringify(mergedQuestions),
-          passage: mergedPassage,
-        },
-      });
+        if (appendCandidates.length === 0) {
+          if (concurrentlyAppended.length > 0) {
+            savedAppend = {
+              appended: concurrentlyAppended,
+              mergedPassage: currentPracticeTest.passage || passage || null,
+            };
+            break;
+          }
+
+          return NextResponse.json(
+            {
+              error: currentQuestions.length >= MAX_PRACTICE_TEST_QUESTIONS
+                ? `Practice tests can contain at most ${MAX_PRACTICE_TEST_QUESTIONS} questions.`
+                : "Generated questions duplicated the existing test. Please try again.",
+            },
+            { status: 409 }
+          );
+        }
+
+        const offset = currentQuestions.length;
+        const appended = appendCandidates.map((q: any, idx: number) => ({
+          ...q,
+          id: offset + idx + 1,
+        }));
+        const mergedQuestions = [...currentQuestions, ...appended];
+        const mergedPassage = currentPracticeTest.passage || passage || null;
+
+        const updated = await prisma.practiceTest.updateMany({
+          where: {
+            id: currentPracticeTest.id,
+            userId: user.id,
+            questions: currentPracticeTest.questions ?? "",
+          },
+          data: {
+            questions: JSON.stringify(mergedQuestions),
+            passage: mergedPassage,
+          },
+        });
+
+        if (updated.count === 1) {
+          savedAppend = {
+            appended: [...concurrentlyAppended, ...appended],
+            mergedPassage,
+          };
+          break;
+        }
+      }
+
+      if (!savedAppend) {
+        return NextResponse.json(
+          { error: "Could not save generated questions because the test changed. Please retry." },
+          { status: 409 }
+        );
+      }
+
       practiceTestId = existingPracticeTest.id;
-      responseQuestions = appended;
-      responsePassage = mergedPassage || undefined;
+      responseQuestions = savedAppend.appended;
+      responsePassage = savedAppend.mergedPassage || undefined;
     } else {
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({
