@@ -132,7 +132,14 @@ export async function POST(req: Request) {
       );
     }
 
-    let { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    const {
+      section,
+      questionCount: requestedQuestionCount = 5,
+      topic,
+      difficulty,
+      existingTestId,
+    } = validationResult.data;
+    let questionCount = requestedQuestionCount;
     const topicTrimmed = (topic ?? "").trim();
     const topicLocked = Boolean(topicTrimmed);
     const difficultyLocked = Boolean(difficulty && difficulty !== "Mixed");
