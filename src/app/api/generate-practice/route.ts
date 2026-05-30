@@ -92,7 +92,7 @@ const MAX_STORED_PRACTICE_QUESTIONS = 50;
 
 type ExistingPracticeTest = {
   id: string;
-  questions: string | null;
+  questions: string;
   passage: string | null;
   createdAt: Date;
   completedAt: Date | null;
