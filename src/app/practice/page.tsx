@@ -115,6 +115,8 @@ export default function PracticeTests() {
         }
       } catch (error) {
         console.error("Failed to fetch subscription status:", error);
+      } finally {
+        setSubscriptionLoaded(true);
       }
     };
     fetchSubscription();
@@ -147,6 +149,7 @@ export default function PracticeTests() {
     subscriptionStatus: string | null;
     hasSubscription: boolean;
   } | null>(null);
+  const [subscriptionLoaded, setSubscriptionLoaded] = useState(false);
   const [freeUsageCount, setFreeUsageCount] = useState(0);
   const [targetQuestionCount, setTargetQuestionCount] = useState(5);
   const [isBatchLoading, setIsBatchLoading] = useState(false);
@@ -308,7 +311,7 @@ export default function PracticeTests() {
 
     // Check free tier limit (1 use total across all features)
     const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
+    if (subscriptionLoaded && !subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
       setError(
         `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
       );
@@ -351,7 +354,7 @@ export default function PracticeTests() {
       setPracticeSet(data);
 
       // Increment free tier usage ONLY for free users (premium users have unlimited)
-      if (!subscriptionStatus?.hasSubscription) {
+      if (subscriptionLoaded && !subscriptionStatus?.hasSubscription) {
         const newCount = freeUsageCount + 1;
         setFreeUsageCount(newCount);
         localStorage.setItem("free_tier_usage", newCount.toString());
@@ -361,7 +364,7 @@ export default function PracticeTests() {
         if (!lastReset) {
           localStorage.setItem("free_tier_usage_reset", now.toISOString());
         }
-      } else {
+      } else if (subscriptionStatus?.hasSubscription) {
         // Premium user - clear any usage count
         localStorage.setItem("free_tier_usage", "0");
         setFreeUsageCount(0);
@@ -378,10 +381,16 @@ export default function PracticeTests() {
   };
 
   useEffect(() => {
+    if (!practiceHydrated) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("autostart") !== "1") return;
     const sectionParam = params.get("section");
     if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) return;
+
+    if (practiceSet) {
+      window.history.replaceState({}, "", "/practice");
+      return;
+    }
 
     const parsedConfig: TestConfig = {
       questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
@@ -392,7 +401,7 @@ export default function PracticeTests() {
     window.history.replaceState({}, "", "/practice");
     void generateTest({ section, config: parsedConfig });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [practiceHydrated, practiceSet]);
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
@@ -514,6 +523,26 @@ export default function PracticeTests() {
     }
   };
 
+  const saveScoreFallback = (
+    questions: PracticeQuestion[],
+    correct: number,
+    sectionScore: ReturnType<typeof calculateSectionScore>
+  ) => {
+    if (!testType) return;
+    const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
+    savePracticeSession({
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      section: testType,
+      score: sectionScore,
+      correct,
+      total: questions.length,
+      difficulty: config.difficulty,
+      skillDomains: skillDomains,
+      topic: config.topic || undefined,
+    });
+  };
+
   const calculateScore = async (questions: PracticeQuestion[]) => {
     let correct = 0;
     questions.forEach((q, idx) => {
@@ -530,8 +559,9 @@ export default function PracticeTests() {
       
       // Save score to backend if we have a test ID
       if (currentTestId) {
+        let savedToBackend = false;
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const response = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -540,24 +570,26 @@ export default function PracticeTests() {
               maxRawScore: questions.length,
             }),
           });
+          if (!response.ok) {
+            throw new Error(`Score save failed with status ${response.status}`);
+          }
+          savedToBackend = true;
         } catch (error) {
           console.error("Failed to save score to backend:", error);
-          // Fallback to localStorage for anonymous users or on error
-          const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
-          savePracticeSession({
-            id: Date.now().toString(),
-            date: new Date().toISOString(),
-            section: testType,
-            score: sectionScore,
-            correct,
-            total: questions.length,
-            difficulty: config.difficulty,
-            skillDomains: skillDomains,
-            topic: config.topic || undefined,
-          });
         }
+        if (!savedToBackend) {
+          saveScoreFallback(questions, correct, sectionScore);
+        }
+      } else {
+        saveScoreFallback(questions, correct, sectionScore);
       }
     }
+  };
+
+  const finishWithLoadedQuestions = async () => {
+    if (!practiceSet) return;
+    await calculateScore(practiceSet.questions);
+    setShowResults(true);
   };
 
   const resetTest = () => {
@@ -1360,9 +1392,22 @@ export default function PracticeTests() {
                       </div>
                     )}
                     {batchLoadError && (
-                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
-                        {batchLoadError}
-                      </p>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-rose-600 dark:text-rose-400">
+                          {batchLoadError}
+                        </p>
+                        {isProgressiveMode &&
+                          currentQuestion === practiceSet.questions.length - 1 &&
+                          practiceSet.questions.length > 0 && (
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline"
+                              onClick={() => void finishWithLoadedQuestions()}
+                            >
+                              Finish with the questions already loaded
+                            </button>
+                          )}
+                      </div>
                     )}
                   </div>
                 </div>
