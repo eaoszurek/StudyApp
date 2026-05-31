@@ -23,6 +23,9 @@ const TrailBuddyResponseSchema = z.object({
   reply: z.string(),
 });
 
+const hasPlusAccess = (subscriptionStatus: string | null | undefined) =>
+  subscriptionStatus === "ACTIVE" || subscriptionStatus === "TRIALING";
+
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
@@ -36,6 +39,12 @@ export async function POST(req: Request) {
     const accessContext = await getAccessContext();
     if (!accessContext.user) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    if (!hasPlusAccess(accessContext.user.subscriptionStatus)) {
+      return NextResponse.json(
+        { error: "Trail Buddy is included with Peak Prep Plus." },
+        { status: 402 }
+      );
     }
 
     const rl = rateLimit(`trail-buddy:${accessContext.user.id}`, { limit: 30, windowSeconds: 60 });

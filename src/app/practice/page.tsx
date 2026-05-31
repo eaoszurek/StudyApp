@@ -163,6 +163,13 @@ export default function PracticeTests() {
   const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode = targetQuestionCount > 5;
+  const canFinishLoadedQuestions = Boolean(
+    practiceSet &&
+      isProgressiveMode &&
+      batchLoadError &&
+      practiceSet.questions.length > 0 &&
+      practiceSet.questions.length < targetQuestionCount
+  );
   const practiceProgressPercent = practiceSet
     ? ((currentQuestion + 1) /
         (isProgressiveMode ? targetQuestionCount : practiceSet.questions.length)) *
@@ -465,6 +472,11 @@ export default function PracticeTests() {
     } else {
       // In progressive mode, wait for remaining batches before finishing.
       if (isProgressiveMode && practiceSet.questions.length < targetQuestionCount) {
+        if (canFinishLoadedQuestions) {
+          await calculateScore(practiceSet.questions);
+          setShowResults(true);
+          return;
+        }
         setBatchLoadError(null);
         if (!batchLoadingRef.current) {
           batchLoadingRef.current = true;
@@ -633,12 +645,26 @@ export default function PracticeTests() {
         }),
       });
       if (!res.ok) {
-        throw new Error("trail_buddy_failed");
+        let message = "trail_buddy_failed";
+        try {
+          const data = await res.json();
+          if (data?.error && typeof data.error === "string") {
+            message = data.error;
+          }
+        } catch {
+          /* ignore */
+        }
+        throw new Error(message);
       }
       const data = await res.json();
       setTrailBuddyReply(String(data.reply || "").trim());
-    } catch {
-      setTrailBuddyError("Trail Buddy is having trouble right now. Try again in a moment.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      setTrailBuddyError(
+        message && message !== "trail_buddy_failed"
+          ? message
+          : "Trail Buddy is having trouble right now. Try again in a moment."
+      );
     } finally {
       setTrailBuddyLoading(false);
     }
@@ -1199,7 +1225,9 @@ export default function PracticeTests() {
         const subjectClass = testType === "math" ? "sat-badge-math" : "sat-badge-english";
         const subjectLabel = testType === "math" ? "Math" : "English";
         const nextLabel = currentQuestion === practiceSet.questions.length - 1
-          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
+          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount
+              ? (canFinishLoadedQuestions ? "Finish Loaded Questions" : "Load Next 5")
+              : "Finish")
           : "Next Question";
 
         return (
