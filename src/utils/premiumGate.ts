@@ -21,7 +21,7 @@ export async function getAccessContext(): Promise<AccessContext> {
   return { user };
 }
 
-export function hasActiveSubscription(user: SessionUser | null): boolean {
+function hasActiveSubscription(user: SessionUser | null): boolean {
   return user?.subscriptionStatus === "ACTIVE" || user?.subscriptionStatus === "TRIALING";
 }
 
