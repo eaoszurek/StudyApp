@@ -2,8 +2,8 @@
  * Lightweight checks that generated practice content matches a user-selected topic.
  * Used to filter/retry when topic-locked mode is on (SAT practice config).
  *
- * Design intent: enforce clear topical alignment for topic-locked generation.
- * This filter should reject drift rather than pass-through by default.
+ * Design intent: enforce clear topical alignment when we have a confident match,
+ * without discarding every question for custom or differently worded SAT labels.
  */
 
 const MATH_TOPIC_PATTERNS: Record<string, RegExp> = {
@@ -63,10 +63,15 @@ export function questionAlignsWithLockedTopic(
     if (skill.includes(t) || t.includes(skill.slice(0, Math.min(skill.length, 16)))) {
       return true;
     }
-    // Fuzzy: share at least one significant word (>3 chars)
+    // Fuzzy: share at least one significant word (>3 chars), including simple plurals.
     const topicWords = t.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
     const skillWords = skill.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
-    if (topicWords.length > 0 && skillWords.some((w) => topicWords.includes(w))) {
+    if (
+      topicWords.length > 0 &&
+      skillWords.some((skillWord) =>
+        topicWords.some((topicWord) => skillWord.includes(topicWord) || topicWord.includes(skillWord))
+      )
+    ) {
       return true;
     }
   }
@@ -85,13 +90,17 @@ export function questionAlignsWithLockedTopic(
       const re = MATH_TOPIC_PATTERNS[fuzzyKey];
       return re.test(stem) || re.test(skill);
     }
-    // Unknown math topic with no clear lexical alignment -> reject.
-    return false;
+    const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
+    if (words.some((w) => stem.includes(w) || skill.includes(w))) {
+      return true;
+    }
+    // Unknown math labels may be custom user input; avoid zeroing out an otherwise valid generation.
+    return true;
   }
 
   // 3. Reading & Writing: require meaningful keyword overlap
   const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
   if (words.length === 0) return false;
   const matches = words.filter((w) => stem.includes(w) || skill.includes(w));
-  return matches.length >= Math.min(2, words.length);
+  return matches.length >= 1;
 }
