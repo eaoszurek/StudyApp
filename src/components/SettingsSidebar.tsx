@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import PrimaryButton from "./ui/PrimaryButton";
 import ConfirmationModal from "./ui/ConfirmationModal";
 import FeatureIcon from "./ui/FeatureIcon";
+import { clearAllPracticeProgress } from "@/utils/practiceProgressStorage";
 
 interface ApiUser {
   id: string;
@@ -283,6 +284,7 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
                         } catch (error) {
                           console.error("Failed to logout via API:", error);
                         }
+                        clearAllPracticeProgress();
                         router.push("/login");
                         onClose();
                       }}

@@ -15,6 +15,7 @@ import { Calculator, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucid
 import QuestionChart, { type QuestionGraphData } from "@/components/ui/QuestionChart";
 import DesmosGraph from "@/components/ui/DesmosGraph";
 import { getTopicsForSection } from "@/data/topics";
+import { clearLegacyPracticeProgress, getPracticeProgressKey } from "@/utils/practiceProgressStorage";
 type SectionType = "math" | "reading" | "writing";
 type OptionLetter = "A" | "B" | "C" | "D";
 
@@ -48,9 +49,9 @@ interface TestConfig {
 
 const TEST_RETRY_MESSAGE = "We couldn't generate your test right now. Please retry.";
 const BATCH_RETRY_MESSAGE = "We couldn't load the next questions. Please retry.";
-const PRACTICE_PROGRESS_KEY = "sat_practice_in_progress_v1";
 
 interface PracticeProgressSnapshot {
+  userId: string;
   testType: SectionType;
   config: TestConfig;
   practiceSet: PracticeSet & { id?: string };
@@ -152,6 +153,8 @@ export default function PracticeTests() {
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
   const [practiceHydrated, setPracticeHydrated] = useState(false);
+  const [practiceProgressKey, setPracticeProgressKey] = useState<string | null>(null);
+  const [practiceProgressUserId, setPracticeProgressUserId] = useState<string | null>(null);
   const [showCalculator, setShowCalculator] = useState(false);
   const [selectedReviewIndex, setSelectedReviewIndex] = useState<number | null>(null);
   const [trailBuddyQuestion, setTrailBuddyQuestion] = useState("");
@@ -161,6 +164,7 @@ export default function PracticeTests() {
   const [trailBuddyStepMode, setTrailBuddyStepMode] = useState(false);
   const [reviewExplanationOpen, setReviewExplanationOpen] = useState(false);
   const batchLoadingRef = React.useRef(false);
+  const autostartHandledRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode = targetQuestionCount > 5;
   const practiceProgressPercent = practiceSet
@@ -176,40 +180,70 @@ export default function PracticeTests() {
   }, [testType, showResults, practiceSet]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PRACTICE_PROGRESS_KEY);
-      if (!saved) return;
-      const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
-      if (!parsed || !parsed.practiceSet || !parsed.testType) return;
+    let cancelled = false;
 
-      setTestType(parsed.testType);
-      setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
-      setPracticeSet(parsed.practiceSet);
-      setCurrentTestId(parsed.currentTestId || null);
-      currentTestIdRef.current = parsed.currentTestId || null;
-      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
-      setSelectedAnswer(parsed.selectedAnswer || null);
-      setShowResults(Boolean(parsed.showResults));
-      setScore(parsed.score || 0);
-      setSatScore(parsed.satScore || null);
-      setUserAnswers(parsed.userAnswers || {});
-      setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
-      setShowConfig(false);
-    } catch (restoreError) {
-      console.error("Failed to restore practice progress:", restoreError);
-    } finally {
-      setPracticeHydrated(true);
-    }
+    const restoreProgress = async () => {
+      try {
+        const response = await fetch("/api/auth/me");
+        const data = response.ok ? await response.json() : null;
+        const userId = typeof data?.user?.id === "string" ? data.user.id : null;
+
+        clearLegacyPracticeProgress();
+        if (!userId) return;
+
+        const storageKey = getPracticeProgressKey(userId);
+        if (cancelled) return;
+        setPracticeProgressKey(storageKey);
+        setPracticeProgressUserId(userId);
+
+        const saved = localStorage.getItem(storageKey);
+        if (!saved) return;
+        const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
+        if (!parsed || !parsed.practiceSet || !parsed.testType) return;
+        if (parsed.userId && parsed.userId !== userId) {
+          localStorage.removeItem(storageKey);
+          return;
+        }
+        if (cancelled) return;
+
+        setTestType(parsed.testType);
+        setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
+        setPracticeSet(parsed.practiceSet);
+        setCurrentTestId(parsed.currentTestId || null);
+        currentTestIdRef.current = parsed.currentTestId || null;
+        setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+        setSelectedAnswer(parsed.selectedAnswer || null);
+        setShowResults(Boolean(parsed.showResults));
+        setScore(parsed.score || 0);
+        setSatScore(parsed.satScore || null);
+        setUserAnswers(parsed.userAnswers || {});
+        setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
+        setShowConfig(false);
+      } catch (restoreError) {
+        console.error("Failed to restore practice progress:", restoreError);
+      } finally {
+        if (!cancelled) {
+          setPracticeHydrated(true);
+        }
+      }
+    };
+
+    void restoreProgress();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    if (!practiceHydrated) return;
+    if (!practiceHydrated || !practiceProgressKey || !practiceProgressUserId) return;
     try {
       if (!practiceSet || !testType) {
-        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        localStorage.removeItem(practiceProgressKey);
         return;
       }
       const snapshot: PracticeProgressSnapshot = {
+        userId: practiceProgressUserId,
         testType,
         config,
         practiceSet,
@@ -222,7 +256,7 @@ export default function PracticeTests() {
         userAnswers,
         targetQuestionCount,
       };
-      localStorage.setItem(PRACTICE_PROGRESS_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(practiceProgressKey, JSON.stringify(snapshot));
     } catch (saveError) {
       console.error("Failed to persist practice progress:", saveError);
     }
@@ -239,6 +273,8 @@ export default function PracticeTests() {
     userAnswers,
     targetQuestionCount,
     practiceHydrated,
+    practiceProgressKey,
+    practiceProgressUserId,
   ]);
 
   const fetchPracticeBatchWithRetry = async (
@@ -378,10 +414,12 @@ export default function PracticeTests() {
   };
 
   useEffect(() => {
+    if (!practiceHydrated || autostartHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("autostart") !== "1") return;
     const sectionParam = params.get("section");
     if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) return;
+    autostartHandledRef.current = true;
 
     const parsedConfig: TestConfig = {
       questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
@@ -390,9 +428,15 @@ export default function PracticeTests() {
     };
     const section = sectionParam as SectionType;
     window.history.replaceState({}, "", "/practice");
+    if (practiceSet && !showResults) {
+      setBatchLoadError(
+        "You already have an unfinished practice test. Finish it or start a new test before launching another task."
+      );
+      return;
+    }
     void generateTest({ section, config: parsedConfig });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [practiceHydrated, practiceSet, showResults]);
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
@@ -492,8 +536,13 @@ export default function PracticeTests() {
           } catch (e) {
             const m = e instanceof Error ? e.message : "";
             setBatchLoadError(
-              m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
+              m && m !== "practice_request_failed"
+                ? `${m} We scored the questions you completed.`
+                : "We couldn't load more questions, so we scored the questions you completed."
             );
+            setTargetQuestionCount(practiceSet.questions.length);
+            await calculateScore(practiceSet.questions);
+            setShowResults(true);
             return;
           } finally {
             batchLoadingRef.current = false;
@@ -531,7 +580,7 @@ export default function PracticeTests() {
       // Save score to backend if we have a test ID
       if (currentTestId) {
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const response = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -540,6 +589,9 @@ export default function PracticeTests() {
               maxRawScore: questions.length,
             }),
           });
+          if (!response.ok) {
+            throw new Error(`Failed to save score: ${response.status}`);
+          }
         } catch (error) {
           console.error("Failed to save score to backend:", error);
           // Fallback to localStorage for anonymous users or on error
@@ -584,7 +636,9 @@ export default function PracticeTests() {
     setTrailBuddyStepMode(false);
     setReviewExplanationOpen(false);
     setShowCalculator(false);
-    localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+    if (practiceProgressKey) {
+      localStorage.removeItem(practiceProgressKey);
+    }
   };
 
   const askTrailBuddy = async ({
