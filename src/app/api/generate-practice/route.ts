@@ -23,6 +23,11 @@ import {
   questionAlignsWithLockedDifficulty,
   type LockedDifficulty,
 } from "@/utils/practiceDifficultyAlignment";
+import {
+  MAX_STORED_PRACTICE_QUESTIONS,
+  appendPracticeQuestions,
+  parseStoredPracticeQuestions,
+} from "@/utils/practiceAppend";
 
 const GraphDataSchema = z.object({
   type: z.enum(["bar", "line", "scatter"]),
@@ -86,6 +91,7 @@ const PracticeRequestSchema = z.object({
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
+  appendRequestId: z.string().trim().min(1).max(128).optional(),
 });
 
 export async function POST(req: Request) {
@@ -105,7 +111,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    const {
+      section,
+      questionCount = 5,
+      topic,
+      difficulty,
+      existingTestId,
+      appendRequestId,
+    } = validationResult.data;
     const topicTrimmed = (topic ?? "").trim();
     const topicLocked = Boolean(topicTrimmed);
     const difficultyLocked = Boolean(difficulty && difficulty !== "Mixed");
@@ -126,18 +139,30 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    let existingPracticeTest: {
+      id: string;
+      questions: string | null;
+      passage: string | null;
+      completedAt: Date | null;
+    } | null = null;
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: { id: true, questions: true, passage: true, completedAt: true },
       });
 
       if (!existingPracticeTest) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+
+      if (existingPracticeTest.completedAt) {
+        return NextResponse.json(
+          { error: "Completed practice tests cannot be extended." },
+          { status: 409 }
         );
       }
     } else {
@@ -980,15 +1005,9 @@ ${difficulty && difficulty !== "Mixed"
       return out;
     };
 
-    const existingQuestionsForGeneration: any[] = (() => {
-      try {
-        if (!existingPracticeTest?.questions) return [];
-        const parsed = JSON.parse(existingPracticeTest.questions);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    })();
+    const existingQuestionsForGeneration = parseStoredPracticeQuestions(
+      existingPracticeTest?.questions
+    );
 
     const existingRwSignatures = new Set<string>();
     if (section === "reading" || section === "writing") {
@@ -1463,34 +1482,78 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
+      const maxAppendAttempts = 3;
+      let appendSucceeded = false;
+
+      for (let attempt = 0; attempt < maxAppendAttempts; attempt += 1) {
+        const latestPracticeTest = await prisma.practiceTest.findFirst({
+          where: { id: existingPracticeTest.id, userId: user.id },
+          select: { id: true, questions: true, passage: true, completedAt: true },
+        });
+
+        if (!latestPracticeTest) {
+          return NextResponse.json(
+            { error: "Existing practice test not found for this user/session." },
+            { status: 404 }
+          );
         }
-      })();
 
-      const offset = existingQuestions.length;
-      const appended = normalizedQuestions.map((q: any, idx: number) => ({
-        ...q,
-        id: offset + idx + 1,
-      }));
-      const mergedQuestions = [...existingQuestions, ...appended];
-      const mergedPassage = existingPracticeTest.passage || passage || null;
+        if (latestPracticeTest.completedAt) {
+          return NextResponse.json(
+            { error: "Completed practice tests cannot be extended." },
+            { status: 409 }
+          );
+        }
 
-      await prisma.practiceTest.update({
-        where: { id: existingPracticeTest.id },
-        data: {
-          questions: JSON.stringify(mergedQuestions),
-          passage: mergedPassage,
-        },
-      });
-      practiceTestId = existingPracticeTest.id;
-      responseQuestions = appended;
-      responsePassage = mergedPassage || undefined;
+        const appendResult = appendPracticeQuestions({
+          existingQuestions: parseStoredPracticeQuestions(latestPracticeTest.questions),
+          generatedQuestions: normalizedQuestions,
+          existingPassage: latestPracticeTest.passage,
+          generatedPassage: passage,
+          appendRequestId,
+          maxQuestions: MAX_STORED_PRACTICE_QUESTIONS,
+        });
+
+        if (!appendResult.ok) {
+          return NextResponse.json(
+            { error: "Practice test already has the maximum number of questions." },
+            { status: 409 }
+          );
+        }
+
+        practiceTestId = latestPracticeTest.id;
+        responseQuestions = appendResult.appendedQuestions;
+        responsePassage = appendResult.mergedPassage || undefined;
+
+        if (appendResult.reusedExistingAppend) {
+          appendSucceeded = true;
+          break;
+        }
+
+        const updateResult = await prisma.practiceTest.updateMany({
+          where: {
+            id: latestPracticeTest.id,
+            userId: user.id,
+            questions: latestPracticeTest.questions,
+          },
+          data: {
+            questions: JSON.stringify(appendResult.mergedQuestions),
+            passage: appendResult.mergedPassage,
+          },
+        });
+
+        if (updateResult.count === 1) {
+          appendSucceeded = true;
+          break;
+        }
+      }
+
+      if (!appendSucceeded) {
+        return NextResponse.json(
+          { error: "Practice test changed while appending questions. Please retry." },
+          { status: 409 }
+        );
+      }
     } else {
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({

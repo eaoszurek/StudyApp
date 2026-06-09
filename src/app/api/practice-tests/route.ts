@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "@/lib/auth";
 import { handleApiError } from "@/utils/apiHelpers";
+import { stripPracticeAppendMetadataFromQuestions } from "@/utils/practiceAppend";
 
 /**
  * GET - Fetch user's practice tests (requires sign-in)
@@ -26,6 +27,7 @@ export async function GET() {
       } catch {
         questions = [];
       }
+      questions = stripPracticeAppendMetadataFromQuestions(questions);
       return {
         id: test.id,
         section: test.section,

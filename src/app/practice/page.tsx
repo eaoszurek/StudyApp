@@ -50,6 +50,13 @@ const TEST_RETRY_MESSAGE = "We couldn't generate your test right now. Please ret
 const BATCH_RETRY_MESSAGE = "We couldn't load the next questions. Please retry.";
 const PRACTICE_PROGRESS_KEY = "sat_practice_in_progress_v1";
 
+const createAppendRequestId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
 interface PracticeProgressSnapshot {
   testType: SectionType;
   config: TestConfig;
@@ -415,6 +422,7 @@ export default function PracticeTests() {
             topic: config.topic || undefined,
             difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
             existingTestId: currentTestIdRef.current,
+            appendRequestId: createAppendRequestId(),
           });
           setPracticeSet((prev) => {
             if (!prev) return prev;
@@ -478,6 +486,7 @@ export default function PracticeTests() {
               topic: config.topic || undefined,
               difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
               existingTestId: currentTestIdRef.current || undefined,
+              appendRequestId: createAppendRequestId(),
             });
             const baseIndex = practiceSet.questions.length;
             const normalized = nextBatch.questions.map((q, idx) => ({
