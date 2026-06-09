@@ -1,7 +1,7 @@
 export const MAX_STORED_PRACTICE_QUESTIONS = 50;
 export const PRACTICE_APPEND_REQUEST_ID_FIELD = "__appendRequestId";
 
-type PracticeQuestionRecord = Record<string, any>;
+type PracticeQuestionRecord = Record<string, unknown>;
 
 export type AppendPracticeQuestionsResult =
   | {
@@ -27,7 +27,8 @@ export function parseStoredPracticeQuestions(raw: string | null | undefined): Pr
 }
 
 export function stripPracticeAppendMetadata<T extends PracticeQuestionRecord>(question: T): T {
-  const { [PRACTICE_APPEND_REQUEST_ID_FIELD]: _appendRequestId, ...cleanQuestion } = question;
+  const cleanQuestion = { ...question };
+  delete cleanQuestion[PRACTICE_APPEND_REQUEST_ID_FIELD];
   return cleanQuestion as T;
 }
 
