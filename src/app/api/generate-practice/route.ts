@@ -96,7 +96,7 @@ const PracticeRequestSchema = z.object({
 class FreePracticeAppendLimitError extends Error {}
 class PracticeAppendTargetMissingError extends Error {}
 
-function parseStoredQuestions(questions: string | null): any[] {
+function parseStoredQuestions(questions: string | null): unknown[] {
   try {
     if (!questions) return [];
     const parsed = JSON.parse(questions);
@@ -107,7 +107,7 @@ function parseStoredQuestions(questions: string | null): any[] {
 }
 
 function wouldExceedFreePracticeAppendLimit(
-  existingQuestions: any[],
+  existingQuestions: readonly unknown[],
   appendCount: number
 ): boolean {
   return existingQuestions.length + appendCount > FREE_PRACTICE_TEST_MAX_QUESTIONS;
