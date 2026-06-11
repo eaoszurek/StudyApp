@@ -66,16 +66,12 @@ const PracticeResponseSchema = z.object({
 });
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
-import {
-  FREE_PRACTICE_TEST_MAX_QUESTIONS,
-  checkPremiumGate,
-  getAccessContext,
-  getFreeTierMonthStart,
-} from "@/utils/premiumGate";
+import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
 
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
+const FREE_PRACTICE_TEST_MAX_QUESTIONS = 50;
 
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
@@ -114,7 +110,10 @@ function wouldExceedFreePracticeAppendLimit(
 }
 
 function isCurrentFreeTierMonth(date: Date): boolean {
-  return date >= getFreeTierMonthStart();
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  return date >= monthStart;
 }
 
 export async function POST(req: Request) {

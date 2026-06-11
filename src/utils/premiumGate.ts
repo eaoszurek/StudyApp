@@ -3,8 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession, SessionUser } from "@/lib/auth";
 
-export const FREE_TIER_LIMIT = 1;
-export const FREE_PRACTICE_TEST_MAX_QUESTIONS = 50;
+const FREE_TIER_LIMIT = 1;
 
 export interface AccessContext {
   user: SessionUser | null;
@@ -22,11 +21,11 @@ export async function getAccessContext(): Promise<AccessContext> {
   return { user };
 }
 
-export function hasActiveSubscription(user: SessionUser | null): boolean {
+function hasActiveSubscription(user: SessionUser | null): boolean {
   return user?.subscriptionStatus === "ACTIVE" || user?.subscriptionStatus === "TRIALING";
 }
 
-export function getFreeTierMonthStart(): Date {
+function getMonthStart(): Date {
   const monthStart = new Date();
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
@@ -62,7 +61,7 @@ export async function checkPremiumGate(context: AccessContext): Promise<PremiumG
     };
   }
 
-  const monthStart = getFreeTierMonthStart();
+  const monthStart = getMonthStart();
   const whereBase = { userId: context.user.id };
 
   const [flashcardCount, practiceCount, studyPlanCount, lessonCount] = await Promise.all([
