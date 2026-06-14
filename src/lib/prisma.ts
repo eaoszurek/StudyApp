@@ -12,7 +12,11 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-const databaseUrl = process.env.DATABASE_URL || "file:./dev.db";
+const databaseUrl = process.env.DATABASE_URL || (process.env.NODE_ENV === "production" ? undefined : "file:./dev.db");
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL must be set in production.");
+}
+
 const tursoAuthToken = process.env.TURSO_AUTH_TOKEN;
 
 // Create Prisma adapter with LibSQL (works with both local SQLite and Turso)

@@ -25,6 +25,10 @@ const TrailBuddyResponseSchema = z.object({
 
 export const maxDuration = 60;
 
+function hasTrailBuddyAccess(user: { subscriptionStatus?: string | null }): boolean {
+  return user.subscriptionStatus === "ACTIVE" || user.subscriptionStatus === "TRIALING";
+}
+
 export async function POST(req: Request) {
   try {
     const originError = checkOrigin(req);
@@ -36,6 +40,12 @@ export async function POST(req: Request) {
     const accessContext = await getAccessContext();
     if (!accessContext.user) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
+    }
+    if (!hasTrailBuddyAccess(accessContext.user)) {
+      return NextResponse.json(
+        { error: "Trail Buddy is available with PeakPrep Plus." },
+        { status: 402 }
+      );
     }
 
     const rl = rateLimit(`trail-buddy:${accessContext.user.id}`, { limit: 30, windowSeconds: 60 });

@@ -95,6 +95,21 @@ export async function POST() {
             message: "Subscription synced successfully",
           });
         }
+
+        await prisma.user.update({
+          where: { id: session.id },
+          data: {
+            stripeSubscriptionId: null,
+            subscriptionStatus: "CANCELLED",
+          },
+        });
+
+        return NextResponse.json({
+          success: true,
+          subscriptionStatus: "CANCELLED",
+          hasSubscription: false,
+          message: "No subscription found in Stripe",
+        });
       } catch (error: any) {
         const e = error as { code?: string; message?: string };
         console.error("Error fetching subscriptions:", e?.code || "unknown_error", e?.message || "no_message");

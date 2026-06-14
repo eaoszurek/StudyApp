@@ -87,6 +87,22 @@ export async function GET() {
             synced: true,
           });
         }
+
+        await prisma.user.update({
+          where: { id: session.id },
+          data: {
+            stripeSubscriptionId: null,
+            subscriptionStatus: "CANCELLED",
+          },
+        });
+
+        return NextResponse.json({
+          subscriptionStatus: "CANCELLED",
+          hasSubscription: false,
+          stripeCustomerId: user.stripeCustomerId,
+          stripeSubscriptionId: null,
+          synced: true,
+        });
       } catch (error) {
         const e = error as { code?: string; message?: string };
         console.error("Error fetching subscriptions:", e?.code || "unknown_error", e?.message || "no_message");
