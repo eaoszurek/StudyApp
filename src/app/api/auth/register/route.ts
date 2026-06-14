@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, createSession } from "@/lib/auth";
+import { hashPassword, createSession, getServerSession } from "@/lib/auth";
 import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/policy";
 import { rateLimit } from "@/lib/rate-limit";
@@ -58,6 +58,14 @@ export async function POST(req: Request) {
       }
 
       // User exists but has no password (migrating from magic link) - update with password
+      const currentUser = await getServerSession();
+      if (!currentUser || currentUser.id !== existingUser.id) {
+        return NextResponse.json(
+          { error: "Sign in with your existing account before setting a password." },
+          { status: 403 }
+        );
+      }
+
       const passwordHash = await hashPassword(password);
       
       const user = await prisma.user.update({

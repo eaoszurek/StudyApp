@@ -531,7 +531,7 @@ export default function PracticeTests() {
       // Save score to backend if we have a test ID
       if (currentTestId) {
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const scoreResponse = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -540,6 +540,9 @@ export default function PracticeTests() {
               maxRawScore: questions.length,
             }),
           });
+          if (!scoreResponse.ok) {
+            throw new Error(`Score save failed with status ${scoreResponse.status}`);
+          }
         } catch (error) {
           console.error("Failed to save score to backend:", error);
           // Fallback to localStorage for anonymous users or on error

@@ -1,21 +1,30 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 
-try { fs.renameSync('prisma.config.ts', 'prisma.config.ts.bak'); } catch(e) {}
+try { fs.renameSync('prisma.config.ts', 'prisma.config.ts.bak'); } catch {}
 
 try {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL is required to run Prisma migrations.');
+  }
+
   console.log("Running prisma migrate deploy...");
   const out = execSync('npx prisma migrate deploy', {
     env: { 
       ...process.env, 
-      DATABASE_URL: "libsql://peakprep-eaoszurek.aws-us-east-1.turso.io?authToken=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzIxNDg5ODgsImlkIjoiMDE5YzljNGItOTkwMS03ZTM1LWFhZGQtOTZkNzM1NTIwMjMwIiwicmlkIjoiNTQ3YzhjMTYtMzQ0Yy00YTUxLTg3NzctOGJmOTY1MmY2ZjEwIn0.J8IamMd7SBnDlGjAIHcPy5lYSOlmLLBALzSNWnrjIjW-Bj-l0sHb4oe9X1HyiLwzQhje73haxbXihfeixnO4BA"
+      DATABASE_URL: databaseUrl
     },
     encoding: 'utf-8'
   });
   fs.writeFileSync('migrate.log', out);
 } catch(e) {
-  fs.writeFileSync('migrate.log', e.stdout + '\n' + e.stderr);
+  const stdout = e && typeof e === 'object' && 'stdout' in e ? String(e.stdout ?? '') : '';
+  const stderr = e && typeof e === 'object' && 'stderr' in e ? String(e.stderr ?? '') : '';
+  const message = e instanceof Error ? e.stack || e.message : String(e);
+  fs.writeFileSync('migrate.log', `${stdout}\n${stderr}\n${message}`);
   console.error("Migration failed");
+  process.exitCode = 1;
 }
 
-try { fs.renameSync('prisma.config.ts.bak', 'prisma.config.ts'); } catch(e) {}
+try { fs.renameSync('prisma.config.ts.bak', 'prisma.config.ts'); } catch {}

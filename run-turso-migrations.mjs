@@ -2,12 +2,20 @@ import { createClient } from '@libsql/client';
 import fs from 'fs';
 import path from 'path';
 
-const dbUrl = "libsql://peakprep-eaoszurek.aws-us-east-1.turso.io";
-const authToken = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzIxNDg5ODgsImlkIjoiMDE5YzljNGItOTkwMS03ZTM1LWFhZGQtOTZkNzM1NTIwMjMwIiwicmlkIjoiNTQ3YzhjMTYtMzQ0Yy00YTUxLTg3NzctOGJmOTY1MmY2ZjEwIn0.J8IamMd7SBnDlGjAIHcPy5lYSOlmLLBALzSNWnrjIjW-Bj-l0sHb4oe9X1HyiLwzQhje73haxbXihfeixnO4BA";
+const dbUrl = process.env.DATABASE_URL;
+const authToken = process.env.TURSO_AUTH_TOKEN;
+
+if (!dbUrl) {
+  throw new Error('DATABASE_URL is required to run Turso migrations.');
+}
+
+if (dbUrl.startsWith('libsql://') && !authToken && !dbUrl.includes('authToken=')) {
+  throw new Error('TURSO_AUTH_TOKEN is required for libsql:// migration URLs.');
+}
 
 const client = createClient({
   url: dbUrl,
-  authToken: authToken,
+  ...(authToken ? { authToken } : {}),
 });
 
 async function run() {
