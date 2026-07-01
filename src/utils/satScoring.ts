@@ -110,7 +110,7 @@ export function calculateSATScore(
  * Calculate SAT score for a single section (practice mode)
  */
 export function calculateSectionScore(
-  section: "math" | "reading" | "writing",
+  section: "math" | "reading" | "writing" | "reading-writing",
   correct: number,
   total: number
 ): SectionScore {
@@ -129,6 +129,13 @@ export function calculateSectionScore(
       maxRaw: total,
     };
   }
+}
+
+/** Display a section scaled score as a range (±margin), never a single point estimate. */
+export function formatScaledScoreRange(scaled: number, margin = 20): string {
+  const low = Math.max(200, scaled - margin);
+  const high = Math.min(800, scaled + margin);
+  return `${low}–${high}`;
 }
 
 /**

@@ -131,7 +131,6 @@ RULES FOR CONTENT:
 1. Content MUST match the subject the user gives, but you decide the best breakdown.
 2. The plan MUST focus on in-app actions only. Use these features as the core actions:
    - Practice Tests
-   - Flashcards
    - Micro-Lessons
    - Study Plans
    - Progress tracking/review

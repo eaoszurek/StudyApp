@@ -6,7 +6,7 @@ import { getAccessContext } from "@/utils/premiumGate";
 import { rateLimit } from "@/lib/rate-limit";
 
 const TrailBuddyRequestSchema = z.object({
-  testType: z.enum(["math", "reading", "writing"]),
+  testType: z.enum(["math", "reading", "writing", "reading-writing"]),
   question: z.string().min(1).max(1200),
   passage: z.string().max(2400).optional(),
   options: z.record(z.enum(["A", "B", "C", "D"]), z.string().max(300)),

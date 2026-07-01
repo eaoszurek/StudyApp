@@ -64,10 +64,7 @@ export async function checkPremiumGate(context: AccessContext): Promise<PremiumG
   const monthStart = getMonthStart();
   const whereBase = { userId: context.user.id };
 
-  const [flashcardCount, practiceCount, studyPlanCount, lessonCount] = await Promise.all([
-    prisma.flashcardSet.count({
-      where: { ...whereBase, createdAt: { gte: monthStart } },
-    }),
+  const [practiceCount, studyPlanCount, lessonCount] = await Promise.all([
     prisma.practiceTest.count({
       where: { ...whereBase, createdAt: { gte: monthStart } },
     }),
@@ -79,7 +76,7 @@ export async function checkPremiumGate(context: AccessContext): Promise<PremiumG
     }),
   ]);
 
-  const usageCount = flashcardCount + practiceCount + studyPlanCount + lessonCount;
+  const usageCount = practiceCount + studyPlanCount + lessonCount;
   const allowed = usageCount < FREE_TIER_LIMIT;
 
   return {

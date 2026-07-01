@@ -112,7 +112,7 @@ export default function SignUp() {
             Create your PeakPrep account.
           </h1>
           <p className="text-slate-700 text-sm mx-auto">
-            Sign up to save your study plans, flashcards, and practice history.
+            Sign up to save your study plans and practice history.
           </p>
         </motion.div>
 

@@ -2,7 +2,7 @@
   "hero": {
     "variantA": {
       "headline": "Climb to your best SAT score with PeakPrep",
-      "subhead": "Personalized Route Maps, built-in flashcards, and full-length checkpoints to guide your climb.",
+      "subhead": "Personalized Route Maps and full-length checkpoints to guide your climb.",
       "ctaPrimary": "Start Your Free Route",
       "ctaSecondary": "See a Sample Route"
     },
@@ -22,11 +22,11 @@
       "link": "/study-plan"
     },
     {
-      "id": "tools-supplies",
+      "id": "micro-lessons",
       "icon": "🎒",
-      "title": "Tools & Supplies",
-      "description": "Spaced repetition flashcards with SAT-accurate content for every concept.",
-      "link": "/flashcards"
+      "title": "Micro-Lessons",
+      "description": "Quick knowledge checkpoints with SAT-accurate examples and practice.",
+      "link": "/lessons"
     },
     {
       "id": "checkpoints",
@@ -53,7 +53,6 @@
         "features": [
           "1 free practice checkpoint",
           "1 free Route Map study plan",
-          "1 free flashcard pack",
           "1 free micro-lesson",
           "Progress tracking"
         ],
@@ -68,7 +67,7 @@
         "features": [
           "Unlimited practice checkpoints",
           "Advanced Route Map customization",
-          "Unlimited flashcards",
+          "Unlimited micro-lessons",
           "Detailed analytics & insights",
           "Priority AI generation"
         ],
@@ -131,7 +130,7 @@
   },
   "seo": {
     "title": "PeakPrep — Mountain-themed SAT prep app",
-    "description": "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, and checkpoint practice tests. Climb your way to your target score.",
+    "description": "PeakPrep personalizes your SAT study with Route Maps, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
     "ogImage": "/images/og-peakprep.png"
   }
 }

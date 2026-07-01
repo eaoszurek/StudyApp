@@ -9,7 +9,7 @@ import { SATScore } from "./satScoring";
 export interface PracticeSession {
   id: string;
   date: string;
-  section: "math" | "reading" | "writing";
+  section: "math" | "reading" | "writing" | "reading-writing";
   score: SATScore | { scaled: number; raw: number; maxRaw: number };
   correct: number;
   total: number;

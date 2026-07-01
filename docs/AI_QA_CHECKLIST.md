@@ -26,12 +26,6 @@ Use this checklist to review AI output from the sampling script or manually gene
 - Practice question is concise and not repetitive.
 - Explanations are encouraging and tutor-like.
 
-## Flashcards (generate-flashcards)
-- Front term is 1–4 words.
-- Back uses `TERM — definition` format.
-- Definition is clear and SAT-appropriate.
-- Examples (if any) are concise and correct.
-
 ## Legacy endpoints
 - `generate-question` still produces SAT-style prompts.
 - `generate-plan` produces structured SAT study content.

@@ -92,11 +92,6 @@ function evaluate(endpoint, result) {
         return { ok: false, reason: "Expected lesson practice questions." };
       }
       return { ok: true };
-    case "/api/generate-flashcards":
-      if (!Array.isArray(body?.flashcards) || body.flashcards.length < 8) {
-        return { ok: false, reason: "Expected >=8 flashcards." };
-      }
-      return { ok: true };
     case "/api/generate-practice":
       if (!Array.isArray(body?.questions) || body.questions.length < 5) {
         return { ok: false, reason: "Expected >=5 practice questions." };
@@ -126,10 +121,6 @@ async function run() {
     {
       endpoint: "/api/ai/lessons",
       payload: { topic: "Linear equations in one variable", difficulty: "easy" },
-    },
-    {
-      endpoint: "/api/generate-flashcards",
-      payload: { topic: "Independent and dependent clauses" },
     },
     {
       endpoint: "/api/generate-practice",

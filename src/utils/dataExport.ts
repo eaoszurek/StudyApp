@@ -11,7 +11,6 @@ export interface ExportData {
   exportDate: string;
   scoreHistory: ScoreHistory;
   goal: GoalData | null;
-  flashcards?: any; // Flashcard data from localStorage
   studyPlan?: any; // Study plan data from localStorage
 }
 
@@ -24,17 +23,6 @@ export async function exportUserData(): Promise<string> {
   try {
     const scoreHistory = await getScoreHistory();
     const goal = getTargetGoal();
-    
-    // Get flashcards if available
-    let flashcards = null;
-    try {
-      const flashcardData = localStorage.getItem("sat_flashcards");
-      if (flashcardData) {
-        flashcards = JSON.parse(flashcardData);
-      }
-    } catch (error) {
-      console.error("Failed to export flashcards:", error);
-    }
 
     // Get study plan if available
     let studyPlan = null;
@@ -52,7 +40,6 @@ export async function exportUserData(): Promise<string> {
       exportDate: new Date().toISOString(),
       scoreHistory,
       goal,
-      flashcards,
       studyPlan,
     };
 
@@ -145,31 +132,6 @@ export async function importUserData(jsonData: string, options?: { merge?: boole
       }
     }
 
-    // Import flashcards
-    if (data.flashcards) {
-      if (merge) {
-        // Merge flashcards
-        try {
-          const existing = localStorage.getItem("sat_flashcards");
-          if (existing) {
-            const existingCards = JSON.parse(existing);
-            const merged = [...existingCards, ...data.flashcards];
-            // Remove duplicates by front text
-            const unique = merged.filter((card: any, index: number, self: any[]) =>
-              index === self.findIndex((c) => c.front === card.front)
-            );
-            localStorage.setItem("sat_flashcards", JSON.stringify(unique));
-          } else {
-            localStorage.setItem("sat_flashcards", JSON.stringify(data.flashcards));
-          }
-        } catch (error) {
-          console.error("Failed to merge flashcards:", error);
-          localStorage.setItem("sat_flashcards", JSON.stringify(data.flashcards));
-        }
-      } else {
-        localStorage.setItem("sat_flashcards", JSON.stringify(data.flashcards));
-      }
-    }
 
     // Import study plan
     if (data.studyPlan) {

@@ -1,5 +1,7 @@
 # Launch Readiness Audit - Implementation Summary
 
+> **Update (2026):** Flashcards were removed from the product. The app now has four features: Practice Tests, Study Plans, Micro-Lessons, and Progress. References to flashcards below are historical audit notes.
+
 ## Overview
 Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production-ready.
 
@@ -67,10 +69,8 @@ Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production
    - Simplified to just close mobile menu on navigation
    - Next.js handles scroll position automatically
 
-3. **Flashcard Animation** (`src/app/flashcards/page.tsx`)
-   - Added `overflow-x-hidden` to flashcard container
-   - Moved from inline style to className
-   - Prevents horizontal scroll on mobile devices
+3. **Flashcard Animation** *(removed — flashcards feature deprecated)*
+   - Was: `src/app/flashcards/page.tsx` overflow fixes on mobile
 
 ---
 
@@ -82,7 +82,6 @@ Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production
    - Removed unnecessary `params` and `searchParams` unwrapping from pages:
      - `src/app/page.tsx`
      - `src/app/dashboard/page.tsx`
-     - `src/app/flashcards/page.tsx`
      - `src/app/practice/page.tsx`
      - `src/app/lessons/page.tsx`
      - `src/app/study-plan/page.tsx`
@@ -145,9 +144,6 @@ Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production
 ### Improved:
 
 1. **Truncation Limits** (Multiple files)
-   - **Flashcards** (`src/app/api/generate-flashcards/route.ts`):
-     - Back text: 200 → 350 chars (allows for examples)
-   
    - **Practice Tests** (`src/app/api/generate-practice/route.ts`):
      - Correct explanations: 300 → 500 chars
      - Incorrect explanations: 200 → 300 chars
@@ -163,7 +159,6 @@ Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production
      - Strategy tips: 200 → 250 chars
 
 2. **Validation Rules** (`src/utils/aiValidation.ts`)
-   - Flashcard backs: 50 → 70 words (allows multiple examples)
    - Explanation limits: 300 → 500 chars
    - More flexible while maintaining quality
 
@@ -173,7 +168,7 @@ Completed comprehensive 6-phase audit and fixes to make SAT Peak Prep production
 
 ### Files Modified: 23 files
 - Core config: 3 files (Prisma, env validation, Stripe)
-- API routes: 4 files (Stripe checkout, flashcards, practice, lessons)
+- API routes: Stripe checkout, practice, lessons, study plans
 - Pages: 8 files (all major user-facing pages)
 - Components: 2 files (Navigation, Layout)
 - Utils: 2 files (AI validation, premium check)

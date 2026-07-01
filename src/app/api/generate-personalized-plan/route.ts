@@ -6,9 +6,21 @@ import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedVal
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
+import {
+  balanceStripLooseParens,
+  capAiGenerationWeeks,
+  extendWeeklyPlan,
+  getLocalYmd,
+  inclusiveDayCount as countInclusiveCalendarDays,
+  weeksToFitInclusiveDays,
+} from "@/lib/studyPlanDates";
+
+export const maxDuration = 180;
 
 // Zod schema for input validation
 const StudyPlanRequestSchema = z.object({
+  /** First calendar day the student starts this plan (YYYY-MM-DD, local, from the client) */
+  planStartDate: z.string().max(20).optional(),
   answers: z.object({
     targetScore: z.string().max(20).optional(),
     testDate: z.string().max(50).optional(),
@@ -47,7 +59,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { answers, performanceData } = validationResult.data;
+    const { answers, performanceData, planStartDate: planStartDateRaw } = validationResult.data;
 
     const accessContext = await getAccessContext();
     if (!accessContext.user) {
@@ -79,14 +91,43 @@ export async function POST(req: Request) {
       confidenceLevel,
       notes,
     } = answers;
-    
+
+    // Calendar scope: from plan start (inclusive) through test day (inclusive) — same Y-M-D in UTC math
+    const planStartYmd = (planStartDateRaw && /^\d{4}-\d{2}-\d{2}/.test(planStartDateRaw.trim())
+      ? planStartDateRaw.trim().slice(0, 10)
+      : getLocalYmd(new Date())) as string;
+
+    const { inclusiveDayCount, calendarWeeksForTest } = (() => {
+      if (!testDate || !/^\d{4}-\d{2}-\d{2}/.test(testDate.trim())) {
+        return { inclusiveDayCount: null as number | null, calendarWeeksForTest: null as number | null };
+      }
+      const endY = testDate.trim().slice(0, 10);
+      const n = countInclusiveCalendarDays(planStartYmd, endY);
+      return {
+        inclusiveDayCount: n,
+        calendarWeeksForTest: weeksToFitInclusiveDays(n),
+      };
+    })();
+
+    const weeksUntilTest = calendarWeeksForTest;
+    const aiWeeks =
+      weeksUntilTest !== null ? capAiGenerationWeeks(weeksUntilTest) : null;
+    const extendsBeyondAiWindow =
+      weeksUntilTest !== null &&
+      aiWeeks !== null &&
+      weeksUntilTest > aiWeeks;
+    const testDateLabel =
+      weeksUntilTest !== null
+        ? `${testDate} (${inclusiveDayCount} calendar day${(inclusiveDayCount ?? 0) !== 1 ? "s" : ""} from plan start, ${weeksUntilTest} week${weeksUntilTest !== 1 ? "s" : ""} on the schedule)`
+        : "Not specified";
+
     // Use performance data if available, otherwise use user's input
     const actualWeakestSection = (performanceData && performanceData.weakestSection) ? performanceData.weakestSection : weakestSection;
     const currentScore = (performanceData && performanceData.averageScore) ? performanceData.averageScore : null;
     const totalSessions = (performanceData && performanceData.totalSessions) ? performanceData.totalSessions : 0;
 
     // Create completion with timeout
-    const cacheKey = `generate-personalized-plan:v2-duration-calibrated:${JSON.stringify({ answers, performanceData })}`;
+    const cacheKey = `generate-personalized-plan:v6-weekly-only:${JSON.stringify({ answers, performanceData, planStartYmd, weeksUntilTest, aiWeeks, inclusiveDayCount })}`;
     const cachedResponse = getCachedValue<any>(cacheKey);
     const completion = cachedResponse
       ? null
@@ -109,23 +150,29 @@ Required JSON format:
     {
       "week": 1,
       "focus": "string",
-      "tasks": ["string", "string"]
-    }
-  ],
-  "dailyPlan": [
-    {
-      "day": "string",
-      "tasks": ["string", "string"]
+      "tasks": ["string", "string"],
+      "taskMeta": [
+        { "type": "practice"|"lesson"|"review", "section": "math"|"reading-writing", "topic": "string", "difficulty": "Easy"|"Medium"|"Hard"|"Mixed", "minutes": 25 }
+      ]
     }
   ],
   "practiceTests": ["string", "string"],
   "strategies": ["string", "string"]
 }
 
+Do NOT include dailyPlan — the app expands weekly tasks into a day-by-day calendar.
+
+TASK META RULES:
+- For EVERY entry in tasks[], emit a parallel object in taskMeta[] at the SAME index.
+- "type" mirrors the task: "practice" for practice tests/timed sets, "lesson" for Micro-Lessons, "review" for progress checks/review.
+- "section" must be "math" or "reading-writing" for practice/lesson tasks; omit for "review".
+- "topic" must be one specific SAT sub-skill (e.g. "Linear Equations", "Quadratic Equations", "Ratios & Rates", "Transitions", "Words in Context", "Sentence Boundaries", "Form, Structure, and Sense"). Do NOT use broad domains like "Algebra".
+- "difficulty" is one of Easy/Medium/Hard/Mixed; default to Mixed unless the task is clearly an early-week foundation drill (Easy) or a late-stage push (Hard).
+- "minutes" is the integer midpoint of the task's duration (e.g. 25 for "20–30 min").
+
 RULES (Tutor-like, encouraging approach):
 - The plan MUST focus on in-app features only. Use these features as the core actions:
   * Practice Tests
-  * Flashcards
   * Micro-Lessons
   * Study Plans
   * Progress tracking/review
@@ -134,18 +181,17 @@ RULES (Tutor-like, encouraging approach):
 - Separate Reading & Writing and Math tasks explicitly.
 - Each task should reference a specific SAT skill category (not vague topics).
 - Keep sessions short (15–30 minutes) and realistic.
-- Only recommend actions that exist inside this app: Practice Tests, Flashcards, Micro-Lessons, Study Plans, Progress tracking.
+- Only recommend actions that exist inside this app: Practice Tests, Micro-Lessons, Study Plans, Progress tracking.
 - Do NOT include tasks like taking notes, watching videos, or using external materials.
-- Use app-specific language like "Complete a Practice Test", "Review Flashcards", "Do a Micro-Lesson", "Check Progress".
+- Use app-specific language like "Complete a Practice Test", "Do a Micro-Lesson", "Check Progress".
 - Use the user's input: test date, current score, target score, hours per day, strengths, weaknesses, preferred study style.
 - Use ALL provided answers to shape the plan; do not ignore any configuration inputs.
 - If performance data is provided, use ACTUAL performance metrics (current score, weakest section from practice) instead of user estimates.
 - Overview: Give an encouraging summary (2-3 sentences). Acknowledge their goal, mention current progress if available, and express confidence in their ability to improve. If current score is known, frame the gap positively (e.g., "You're currently at X, and with focused practice, reaching Y is absolutely achievable").
-- WeeklyPlan: 4-8 weeks depending on timeline. Each week has a main focus (1 short phrase) and 4-6 specific, actionable tasks. Make tasks feel achievable and explain their purpose briefly.
-- DailyPlan: Create realistic daily tasks based on time available. Include 7 days (Monday-Sunday) with 1-3 tasks per day. Include lighter days and occasional single longer-task days where appropriate.
+- WeeklyPlan: Match the REQUIRED week count in the user message. Each week has a main focus (1 short phrase) and 4-6 specific, actionable tasks.
+- Do NOT output dailyPlan. The app distributes weekly tasks across calendar days automatically.
 - Each task must start with "Reading & Writing:" or "Math:" so it is easy to scan.
 - Include a realistic duration for every task and vary duration by task type:
-  * Flashcards: 8-15 min
   * Micro-Lessons: 15-25 min
   * Review/Progress check: 10-20 min
   * Practice tests/checkpoints: 35-60 min
@@ -165,7 +211,14 @@ Only output the JSON object. No extra text.`,
           role: "user",
           content: `Create a personalized SAT study plan with these details:
 - Target Score: ${targetScore || "Not specified"}
-- Time until SAT: ${testDate || "Not specified"}
+- Plan starts on: ${planStartYmd} (first day on the calendar = day 1 of the plan)
+- SAT Test Date: ${testDateLabel}${
+            weeksUntilTest !== null && aiWeeks !== null
+              ? extendsBeyondAiWindow
+                ? `\n- FULL CALENDAR: ${weeksUntilTest} week${weeksUntilTest !== 1 ? "s" : ""} through test day. Later weeks will reuse your weekly rhythm — do NOT generate all ${weeksUntilTest} weeks yourself.\n- REQUIRED: weeklyPlan has exactly ${aiWeeks} week${aiWeeks !== 1 ? "s" : ""} (the first ${aiWeeks} weeks only). Make each week distinct and progressive.`
+                : `\n- REQUIRED: weeklyPlan has exactly ${aiWeeks} week${aiWeeks !== 1 ? "s" : ""}.`
+              : ""
+          }
 - Weakest Section: ${actualWeakestSection || "Not specified"}${performanceData ? ` (based on actual practice performance)` : ""}
 - Hours per day available: ${hoursPerDay || "Not specified"}
 - Study Style: ${studyStyle || "Not specified"}
@@ -175,13 +228,14 @@ ${currentScore ? `- Current Estimated Score: ${currentScore} (from ${totalSessio
 ${notes ? `- Additional Notes: ${notes}` : ""}
 ${performanceData ? `- Performance Data: Student has completed ${totalSessions} practice test${totalSessions !== 1 ? 's' : ''} with an average score of ${currentScore}. Use this actual data to create a more targeted plan.` : ""}
 
-Generate a complete study plan with weekly plan, daily plan, practice test schedule, and improvement strategies.${currentScore && targetScore ? ` Focus on closing the gap from ${currentScore} to ${targetScore}.` : ""}`,
+Generate a complete study plan with weekly plan, practice test schedule, and improvement strategies.${currentScore && targetScore ? ` Focus on closing the gap from ${currentScore} to ${targetScore}.` : ""}`,
         },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 6000,
       }),
       2,
-      60000
+      90000
     );
 
     const responseText = cachedResponse ? JSON.stringify(cachedResponse) : (completion?.choices[0].message?.content || "{}");
@@ -202,7 +256,6 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       const lower = task.toLowerCase();
       const hasFeature =
         lower.includes("practice test") ||
-        lower.includes("flashcard") ||
         lower.includes("micro-lesson") ||
         lower.includes("study plan") ||
         lower.includes("progress");
@@ -218,17 +271,14 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
 
     const taskDurationRange = (task: string) => {
       const lower = task.toLowerCase();
-      const type: "practice" | "flashcards" | "lesson" | "review" =
+      const type: "practice" | "lesson" | "review" =
         /practice test|full-length|checkpoint|timed set|timed practice/i.test(lower)
           ? "practice"
-          : /flashcard/i.test(lower)
-            ? "flashcards"
-            : /micro-lesson|lesson/i.test(lower)
-              ? "lesson"
-              : "review";
+          : /micro-lesson|lesson|flashcard/i.test(lower)
+            ? "lesson"
+            : "review";
 
       const baseRanges = {
-        flashcards: [8, 15],
         lesson: [15, 25],
         review: [10, 20],
         practice: [35, 55],
@@ -260,8 +310,8 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
     };
 
     const ensureTaskDurationByContext = (task: string): string => {
-      const cleanedTask = stripDurationText(task);
-      return `${taskDurationRange(cleanedTask)}: ${cleanedTask}`;
+      const cleanedTask = balanceStripLooseParens(stripDurationText(task));
+      return balanceStripLooseParens(`${taskDurationRange(cleanedTask)}: ${cleanedTask}`);
     };
 
     const getTaskCap = (hours?: string, planType: "daily" | "weekly" = "daily") => {
@@ -289,13 +339,47 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       return `Reading & Writing: ${task}`;
     };
 
+    const VALID_TASK_TYPES = new Set(["practice", "lesson", "review"]);
+    const VALID_PLAN_SECTIONS = new Set(["math", "reading-writing"]);
+    const VALID_DIFFICULTIES = new Set(["Easy", "Medium", "Hard", "Mixed"]);
+
+    const sanitizeTaskMeta = (meta: any) => {
+      if (!meta || typeof meta !== "object") return undefined;
+      const type = String(meta.type || "").toLowerCase();
+      if (!VALID_TASK_TYPES.has(type)) return undefined;
+      const out: Record<string, any> = { type };
+      const sectionRaw = String(meta.section || "").toLowerCase();
+      if (VALID_PLAN_SECTIONS.has(sectionRaw)) out.section = sectionRaw;
+      else if (sectionRaw === "reading" || sectionRaw === "writing") out.section = "reading-writing";
+      const topic = String(meta.topic || "").trim();
+      if (topic) out.topic = topic.slice(0, 80);
+      const difficulty = String(meta.difficulty || "").trim();
+      const titleCaseDifficulty = difficulty
+        ? difficulty.charAt(0).toUpperCase() + difficulty.slice(1).toLowerCase()
+        : "";
+      if (VALID_DIFFICULTIES.has(titleCaseDifficulty)) out.difficulty = titleCaseDifficulty;
+      const minutes = Number(meta.minutes);
+      if (Number.isFinite(minutes) && minutes > 0 && minutes < 240) {
+        out.minutes = Math.round(minutes);
+      }
+      return out;
+    };
+
+    const sanitizeTaskMetaArray = (rawMeta: any, taskCount: number) => {
+      if (!Array.isArray(rawMeta) || rawMeta.length === 0) return undefined;
+      const cleaned = rawMeta
+        .map((m) => sanitizeTaskMeta(m))
+        .filter((m): m is Record<string, any> => Boolean(m));
+      if (cleaned.length === 0) return undefined;
+      // Truncate or pad with `undefined` to align with the task array length.
+      return cleaned.slice(0, taskCount);
+    };
+
     // Clean and validate plan data
     const cleanedPlan = {
       overview: ensureBoldEmphasis(cleanText(truncateText(planJSON.overview || "", 500))),
-      weeklyPlan: (planJSON.weeklyPlan || []).map((week: any) => ({
-        week: week.week || 1,
-        focus: ensureBoldEmphasis(cleanText(truncateText(week.focus || "", 100))),
-        tasks: clampTasks(
+      weeklyPlan: (planJSON.weeklyPlan || []).map((week: any) => {
+        const weeklyTasks = clampTasks(
           (week.tasks || []).map((task: string) =>
             ensureBoldEmphasis(
               addTaskSectionPrefix(
@@ -304,21 +388,16 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
             )
           ),
           "weekly"
-        ),
-      })),
-      dailyPlan: (planJSON.dailyPlan || []).map((day: any) => ({
-        day: ensureBoldEmphasis(cleanText(truncateText(day.day || "", 50))),
-        tasks: clampTasks(
-          (day.tasks || []).map((task: string) =>
-            ensureBoldEmphasis(
-              addTaskSectionPrefix(
-                ensureTaskDurationByContext(enforceFeatureTask(cleanText(truncateText(task, 200))))
-              )
-            )
-          ),
-          "daily"
-        ),
-      })),
+        );
+        const weeklyMeta = sanitizeTaskMetaArray(week.taskMeta, weeklyTasks.length);
+        return {
+          week: week.week || 1,
+          focus: ensureBoldEmphasis(cleanText(truncateText(week.focus || "", 100))),
+          tasks: weeklyTasks,
+          ...(weeklyMeta ? { taskMeta: weeklyMeta } : {}),
+        };
+      }),
+      dailyPlan: [] as Array<{ day: string; tasks: string[]; taskMeta?: Record<string, unknown>[] }>,
       practiceTests: (planJSON.practiceTests || []).map((test: string) =>
         ensureBoldEmphasis(ensureTaskDurationByContext(enforceFeatureTask(cleanText(truncateText(test, 150)))))
       ),
@@ -327,17 +406,51 @@ Generate a complete study plan with weekly plan, daily plan, practice test sched
       ),
     };
 
+    type W = (typeof cleanedPlan.weeklyPlan)[number];
+    let finalWeekly: W[] = cleanedPlan.weeklyPlan.map((w: W) => ({ ...w, tasks: [...w.tasks] }));
+    const finalDaily: typeof cleanedPlan.dailyPlan = [];
+
+    if (weeksUntilTest !== null && aiWeeks !== null) {
+      const wk = weeksUntilTest;
+      const aiWk = aiWeeks;
+
+      if (finalWeekly.length < aiWk) {
+        while (finalWeekly.length < aiWk) {
+          const i = finalWeekly.length;
+          const prior = finalWeekly[Math.max(0, i - 1)];
+          finalWeekly.push({
+            week: i + 1,
+            focus: `Week ${i + 1} — build consistency toward your test`,
+            tasks:
+              prior && prior.tasks.length > 0
+                ? [...prior.tasks]
+                : [
+                    "Reading & Writing: 20 min Micro-Lesson on key skills; Math: 20 min Micro-Lesson on key skills",
+                  ],
+          });
+        }
+      } else if (finalWeekly.length > aiWk) {
+        finalWeekly = finalWeekly.slice(0, aiWk);
+      }
+
+      // Fill the full calendar through test day by cycling the AI weekly blocks.
+      finalWeekly = extendWeeklyPlan(finalWeekly, wk);
+    }
+
     // Transform to match frontend format while preserving new format
     const transformedPlan = {
-      // New format fields
       overview: cleanedPlan.overview,
-      weeklyPlan: cleanedPlan.weeklyPlan,
-      dailyPlan: cleanedPlan.dailyPlan,
+      weeklyPlan: finalWeekly,
+      dailyPlan: finalDaily,
+      planStartDate: planStartYmd,
+      testDate: testDate ? testDate.slice(0, 10) : undefined,
+      calendarDayCount: inclusiveDayCount ?? undefined,
+      calendarWeekCount: weeksUntilTest ?? undefined,
+      generatedDetailWeekCount: aiWeeks ?? undefined,
       practiceTests: cleanedPlan.practiceTests,
       strategies: cleanedPlan.strategies,
-      // Legacy format for frontend compatibility
       timeframe: studyStyle === "Short daily sessions" ? "daily" : "weekly",
-      days: cleanedPlan.dailyPlan,
+      days: finalDaily,
     };
 
     const { user } = accessContext;

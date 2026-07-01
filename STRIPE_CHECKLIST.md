@@ -13,7 +13,8 @@ Use this checklist to verify you have everything needed for Stripe integration.
 - [x] Updated `src/components/SettingsSidebar.tsx` - Subscription UI
 - [x] Updated `src/app/dashboard/page.tsx` - Upgrade banner
 - [x] Updated `src/app/practice/page.tsx` - Free tier limits
-- [x] Updated `src/app/flashcards/page.tsx` - Free tier limits
+- [x] Updated `src/app/lessons/page.tsx` - Free tier limits
+- [x] Updated `src/app/study-plan/page.tsx` - Free tier limits
 
 ## ✅ Dependencies (Already Installed)
 
@@ -71,7 +72,7 @@ STRIPE_PRICE_ID_MONTHLY=price_...your_price_id_here...
   1. Go to https://dashboard.stripe.com/products
   2. Click "Add product"
   3. Name: "Peak Prep Premium" (or your product name)
-  4. Description: "Unlimited SAT practice tests, flashcards, and study plans"
+  4. Description: "Unlimited SAT practice tests, study plans, and micro-lessons"
   5. Pricing model: **Recurring**
   6. Price: Set your monthly price (e.g., $9.99/month)
   7. Billing period: **Monthly**
@@ -124,8 +125,7 @@ Once everything is set up:
 
 6. [ ] **Test free tier limits:**
    - Sign out or use a different account
-   - Try creating more than 5 practice tests
-   - Try creating more than 3 flashcard sets
+   - Try creating more than the free allowance of practice tests, study plans, or lessons
    - Should see upgrade prompts
 
 ## 🚨 Common Issues

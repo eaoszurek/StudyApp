@@ -66,14 +66,14 @@ export default function AppMockup() {
         <text x="450" y="555" fill="#0EA5E9" fontSize="14" fontWeight="700">Launch Study</text>
         <text x="560" y="555" fill="#0EA5E9" fontSize="14" fontWeight="700">→</text>
         
-        {/* Tool Card 3 - Flashcards */}
+        {/* Tool Card 3 - Micro-Lessons */}
         <rect x="800" y="380" width="340" height="200" rx="20" fill="white" stroke="#E2E8F0" strokeWidth="1" />
         <rect x="820" y="400" width="48" height="48" rx="14" fill="#F0F9FF" />
-        <g transform="translate(832, 412) scale(1.2)"><rect x="2" y="2" width="12" height="10" rx="1" stroke="#0EA5E9" strokeWidth="2" fill="none" /><rect x="2" y="6" width="12" height="10" rx="1" stroke="#0EA5E9" strokeWidth="2" fill="none" /></g>
+        <g transform="translate(832, 412) scale(1.2)"><path d="M1 6v16l8-4 8 4V2L9 6 1 2z" stroke="#0EA5E9" strokeWidth="2" fill="none" /></g>
         <text x="1120" y="415" textAnchor="end" fill="#94A3B8" fontSize="9" fontWeight="700" letterSpacing="0.3em">GEAR</text>
-        <text x="820" y="480" fill="#0F172A" fontSize="22" fontWeight="800">Flashcards</text>
-        <text x="820" y="505" fill="#475569" fontSize="13" fontWeight="500">Essential knowledge packs.</text>
-        <text x="820" y="555" fill="#0EA5E9" fontSize="14" fontWeight="700">Launch Flashcards</text>
+        <text x="820" y="480" fill="#0F172A" fontSize="22" fontWeight="800">Micro-Lessons</text>
+        <text x="820" y="505" fill="#475569" fontSize="13" fontWeight="500">Quick knowledge checkpoints.</text>
+        <text x="820" y="555" fill="#0EA5E9" fontSize="14" fontWeight="700">Launch Lessons</text>
         <text x="960" y="555" fill="#0EA5E9" fontSize="14" fontWeight="700">→</text>
       </g>
 

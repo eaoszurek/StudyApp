@@ -85,7 +85,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 mb-3">AI-Generated Content</h2>
             <p className="text-slate-700 leading-relaxed">
-              Peak Prep uses artificial intelligence to generate educational content, including practice questions, flashcards, and study plans. This content is provided for educational purposes only. We do not guarantee the accuracy, completeness, or usefulness of AI-generated content. The content should be used as a study aid and is not a replacement for official SAT® preparation materials or professional educational guidance.
+              Peak Prep uses artificial intelligence to generate educational content, including practice questions and study plans. This content is provided for educational purposes only. We do not guarantee the accuracy, completeness, or usefulness of AI-generated content. The content should be used as a study aid and is not a replacement for official SAT® preparation materials or professional educational guidance.
             </p>
           </section>
 

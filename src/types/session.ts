@@ -18,19 +18,9 @@ export interface SessionData {
 export interface SessionTest {
   sessionId: string;
   testId: string;
-  section: "math" | "reading" | "writing";
+  section: "math" | "reading" | "writing" | "reading-writing";
   score: number;
   date: string; // ISO string
-}
-
-/**
- * Flashcard set with session ID
- */
-export interface SessionFlashcards {
-  sessionId: string;
-  topic: string;
-  flashcards: any[]; // FlashcardData[]
-  createdAt: string; // ISO string
 }
 
 /**

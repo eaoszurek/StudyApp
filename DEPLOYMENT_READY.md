@@ -90,7 +90,7 @@ If you encounter issues:
 Your database setup supports:
 - ✅ User authentication and sessions
 - ✅ Practice tests and scores
-- ✅ Flashcard sets
+- ✅ Practice tests, study plans, and micro-lessons
 - ✅ Study plans
 - ✅ Micro-lessons
 - ✅ Stripe subscription tracking

@@ -30,7 +30,7 @@ export default function OpenGraphImage() {
           Feels Personalized
         </div>
         <div style={{ fontSize: 30, opacity: 0.95 }}>
-          Practice tests, flashcards, and a study plan built for your goal score.
+          Practice tests, micro-lessons, and a study plan built for your goal score.
         </div>
       </div>
     ),

@@ -7,29 +7,36 @@
  */
 
 const MATH_TOPIC_PATTERNS: Record<string, RegExp> = {
-  probability: /probability|probable|odds|P\(|random(ly)?|chance|likelihood|independent|mutually exclusive|compound|sample space|outcome|event|fair (coin|die|dice)|marble|deck|spinner|percent chance/i,
-  statistics: /mean|median|mode|range|standard deviation|data set|survey|sample|distribution|quartile|outlier/i,
-  "data interpretation": /table|chart|graph|scatterplot|histogram|bar graph|line graph|data (point|set)/i,
-  scatterplots: /scatterplot|scatter plot|point on the graph|plotted|coordinates.*data/i,
-  percentages: /percent(age)?|%\b|increase.*percent|decrease.*percent|of the total/i,
-  "ratios and proportions": /ratio|proportion|scale|similar.*figure|correspond(ing)? side/i,
-  "linear equations": /linear equation|solve for|value of x|satisfies the equation|system of equation/i,
-  "systems of linear equations": /system of|two equations|simultaneous|intersection.*line/i,
-  "linear inequalities": /inequalit|solution region|number line.*inequal/i,
-  "linear functions": /linear function|f\(x\)|slope|y-intercept|rate of change.*linear/i,
-  "graphing linear equations": /graph.*line|coordinate plane.*line|slope.*intercept/i,
-  "slope and intercepts": /slope|intercept|parallel lines|perpendicular/i,
-  "quadratic equations": /quadratic|parabola|vertex|factored form|discriminant|x²|x2/i,
-  polynomials: /polynomial|degree of|coefficient|factor.*polynomial/i,
-  "exponential functions": /exponential|growth factor|decay|compound interest|initial value.*growth/i,
-  "radical expressions": /radical|square root|√|simplify.*root/i,
-  "rational expressions": /rational expression|asymptote|exclude.*value.*denominator/i,
-  "nonlinear functions": /nonlinear|piecewise|function notation.*non/i,
-  geometry: /triangle|rectangle|parallel|angle|congruent|similar|polygon|perpendicular/i,
-  circles: /circle|radius|diameter|equation of the circle|arc|sector/i,
-  trigonometry: /sin|cos|tan|sine|cosine|tangent|right triangle.*angle/i,
+  // Current Digital SAT Math sub-skills (see src/data/topics.ts)
+  "linear equations": /linear equation|solve for|value of x|satisfies the (equation|inequal)|one-? or two-? variable/i,
+  "linear functions": /linear function|f\(x\)|slope|y-?intercept|rate of change|graph(ing)?.*function|coordinate.*line/i,
+  "systems of equations": /system of|simultaneous|two (linear )?equations|substitution|elimination|intersection of.*line/i,
+  "linear inequalities": /inequalit|number line|solution (region|set)/i,
+  "quadratic equations": /quadratic|parabola|vertex|factored form|discriminant|x²|x2|completing the square|quadratic formula/i,
+  polynomials: /polynomial|degree of|add(ing|ition)?.*polynomial|subtract(ing|ion)?|multiply(ing|ication)?/i,
+  "non-linear functions": /non-?linear|exponential( growth| decay)?|radical( equation| function)?|√|not linear|growth factor|decay constant/i,
+  "rational expressions": /rational exp|asymptote|denominator|exclude.*(value|domain)|undefined (when|if)/i,
+  "ratios & rates": /ratio|proportion|unit (rate|conversion)|scale factor|miles per|per hour|per minute|dollars per/i,
+  percentages: /percent(age)?|%\b|increase|decrease|percent (change| of)/i,
+  statistics: /mean|median|mode|range|standard deviation|data set|survey|quartile|outlier|distribution of.*data/i,
+  "data interpretation": /scatterplot|scatter plot|histogram|box-?and-?whisker|read.*(chart|graph|table)|trend|plotted|data (point|display)/i,
+  "area & volume": /area of|volume of|prism|cylinder|surface area|rectangular|triangular solid|cone|sphere(?!r)/i,
+  triangles: /isosceles|equilateral|pythag|hypotenuse|legs? of( the| a) triangle|30-?60-?90|45-?45-?90|special right|congruent triangle/i,
+  trigonometry: /sin(?!k)|cos(?!t)|\btan\b|sine|cosine|tangent|SOHCAHTOA|soh cah toa|right triangle|opposite|adjacent(?!t)/i,
+  circles: /circle|radius|diameter|arc length|sector area|standard form|equation of (the|a) circle|center.*circle/i,
+  // Legacy names (older configs / localStorage)
+  "systems of linear equations": /system of|simultaneous|two (linear )?equations/i,
+  "ratios and proportions": /ratio|proportion|scale|unit rate|correspond(ing)? side/i,
+  "graphing linear equations": /graph(ing)?.*line|coordinate plane|slope.*line/i,
+  "slope and intercepts": /slope|y-?intercept|parallel lines|perpendicular lines/i,
+  scatterplots: /scatterplot|scatter plot|line of best fit|plotted|correlat/i,
+  probability: /probability|probable|odds|random(ly)?|chance|outcome|event|independent|compound/i,
+  "exponential functions": /exponential( growth| decay)?|compound interest|initial value|growth factor/i,
+  "radical expressions": /radical|square root|√|rationali[sz]e.*root/i,
+  "nonlinear functions": /non-?linear|exponential|radical(?!d)/i,
+  geometry: /angle|parallel|perpendicular|polygon|perimeter|length of.*side(?!-)/i,
   "complex numbers": /complex number|a \+ bi|i²|imaginary/i,
-  "volume and surface area": /volume|surface area|cylinder|prism|sphere|cone/i,
+  "volume and surface area": /volume|surface area|prism|cylinder|sphere|cone/i,
   "right triangle trigonometry": /SOHCAHTOA|right triangle|hypotenuse|opposite|adjacent/i,
 };
 
@@ -38,18 +45,36 @@ function normalizeTopicKey(topic: string): string {
 }
 
 /**
+ * Strict equality check between two skill labels after light normalization.
+ * Used as the first gate in topic-locked mode so the model can't drift to
+ * an adjacent skill (e.g. "Linear Functions" when "Linear Equations" is locked).
+ */
+export function skillExactlyMatchesTopic(
+  topic: string,
+  skill: string | undefined | null
+): boolean {
+  const t = normalizeTopicKey(topic);
+  const s = String(skill || "").trim().toLowerCase();
+  if (!t || !s) return false;
+  if (t === s) return true;
+  const stripped = (text: string) => text.replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  return stripped(t) === stripped(s);
+}
+
+/**
  * Returns true if the question plausibly matches the locked topic.
  *
  * Order of checks:
- * 1. skillCategory/skillFocus exact or near match — pass immediately.
- * 2. Known math pattern regex matches stem or skill — pass.
- * 3. For R&W: any keyword overlap — pass.
- * 4. If no pattern is registered for this topic AND no obvious mismatch
+ * 1. skillCategory/skillFocus exact match — pass immediately.
+ * 2. skillCategory/skillFocus substring or shared-word match — pass.
+ * 3. Known math pattern regex matches stem or skill — pass.
+ * 4. For R&W: any keyword overlap — pass.
+ * 5. If no pattern is registered for this topic AND no obvious mismatch
  *    can be detected, pass (permissive default).
  */
 export function questionAlignsWithLockedTopic(
   topic: string,
-  section: "math" | "reading" | "writing",
+  section: "math" | "reading" | "writing" | "reading-writing",
   q: { question: string; skillCategory?: string; skillFocus?: string }
 ): boolean {
   const t = normalizeTopicKey(topic);
@@ -58,12 +83,16 @@ export function questionAlignsWithLockedTopic(
   const skill = String(q.skillCategory || q.skillFocus || "").toLowerCase().trim();
   const stem = String(q.question || "").toLowerCase();
 
-  // 1. Skill label is an explicit match or substring match (either way around)
+  // 1. Strict equality (after light normalization) — fast path
+  if (skillExactlyMatchesTopic(topic, skill)) {
+    return true;
+  }
+
+  // 2. Skill label is an explicit substring match (either way around) or shares a significant word
   if (skill.length > 0) {
     if (skill.includes(t) || t.includes(skill.slice(0, Math.min(skill.length, 16)))) {
       return true;
     }
-    // Fuzzy: share at least one significant word (>3 chars)
     const topicWords = t.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
     const skillWords = skill.split(/[^a-z0-9]+/).filter((w) => w.length > 3);
     if (topicWords.length > 0 && skillWords.some((w) => topicWords.includes(w))) {
@@ -71,7 +100,7 @@ export function questionAlignsWithLockedTopic(
     }
   }
 
-  // 2. Registered regex pattern for this math topic
+  // 3. Registered regex pattern for this math topic
   if (section === "math") {
     const pattern = MATH_TOPIC_PATTERNS[t];
     if (pattern) {
@@ -89,7 +118,7 @@ export function questionAlignsWithLockedTopic(
     return false;
   }
 
-  // 3. Reading & Writing: require meaningful keyword overlap
+  // 4. Reading & Writing: require meaningful keyword overlap
   const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 2);
   if (words.length === 0) return false;
   const matches = words.filter((w) => stem.includes(w) || skill.includes(w));

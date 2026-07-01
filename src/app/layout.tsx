@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Montserrat, Oswald } from "next/font/google";
+import { Geist_Mono, Montserrat, Oswald, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/components/LayoutWrapper";
 import DarkModeInit from "@/components/DarkModeInit";
@@ -22,13 +22,19 @@ const oswald = Oswald({
   subsets: ["latin"],
 });
 
+const sourceSans = Source_Sans_3({
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-source-sans",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
     default: "PeakPrep | AI SAT Prep App",
     template: "%s | PeakPrep",
   },
-  description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
+  description: "PeakPrep personalizes your SAT study with Route Maps, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
   alternates: {
     canonical: absoluteUrl("/"),
   },
@@ -36,7 +42,6 @@ export const metadata: Metadata = {
     "SAT prep",
     "SAT practice tests",
     "SAT study plan",
-    "SAT flashcards",
     "SAT reading practice",
     "SAT writing practice",
     "SAT math practice",
@@ -47,7 +52,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "PeakPrep | AI SAT Prep App",
-    description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
+    description: "PeakPrep personalizes your SAT study with Route Maps, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
     url: absoluteUrl("/"),
     type: "website",
     siteName: "PeakPrep",
@@ -56,7 +61,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "PeakPrep | AI SAT Prep App",
-    description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, and checkpoint practice tests.",
+    description: "PeakPrep personalizes your SAT study with Route Maps and checkpoint practice tests.",
     images: [absoluteUrl("/twitter-image")],
   },
 };
@@ -73,12 +78,12 @@ export default function RootLayout({
         {/* Apply dark/light mode before first paint to prevent flash */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var saved=localStorage.getItem('darkMode');var path=location.pathname;var featurePrefixes=['/dashboard','/practice','/study-plan','/flashcards','/lessons','/progress'];var featurePage=featurePrefixes.some(function(prefix){return path===prefix||path.indexOf(prefix + '/')===0;});if(featurePage&&saved==='true'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var saved=localStorage.getItem('darkMode');var path=location.pathname;var featurePrefixes=['/dashboard','/practice','/study-plan','/lessons','/progress'];var featurePage=featurePrefixes.some(function(prefix){return path===prefix||path.indexOf(prefix + '/')===0;});if(featurePage&&saved==='true'){document.documentElement.classList.add('dark');}}catch(e){}})();`,
           }}
         />
       </head>
       <body
-        className={`${montserrat.variable} ${geistMono.variable} ${oswald.variable} antialiased`}
+        className={`${montserrat.variable} ${geistMono.variable} ${oswald.variable} ${sourceSans.variable} antialiased`}
         suppressHydrationWarning
       >
         <DarkModeInit />

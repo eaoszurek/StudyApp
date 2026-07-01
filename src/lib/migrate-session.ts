@@ -10,18 +10,6 @@ import { prisma } from "./prisma";
  */
 export async function migrateSessionToUser(sessionId: string, userId: string): Promise<void> {
   try {
-    // Migrate FlashcardSets
-    await prisma.flashcardSet.updateMany({
-      where: {
-        sessionId,
-        userId: null, // Only migrate if not already associated with a user
-      },
-      data: {
-        userId,
-        sessionId: null, // Clear sessionId after migration
-      },
-    });
-
     // Migrate PracticeTests
     await prisma.practiceTest.updateMany({
       where: {

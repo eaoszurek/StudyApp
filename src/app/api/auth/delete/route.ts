@@ -21,7 +21,7 @@ export async function DELETE() {
     // This will automatically delete:
     // - Sessions
     // - Accounts
-    // - FlashcardSets
+    // - FlashcardSets (removed)
     // - PracticeTests
     // - StudyPlans
     // - MicroLessons

@@ -43,7 +43,7 @@ export default function Footer() {
                   href="/signup"
                   className="hover:text-sky-600 transition-colors inline-block font-medium"
                 >
-                  Flashcards
+                  Micro-Lessons
                 </Link>
               </li>
               <li>

@@ -36,7 +36,7 @@ export async function GET() {
       .map(test => ({
         id: test.id,
         date: test.completedAt?.toISOString() || test.createdAt.toISOString(),
-        section: test.section as "math" | "reading" | "writing",
+        section: test.section as "math" | "reading" | "writing" | "reading-writing",
         score: {
           scaled: test.scaledScore!,
           raw: test.rawScore!,

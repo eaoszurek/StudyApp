@@ -13,7 +13,6 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" as const },
   { href: "/practice", label: "Practice Tests", icon: "practice" as const },
   { href: "/study-plan", label: "Study Plans", icon: "study-plan" as const },
-  { href: "/flashcards", label: "Flashcards", icon: "flashcards" as const },
   { href: "/lessons", label: "Micro-Lessons", icon: "lessons" as const },
   { href: "/progress", label: "Progress", icon: "progress" as const },
 ];

@@ -10,22 +10,24 @@ import SubtleProgressCircle from "@/components/ui/SubtleProgressCircle";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { getScoreHistory, getSectionPerformance } from "@/utils/scoreTracking";
+import PremiumGateModal, { isPremiumGateError } from "@/components/PremiumGateModal";
 import type {
   PersonalizedPlan,
   QuestionnaireAnswer,
   StudyCalendarDay,
   StudyCalendarTask,
   StudyCalendarWeek,
+  StudyPlanTaskMeta,
   StudyTaskLaunchTarget,
   StudyTaskType,
 } from "@/types";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { balanceStripLooseParens, getLocalYmd, inclusiveDayCount, parseYmdLocalNoon, weeksToFitInclusiveDays, MAX_AI_GENERATED_WEEKS } from "@/lib/studyPlanDates";
 const STORAGE_KEY = "sat_study_plan";
 const TASKS_STORAGE_KEY = `${STORAGE_KEY}_tasks`;
 const UNLOCKED_WEEK_KEY = `${STORAGE_KEY}_unlocked_week`;
 const ACTIVE_WEEK_KEY = `${STORAGE_KEY}_active_week`;
 
-const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DAY_ACCENTS = [
   "border-t-sky-300 dark:border-t-sky-500",
   "border-t-blue-300 dark:border-t-blue-500",
@@ -38,16 +40,14 @@ const DAY_ACCENTS = [
 
 const questionnaire = [
   {
-    type: "button",
+    type: "slider",
     id: "targetScore",
     question: "What's your target peak elevation (SAT score)?",
-    options: ["1200", "1300", "1400", "1500+"],
   },
   {
-    type: "button",
+    type: "date",
     id: "testDate",
-    question: "How long until your peak attempt?",
-    options: ["1 month", "2 months", "3+ months"],
+    question: "When is your SAT test date?",
   },
   {
     type: "button",
@@ -120,7 +120,6 @@ const inferEstimatedMinutes = (taskText: string, type: StudyTaskType) => {
     return parsed;
   }
   if (type === "practice") return 45;
-  if (type === "flashcards") return 15;
   if (type === "lesson") return 20;
   return 12;
 };
@@ -128,69 +127,86 @@ const inferEstimatedMinutes = (taskText: string, type: StudyTaskType) => {
 const inferTaskType = (taskText: string): StudyTaskType => {
   const lower = taskText.toLowerCase();
   if (lower.includes("practice test") || lower.includes("full-length")) return "practice";
-  if (lower.includes("micro-lesson") || lower.includes("lesson")) return "lesson";
-  if (lower.includes("flashcard")) return "flashcards";
+  if (lower.includes("micro-lesson") || lower.includes("lesson") || lower.includes("flashcard")) return "lesson";
   return "review";
 };
 
-const inferLaunchTarget = (type: StudyTaskType, skillFocus: string): StudyTaskLaunchTarget => {
-  const normalizedTopic = skillFocus;
-  const lower = skillFocus.toLowerCase();
-  const section =
+const inferLaunchTarget = (
+  type: StudyTaskType,
+  skillFocus: string,
+  meta?: StudyPlanTaskMeta
+): StudyTaskLaunchTarget => {
+  const normalizedTopic = (meta?.topic && meta.topic.trim()) || skillFocus;
+  const lower = normalizedTopic.toLowerCase();
+  const inferredSection =
     /algebra|equation|linear|quadratic|function|geometry|ratio|slope|statistics|probability|graph/i.test(lower)
       ? "math"
-      : /grammar|punctuation|vocabulary|syntax|evidence|transition|rhetorical/i.test(lower)
-        ? "writing"
-        : "reading";
+      : "reading-writing";
+  const practiceSection = meta?.section || inferredSection;
+  const difficulty = meta?.difficulty || "Mixed";
 
-  if (type === "flashcards") {
-    return { path: "/flashcards", params: { topic: normalizedTopic } };
-  }
   if (type === "lesson") {
     return { path: "/lessons", params: { topic: normalizedTopic, autostart: "1" } };
   }
   if (type === "practice") {
     return {
       path: "/practice",
-      params: { autostart: "1", section, topic: normalizedTopic, difficulty: "Mixed", questions: "12" },
+      params: {
+        autostart: "1",
+        section: practiceSection,
+        topic: normalizedTopic,
+        difficulty,
+        questions: "12",
+      },
     };
   }
   return { path: "/progress" };
 };
 
 const formatTaskType = (type: StudyTaskType) => {
-  if (type === "flashcards") return "Flashcards";
   if (type === "practice") return "Practice Test";
   if (type === "lesson") return "Lesson";
   return "Review";
 };
 
-const mondayForCurrentWeek = () => {
-  const now = new Date();
-  const day = now.getDay(); // 0 Sunday
-  const distanceToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + distanceToMonday);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-};
-
 const buildCalendarWeeks = (plan: PersonalizedPlan): StudyCalendarWeek[] => {
   const daily = plan.dailyPlan || plan.days || [];
   const weekly = plan.weeklyPlan || [];
-  const totalWeeks = Math.max(1, weekly.length, Math.ceil(daily.length / 7));
-  const startMonday = mondayForCurrentWeek();
+  const totalWeeks = Math.max(
+    1,
+    plan.calendarWeekCount ?? 0,
+    weekly.length,
+    Math.ceil(daily.length / 7)
+  );
+  const startAnchor = plan.planStartDate
+    ? parseYmdLocalNoon(plan.planStartDate)
+    : parseYmdLocalNoon(getLocalYmd(new Date()));
+  const testYmd = plan.testDate ? plan.testDate.slice(0, 10) : null;
 
-  const buildTask = (rawTask: string, weekIndex: number, dayIndex: number, taskIndex: number, fallback: string) => {
-    const type = inferTaskType(rawTask);
-    const skillFocus = inferSkillFocus(rawTask, fallback);
+  const buildTask = (
+    rawTask: string,
+    weekIndex: number,
+    dayIndex: number,
+    taskIndex: number,
+    fallback: string,
+    meta?: StudyPlanTaskMeta
+  ) => {
+    // Prefer structured AI metadata over text-based heuristics. We still derive
+    // sensible fallbacks so older plans (no taskMeta) keep working.
+    const type = meta?.type || inferTaskType(rawTask);
+    const skillFocus = (meta?.topic && meta.topic.trim()) || inferSkillFocus(rawTask, fallback);
+    const estimatedMinutes =
+      meta?.minutes && Number.isFinite(meta.minutes) && meta.minutes > 0
+        ? meta.minutes
+        : inferEstimatedMinutes(rawTask, type);
     return {
       id: `w${weekIndex}-d${dayIndex}-t${taskIndex}`,
       type,
       skillFocus,
-      estimatedMinutes: inferEstimatedMinutes(rawTask, type),
-      rawText: sanitizeText(rawTask),
-      launchTarget: inferLaunchTarget(type, skillFocus),
+      estimatedMinutes,
+      rawText: balanceStripLooseParens(sanitizeText(rawTask)),
+      launchTarget: inferLaunchTarget(type, skillFocus, meta),
+      ...(meta ? { meta } : {}),
     } satisfies StudyCalendarTask;
   };
 
@@ -198,29 +214,50 @@ const buildCalendarWeeks = (plan: PersonalizedPlan): StudyCalendarWeek[] => {
   for (let weekIndex = 0; weekIndex < totalWeeks; weekIndex += 1) {
     const weekFocus = sanitizeText(weekly[weekIndex]?.focus || `Week ${weekIndex + 1} Focus`);
     const weekTasks = weekly[weekIndex]?.tasks || [];
-    const days: StudyCalendarDay[] = DAY_NAMES.map((dayName, dayIdx) => {
+    const weeklyTaskMeta = weekly[weekIndex]?.taskMeta || [];
+    const days: StudyCalendarDay[] = [0, 1, 2, 3, 4, 5, 6].map((dayIdx) => {
       const absoluteDay = weekIndex * 7 + dayIdx;
       const fromDaily = daily[absoluteDay]?.tasks || [];
+      const fromDailyMeta = daily[absoluteDay]?.taskMeta || [];
       const synthesized =
         fromDaily.length > 0
           ? fromDaily
           : weekTasks.length > 0
             ? [weekTasks[dayIdx % weekTasks.length], weekTasks[(dayIdx + 2) % weekTasks.length]]
             : [`Review progress on ${weekFocus}`];
+      const synthesizedMeta =
+        fromDaily.length > 0
+          ? fromDailyMeta
+          : weekTasks.length > 0
+            ? [
+                weeklyTaskMeta[dayIdx % weekTasks.length],
+                weeklyTaskMeta[(dayIdx + 2) % weekTasks.length],
+              ]
+            : [];
       const trimmed = synthesized.filter(Boolean).slice(0, 3);
-      const finalTasks = (trimmed.length > 0 ? trimmed : [`Review progress on ${weekFocus}`]).slice(0, 3);
+      const trimmedMeta = synthesizedMeta.slice(0, trimmed.length);
+      let finalTasks = (trimmed.length > 0 ? trimmed : [`Review progress on ${weekFocus}`]).slice(0, 3);
+      let finalMeta = trimmedMeta.slice(0, finalTasks.length);
 
-      const date = new Date(startMonday);
-      date.setDate(startMonday.getDate() + weekIndex * 7 + dayIdx);
+      const date = new Date(startAnchor);
+      date.setDate(startAnchor.getDate() + weekIndex * 7 + dayIdx);
+      const cellYmd = getLocalYmd(date);
+      if (testYmd && cellYmd > testYmd) {
+        finalTasks = [];
+        finalMeta = [];
+      }
       const fallbackFocus = weekFocus.replace(/^Week\s*\d+\s*/i, "").trim() || "SAT skill focus";
+      const longDay = date.toLocaleDateString("en-US", { weekday: "long" });
 
       return {
         id: `week-${weekIndex}-day-${dayIdx}`,
-        dayName,
+        dayName: longDay,
         dayNumber: date.getDate(),
-        dateISO: date.toISOString(),
-        accentClass: DAY_ACCENTS[dayIdx],
-        tasks: finalTasks.map((task, taskIdx) => buildTask(task, weekIndex, dayIdx, taskIdx, fallbackFocus)),
+        dateISO: `${cellYmd}T12:00:00`,
+        accentClass: DAY_ACCENTS[dayIdx % DAY_ACCENTS.length],
+        tasks: finalTasks.map((task, taskIdx) =>
+          buildTask(task, weekIndex, dayIdx, taskIdx, fallbackFocus, finalMeta[taskIdx])
+        ),
       };
     });
 
@@ -242,11 +279,11 @@ export default function StudyPlanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set<string>());
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    subscriptionStatus: string | null;
-    hasSubscription: boolean;
+  const [accessStatus, setAccessStatus] = useState<{
+    allowed: boolean;
+    isPremium: boolean;
   } | null>(null);
-  const [freeUsageCount, setFreeUsageCount] = useState(0);
+  const [showPremiumGateModal, setShowPremiumGateModal] = useState(false);
   const [activeWeekIndex, setActiveWeekIndex] = useState(0);
   const [unlockedWeekIndex, setUnlockedWeekIndex] = useState(0);
   const [calendarWeeks, setCalendarWeeks] = useState<StudyCalendarWeek[]>([]);
@@ -262,28 +299,22 @@ export default function StudyPlanPage() {
     hasData: boolean;
   }>({ weakestSection: null, averageScore: 0, hasData: false });
 
-  // Check subscription status
   useEffect(() => {
-    const fetchSubscription = async () => {
+    const fetchAccessStatus = async () => {
       try {
-        const response = await fetch("/api/stripe/subscription-status");
+        const response = await fetch("/api/user/access-status");
         if (response.ok) {
           const data = await response.json();
-          setSubscriptionStatus({
-            subscriptionStatus: data.subscriptionStatus,
-            hasSubscription: data.hasSubscription,
+          setAccessStatus({
+            allowed: Boolean(data.allowed),
+            isPremium: Boolean(data.isPremium),
           });
         }
       } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
+        console.error("Failed to fetch access status:", error);
       }
     };
-    fetchSubscription();
-
-    // Get free tier usage count
-    const stored = localStorage.getItem("free_tier_usage");
-    const count = stored ? parseInt(stored, 10) : 0;
-    setFreeUsageCount(count);
+    fetchAccessStatus();
   }, []);
 
   // Load saved plan and completed tasks from localStorage
@@ -422,17 +453,13 @@ export default function StudyPlanPage() {
 
   const canProceed = () => {
     const currentQ = questionnaire[currentQuestion];
-    if (currentQ.type === "text") return true; // Text is optional
-    return answers[currentQ.id as keyof QuestionnaireAnswer] !== undefined;
+    if (currentQ.type === "text" || currentQ.type === "slider") return true;
+    return !!answers[currentQ.id as keyof QuestionnaireAnswer];
   };
 
   const generatePlan = async () => {
-    // Check free tier limit (1 use total across all features)
-    const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
-      setError(
-        `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
-      );
+    if (accessStatus && !accessStatus.isPremium && !accessStatus.allowed) {
+      setShowPremiumGateModal(true);
       return;
     }
 
@@ -443,6 +470,7 @@ export default function StudyPlanPage() {
     try {
       const history = await getScoreHistory();
       const requestBody: {
+        planStartDate: string;
         answers: QuestionnaireAnswer;
         performanceData?: {
           weakestSection: string | null;
@@ -450,7 +478,8 @@ export default function StudyPlanPage() {
           totalSessions: number;
         };
       } = {
-        answers,
+        planStartDate: getLocalYmd(new Date()),
+        answers: { targetScore: "1200", ...answers },
       };
 
       // Only include performanceData if we have actual data
@@ -466,11 +495,20 @@ export default function StudyPlanPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(150_000),
       });
 
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to generate study plan.");
+        const message = errorData.error || "Failed to generate study plan.";
+        if (isPremiumGateError(res.status, message)) {
+          setShowPremiumGateModal(true);
+          setAccessStatus((prev) =>
+            prev ? { ...prev, allowed: false } : { allowed: false, isPremium: false }
+          );
+          return;
+        }
+        throw new Error(message);
       }
 
       const data = await res.json();
@@ -481,20 +519,26 @@ export default function StudyPlanPage() {
       setActiveWeekIndex(0);
       setUnlockedWeekIndex(0);
 
-      // Increment free tier usage for free users
-      if (!subscriptionStatus?.hasSubscription) {
-        const newCount = freeUsageCount + 1;
-        setFreeUsageCount(newCount);
-        localStorage.setItem("free_tier_usage", newCount.toString());
-        // Set reset date if not set
-        const now = new Date();
-        const lastReset = localStorage.getItem("free_tier_usage_reset");
-        if (!lastReset) {
-          localStorage.setItem("free_tier_usage_reset", now.toISOString());
+      if (!accessStatus?.isPremium) {
+        try {
+          const statusRes = await fetch("/api/user/access-status");
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            setAccessStatus({
+              allowed: Boolean(statusData.allowed),
+              isPremium: Boolean(statusData.isPremium),
+            });
+          }
+        } catch {
+          // ignore refresh errors
         }
       }
     } catch (err: any) {
-      setError(err.message || "Error generating plan.");
+      if (err?.name === "TimeoutError" || err?.name === "AbortError") {
+        setError("Plan generation is taking longer than expected. Please try again — if your test date is far away, we'll build your first 10 weeks first.");
+      } else {
+        setError(err.message || "Error generating plan.");
+      }
     } finally {
       setLoading(false);
     }
@@ -622,6 +666,32 @@ export default function StudyPlanPage() {
 
   const currentQ = questionnaire[currentQuestion];
   const progress = ((currentQuestion + 1) / questionnaire.length) * 100;
+  const planHorizonWeeks =
+    answers.testDate && /^\d{4}-\d{2}-\d{2}/.test(String(answers.testDate))
+      ? weeksToFitInclusiveDays(
+          inclusiveDayCount(getLocalYmd(new Date()), String(answers.testDate).slice(0, 10))
+        )
+      : null;
+  const loadingMessage =
+    planHorizonWeeks && planHorizonWeeks > MAX_AI_GENERATED_WEEKS
+      ? `Charting your ${planHorizonWeeks}-week route (detailing the first ${MAX_AI_GENERATED_WEEKS} weeks)…`
+      : "Charting your route map…";
+
+  const sliderScore = (() => {
+    const raw = parseInt(String(answers.targetScore || "1200"), 10);
+    return isNaN(raw) ? 1200 : raw;
+  })();
+  const sliderPct = ((sliderScore - 400) / 1200) * 100;
+  const sliderTier =
+    sliderScore >= 1500 ? { label: "Elite",    color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-900/40 border-violet-200 dark:border-violet-700" } :
+    sliderScore >= 1350 ? { label: "Great",    color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700" } :
+    sliderScore >= 1200 ? { label: "Good",     color: "text-sky-600 dark:text-sky-400",     bg: "bg-sky-100 dark:bg-sky-900/40 border-sky-200 dark:border-sky-700" } :
+                          { label: "Building", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-900/40 border-amber-200 dark:border-amber-700" };
+  const sliderTrackColor =
+    sliderScore >= 1500 ? "#7c3aed" :
+    sliderScore >= 1350 ? "#10b981" :
+    sliderScore >= 1200 ? "#0ea5e9" :
+    "#f59e0b";
   const safeWeekIndex = Math.min(Math.max(activeWeekIndex, 0), Math.max(calendarWeeks.length - 1, 0));
   const activeWeek = calendarWeeks[safeWeekIndex];
   const activeWeekStats = activeWeek ? getWeekStats(activeWeek) : { total: 0, completed: 0, percentage: 0 };
@@ -647,12 +717,12 @@ export default function StudyPlanPage() {
         />
       )}
 
-      {subscriptionStatus && !subscriptionStatus.hasSubscription && (
+      {accessStatus && !accessStatus.isPremium && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                {freeUsageCount >= 1 ? "Free Starter Used" : "Free Starter: 1 checkpoint remaining"}
+                {accessStatus.allowed ? "Free Starter: 1 checkpoint remaining" : "Free Starter Used"}
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 font-medium">
                 Unlock unlimited practice tests, adaptive plans, and Trail Buddy for $5/month
@@ -684,6 +754,11 @@ export default function StudyPlanPage() {
           </div>
         </div>
       )}
+
+      <PremiumGateModal
+        open={showPremiumGateModal}
+        onClose={() => setShowPremiumGateModal(false)}
+      />
 
       {!plan ? (
         <>
@@ -733,6 +808,80 @@ export default function StudyPlanPage() {
                     );
                   })}
                 </div>
+              ) : currentQ.type === "slider" ? (
+                <div className="flex flex-col gap-6 pt-2">
+                  <div className="flex flex-col items-center gap-2">
+                    <motion.span
+                      key={sliderScore}
+                      initial={{ scale: 0.85, opacity: 0.6 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="text-6xl font-extrabold tabular-nums tracking-tight text-slate-900 dark:text-white"
+                    >
+                      {sliderScore}
+                    </motion.span>
+                    <motion.span
+                      key={sliderTier.label}
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className={`text-xs font-bold uppercase tracking-[0.2em] px-3 py-1 rounded-full border ${sliderTier.bg} ${sliderTier.color}`}
+                    >
+                      {sliderTier.label}
+                    </motion.span>
+                  </div>
+                  <div className="relative px-1" style={{ color: sliderTrackColor }}>
+                    <div className="relative h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full transition-all duration-100 ease-out"
+                        style={{ width: `${sliderPct}%`, background: sliderTrackColor }}
+                      />
+                    </div>
+                    <input
+                      type="range"
+                      min={400}
+                      max={1600}
+                      step={10}
+                      value={sliderScore}
+                      onChange={(e) => handleAnswer(currentQ.id, e.target.value)}
+                      className="sat-score-slider absolute inset-x-0 w-full cursor-pointer"
+                      style={{ top: "50%", transform: "translateY(-50%)", margin: 0, height: "24px" }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400 dark:text-slate-500 font-semibold uppercase tracking-[0.15em] select-none px-1">
+                    <span>400</span>
+                    <span>800</span>
+                    <span>1200</span>
+                    <span>1600</span>
+                  </div>
+                </div>
+              ) : currentQ.type === "date" ? (
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="date"
+                    value={answers[currentQ.id as keyof QuestionnaireAnswer] || ""}
+                    onChange={(e) => handleAnswer(currentQ.id, e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                    className="w-full sm:w-64 px-4 py-3 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/90 text-slate-900 dark:text-slate-100 font-medium focus:border-sky-400 dark:focus:border-sky-500 focus:outline-none transition-colors"
+                  />
+                  {answers[currentQ.id as keyof QuestionnaireAnswer] && (
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+                      {(() => {
+                        const testYmd = String(answers[currentQ.id as keyof QuestionnaireAnswer]).slice(0, 10);
+                        const diffDays = inclusiveDayCount(getLocalYmd(new Date()), testYmd);
+                        const weeks = weeksToFitInclusiveDays(diffDays);
+                        if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} away`;
+                        if (weeks < 5) return `${weeks} week${weeks !== 1 ? "s" : ""} away`;
+                        const months = Math.round(diffDays / 30);
+                        const horizon =
+                          weeks > MAX_AI_GENERATED_WEEKS
+                            ? ` • full ${weeks}-week calendar, first ${MAX_AI_GENERATED_WEEKS} weeks day-by-day`
+                            : "";
+                        return `~${months} month${months !== 1 ? "s" : ""} away${horizon}`;
+                      })()}
+                    </p>
+                  )}
+                </div>
               ) : (
                 <InputField
                   value={answers.notes || ""}
@@ -773,7 +922,7 @@ export default function StudyPlanPage() {
           {loading && (
             <GlassPanel className="mt-6 text-center py-12">
               <div className="flex flex-col items-center justify-center min-h-[300px]">
-                <LoadingSpinner size="lg" message="Charting your route map…" />
+                <LoadingSpinner size="lg" message={loadingMessage} />
               </div>
             </GlassPanel>
           )}
@@ -785,13 +934,27 @@ export default function StudyPlanPage() {
               <div>
                 <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Your SAT Weekly Calendar</h2>
                 <p className="text-slate-600 dark:text-slate-300 mt-2">{renderBoldText(plan.overview)}</p>
+                {plan.calendarWeekCount &&
+                  plan.generatedDetailWeekCount &&
+                  plan.calendarWeekCount > plan.generatedDetailWeekCount && (
+                    <p className="text-sm text-sky-700 dark:text-sky-300 mt-2 font-medium">
+                      Your full {plan.calendarWeekCount}-week calendar runs through your test date. Weeks{" "}
+                      {plan.generatedDetailWeekCount + 1}–{plan.calendarWeekCount} follow the same weekly rhythm as
+                      your first {plan.generatedDetailWeekCount} weeks.
+                    </p>
+                  )}
                 <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 font-medium">
                   {activeWeekStats.completed} of {activeWeekStats.total} tasks completed this week ({activeWeekStats.percentage}%)
                 </p>
               </div>
-              <PrimaryButton variant="secondary" onClick={reset}>
-                Plan New Route
-              </PrimaryButton>
+              <button
+                type="button"
+                onClick={reset}
+                className="text-sm text-sky-500 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 font-medium transition-colors flex items-center gap-1.5 shrink-0"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                New route
+              </button>
             </div>
 
             {activeWeek && (
@@ -933,8 +1096,27 @@ export default function StudyPlanPage() {
                                     </span>
                                   </div>
                                   <p className="text-xs font-medium text-slate-800 dark:text-slate-100 leading-snug">
-                                    {task.skillFocus}
+                                    {balanceStripLooseParens(task.rawText)}
                                   </p>
+                                  {task.meta && (
+                                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                      {task.meta.section && (
+                                        <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-700/70 text-slate-700 dark:text-slate-200">
+                                          {task.meta.section === "math" ? "Math" : "R&W"}
+                                        </span>
+                                      )}
+                                      {task.meta.topic && (
+                                        <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 truncate max-w-[110px]">
+                                          {task.meta.topic}
+                                        </span>
+                                      )}
+                                      {task.meta.difficulty && task.meta.difficulty !== "Mixed" && (
+                                        <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
+                                          {task.meta.difficulty}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                   <div className="mt-2">
                                     {isCompleted ? (
                                       <div className="h-7 w-7 rounded-full bg-emerald-500 text-white inline-flex items-center justify-center">

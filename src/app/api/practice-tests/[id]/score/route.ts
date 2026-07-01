@@ -9,7 +9,11 @@ const ScoreUpdateSchema = z.object({
   rawScore: z.number().int().min(0),
   maxRawScore: z.number().int().min(1),
   timeSpent: z.number().int().min(0).optional(),
+  answers: z.array(z.enum(["A", "B", "C", "D"]).nullable()),
 });
+
+type SkillWeaknessEntry = { attempts: number; misses: number };
+type SkillWeaknessesMap = Record<string, SkillWeaknessEntry>;
 
 /**
  * PATCH - Update practice test score (requires sign-in)
@@ -35,7 +39,7 @@ export async function PATCH(
       );
     }
 
-    const { scaledScore, rawScore, maxRawScore, timeSpent } = validationResult.data;
+    const { scaledScore, rawScore, maxRawScore, timeSpent, answers } = validationResult.data;
 
     if (rawScore > maxRawScore) {
       return NextResponse.json(
@@ -67,6 +71,47 @@ export async function PATCH(
         score: scaledScore, // Keep legacy field for backwards compatibility
       },
     });
+
+    // Aggregate per-skill attempt/miss counts across sessions
+    try {
+      const parsedQuestions: Array<{ skillCategory?: string; skillFocus?: string; correctAnswer?: string }> =
+        JSON.parse(test.questions || "[]");
+      if (Array.isArray(parsedQuestions) && answers.length > 0) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { skillWeaknesses: true },
+        });
+        const existing =
+          currentUser?.skillWeaknesses &&
+          typeof currentUser.skillWeaknesses === "object" &&
+          !Array.isArray(currentUser.skillWeaknesses)
+            ? (currentUser.skillWeaknesses as SkillWeaknessesMap)
+            : {};
+
+        const updated: SkillWeaknessesMap = { ...existing };
+
+        parsedQuestions.forEach((q, idx) => {
+          const skill = String(q.skillCategory || q.skillFocus || "").trim();
+          if (!skill) return;
+          const userAnswer = answers[idx] ?? null;
+          if (userAnswer === null) return;
+
+          const entry = updated[skill] ?? { attempts: 0, misses: 0 };
+          entry.attempts += 1;
+          if (userAnswer !== q.correctAnswer) {
+            entry.misses += 1;
+          }
+          updated[skill] = entry;
+        });
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { skillWeaknesses: updated },
+        });
+      }
+    } catch (weaknessError) {
+      console.warn("Failed to update skillWeaknesses:", weaknessError);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

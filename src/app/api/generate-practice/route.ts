@@ -8,9 +8,7 @@ import {
   cleanText,
   removeDuplicates,
   truncateText,
-  applyBoldToMarkedTarget,
   ensureSingleSkill,
-  ensureBoldEmphasis,
   formatEquationLineBreaks,
   isPlaceholderOptionText,
   normalizeForSimilarity,
@@ -18,11 +16,25 @@ import {
   likelySatStyleQuestion,
   hasGenericSatStem,
 } from "@/utils/aiValidation";
-import { questionAlignsWithLockedTopic } from "@/utils/practiceTopicAlignment";
+import { getMathTopicDomain } from "@/data/topics";
+import {
+  questionAlignsWithLockedTopic,
+  skillExactlyMatchesTopic,
+} from "@/utils/practiceTopicAlignment";
 import {
   questionAlignsWithLockedDifficulty,
   type LockedDifficulty,
 } from "@/utils/practiceDifficultyAlignment";
+import {
+  computeFingerprint,
+  computeFingerprints,
+  parseFingerprintList,
+  mergeFingerprints,
+  takeRecentFingerprints,
+  makeStemPreview,
+  PROMPT_FINGERPRINT_LIMIT,
+  PROMPT_RECENT_STEMS_LIMIT,
+} from "@/utils/questionFingerprint";
 
 const GraphDataSchema = z.object({
   type: z.enum(["bar", "line", "scatter"]),
@@ -38,26 +50,20 @@ const GraphDataSchema = z.object({
   yLabel: z.string(),
 });
 
-const QuestionExplanationIncorrectSchema = z.object({
-  A: z.string().nullable(),
-  B: z.string().nullable(),
-  C: z.string().nullable(),
-  D: z.string().nullable(),
-});
-
 const GeneratedQuestionSchema = z.object({
+  // Internal-only working memory used by the model for self-verification.
+  // Stripped from the response server-side; never sent to the client.
+  _scratchpad: z.string().nullable(),
   passage: z.string().nullable(),
   question: z.string(),
   options: z.array(z.string()),
   section: z.enum(["Reading & Writing", "Math"]),
   skillCategory: z.string(),
   correctAnswer: z.enum(["A", "B", "C", "D"]),
-  explanation_correct: z.string(),
-  explanation_incorrect: QuestionExplanationIncorrectSchema,
-  strategy_tip: z.string(),
   difficulty: z.enum(["Easy", "Medium", "Hard"]),
   graphData: GraphDataSchema.nullable(),
   desmosExpression: z.string().nullable(),
+  passageDomain: z.string().nullable(),
 });
 
 const PracticeResponseSchema = z.object({
@@ -77,10 +83,24 @@ if (!process.env.OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
 }
 
+function isRwSection(section: string): boolean {
+  return section === "reading" || section === "writing" || section === "reading-writing";
+}
+
+function isConventionSkill(skill: string): boolean {
+  const s = skill.toLowerCase();
+  return (
+    s.includes("sentence boundaries") ||
+    s.includes("form, structure") ||
+    s.includes("transitions") ||
+    s.includes("rhetorical synthesis")
+  );
+}
+
 // Zod schema for input validation
 const PracticeRequestSchema = z.object({
-  section: z.enum(["math", "reading", "writing"], {
-    message: "Section must be math, reading, or writing",
+  section: z.enum(["math", "reading", "writing", "reading-writing"], {
+    message: "Section must be math, reading, writing, or reading-writing",
   }),
   questionCount: z.number().int().min(1).max(50).default(5),
   topic: z.string().max(200).optional(),
@@ -150,36 +170,82 @@ export async function POST(req: Request) {
       }
     }
 
+    // Load this user's recent question fingerprints so we can avoid regenerating
+    // questions they've already seen across past sessions.
+    let seenFingerprintList: string[] = [];
+    try {
+      const userFingerprintRecord = await prisma.user.findUnique({
+        where: { id: accessContext.user.id },
+        select: { seenQuestionFingerprints: true },
+      });
+      seenFingerprintList = parseFingerprintList(
+        userFingerprintRecord?.seenQuestionFingerprints
+      );
+    } catch (fpReadError) {
+      console.warn("Failed to load seen fingerprints:", fpReadError);
+    }
+    const seenFingerprintSet = new Set(seenFingerprintList);
+    const fingerprintsForPrompt = takeRecentFingerprints(seenFingerprintList, PROMPT_FINGERPRINT_LIMIT);
+
+    // Pull a small sample of recent stems from prior practice tests for the
+    // model to use as semantic context (not just opaque hashes). Lightweight:
+    // we read the most recent test's questions JSON, no aggregation across tests.
+    let recentStemPreviews: string[] = [];
+    try {
+      const recentTests = await prisma.practiceTest.findMany({
+        where: { userId: accessContext.user.id },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        select: { questions: true },
+      });
+      const stems: string[] = [];
+      for (const t of recentTests) {
+        if (!t.questions) continue;
+        try {
+          const arr = JSON.parse(t.questions);
+          if (!Array.isArray(arr)) continue;
+          for (const q of arr) {
+            const stem = String(q?.question || "").trim();
+            if (stem) stems.push(stem);
+            if (stems.length >= PROMPT_RECENT_STEMS_LIMIT) break;
+          }
+        } catch {
+          // skip malformed rows
+        }
+        if (stems.length >= PROMPT_RECENT_STEMS_LIMIT) break;
+      }
+      recentStemPreviews = stems.slice(0, PROMPT_RECENT_STEMS_LIMIT).map((s) => makeStemPreview(s));
+    } catch (fpReadError) {
+      console.warn("Failed to load recent stems for fingerprint prompt:", fpReadError);
+    }
+
     const sectionGuidelines = {
-      math: `[MATH SECTION - Official SAT Skill Domains]
-Generate questions aligned with these SAT Math skill domains:
+      math: `[MATH SECTION - Official SAT Skill Domains (Digital SAT)]
+Generate questions aligned with these four content domains. Approximate test share is shown; pick sub-skills from the list using their EXACT names for skillCategory.
 
-**Heart of Algebra (35% of section):**
-- Linear equations, systems of equations, linear inequalities, linear functions, graphing, slope/intercepts
-- Word problems involving linear relationships
-- Real-world scenarios (cost, distance, time, etc.)
+**Algebra (about 35% of the section, roughly 13–15 questions) — linear relationships**
+- Linear Equations — solving in one or two variables
+- Linear Functions — interpret and graph (e.g. f(x) = mx + b)
+- Systems of Equations — two linear equations simultaneously
+- Linear Inequalities — solve and graph in one or two variables
 
-**Problem Solving & Data Analysis (15% of section):**
-- Ratios, proportions, percentages, unit conversions
-- Statistics: mean, median, mode, range, standard deviation
-- Data interpretation: tables, charts, scatterplots, line graphs
-- Probability: simple and compound events
-- Percent increase/decrease, percent error
+**Advanced Math (about 35%, roughly 13–15 questions) — non-linear and higher-degree**
+- Quadratic Equations — factoring, quadratic formula, parabolas
+- Polynomials — add, subtract, multiply
+- Non-linear Functions — exponential growth and decay, radical equations, other non-linearity
+- Rational Expressions — simplify and solve; variables in denominators; excluded values
 
-**Passport to Advanced Math (35% of section):**
-- Quadratic equations: factoring, completing the square, quadratic formula
-- Polynomials: operations, factoring, polynomial functions
-- Exponential functions: growth/decay, compound interest
-- Radical expressions: simplifying, operations
-- Rational expressions: simplifying, operations
-- Nonlinear functions: quadratic, exponential, radical
+**Problem-Solving and Data Analysis (about 15%, roughly 5–7 questions) — quantitative reasoning in context**
+- Ratios & Rates — unit conversion, proportional relationships, scaling
+- Percentages — percent change, increase, and decrease
+- Statistics — mean, median, mode, range, standard deviation
+- Data Interpretation — scatterplots, histograms, box-and-whisker plots, tables, trends
 
-**Additional Topics (15% of section):**
-- Geometry: area, perimeter, volume, surface area, angles, triangles, circles
-- Circle equations: standard form, center, radius
-- Trigonometry: SOHCAHTOA, right triangles, unit circle basics
-- Complex numbers: operations, i² = -1
-- Coordinate geometry: distance, midpoint, transformations
+**Geometry and Trigonometry (about 15%, roughly 5–7 questions) — space and right-triangle math**
+- Area & Volume — plane figures and 3D solids (e.g. prisms, cylinders) with standard formulas
+- Triangles — isosceles, equilateral, special right (30-60-90, 45-45-90), Pythagorean ideas
+- Trigonometry — sine, cosine, tangent (SOH CAH TOA) in right triangles
+- Circles — arc length, sector area, equation of a circle in the plane
 
 CRITICAL SAT MATH REQUIREMENTS:
 - Use SAT-appropriate numbers (avoid overly complex calculations)
@@ -196,107 +262,186 @@ CRITICAL SAT MATH REQUIREMENTS:
 - For each SAT Math subcategory included, include at least one word problem that fits that subcategory
 - One-step equations should be rare and only appear early in the set
 - For MIXED difficulty math sets, order questions to progress: early Easy→Medium, middle Medium, late Medium→Hard`,
-      reading: `[READING SECTION - Official SAT Skill Domains]
-Generate questions aligned with these SAT Reading skill domains:
+      reading: `[READING & WRITING SECTION — Official Digital SAT Skill Domains]
+Digital SAT Reading and Writing use ONE section with FOUR content domains and exactly TEN sub-skills. Every question's skillCategory MUST be one of the ten skills below — no synonyms, no renamings.
 
-**Information & Ideas (28% of section):**
-- Main idea: central claim or primary purpose
-- Supporting details: specific evidence, examples, data
-- Central ideas: key themes and concepts
-- Summarizing: condensing main points
-- Textual evidence: "Which choice provides the best evidence for the answer to the previous question?"
+**Information and Ideas (~26% of the R&W section):**
+- Central Ideas and Details — main claim, primary purpose, key supporting facts of a short passage.
+- Command of Evidence — point to the sentence, detail, OR quantitative data (graph/table) that best supports a given claim. Covers both textual and quantitative evidence.
+- Inferences — draw a logical conclusion that must be true based on the passage, without overreaching.
 
-**Craft & Structure (28% of section):**
-- Vocabulary in context: determine meaning from surrounding text
-- Word choice: why author chose specific words (tone, precision, connotation)
-- Text structure: how passage is organized (chronological, cause-effect, compare-contrast)
-- Author's purpose: inform, persuade, entertain, analyze
-- Point of view: first-person, third-person, perspective
-- Rhetorical analysis: how author uses language to achieve purpose
+**Craft and Structure (~28% of the R&W section):**
+- Words in Context — determine the meaning of a high-utility academic word or phrase from surrounding context.
+- Text Structure and Purpose — analyze how the passage is organized, the author's overall purpose, or the function of a specific sentence within the text.
+- Cross-Text Connections — compare two short related texts: agreement, disagreement, shared evidence, or differing conclusions.
 
-**Integration of Knowledge & Ideas (14% of section):**
-- Comparing texts: similarities and differences between passages
-- Analyzing arguments: evaluate reasoning, identify assumptions
-- Evaluating evidence: assess strength of support
-- Data interpretation: analyze graphs, charts, tables in context
+**Expression of Ideas (~20% of the R&W section):**
+- Rhetorical Synthesis — given a bulleted list of notes (at least 3 short factual bullets), choose the sentence that best accomplishes a stated writing goal.
+- Transitions — choose the logical connecting word or phrase (however, therefore, for example, nevertheless, etc.) that fits the relationship between ideas.
 
-**Passage Types (must include variety):**
-1. Literature: fiction, literary nonfiction (1 passage)
-2. History/Social Studies: historical documents, speeches, essays (1-2 passages)
-3. Science: biology, chemistry, physics, earth science (2-3 passages)
-4. Paired passages: two related passages with comparison questions
+**Standard English Conventions (~26% of the R&W section):**
+- Sentence Boundaries — punctuation that joins or separates clauses (periods, semicolons, colons, comma splices, run-ons, fragments, coordinating conjunctions).
+- Form, Structure, and Sense — subject-verb agreement, pronoun-antecedent agreement, verb tense and aspect, modifier placement, parallel structure, possessives, and clear reference.
 
-CRITICAL SAT READING REQUIREMENTS:
-- Passages should be 3-6 sentences for micro-practice (real SAT: 500-750 words)
-- Use authentic SAT-style language: academic, formal, precise
-- Include diverse passage types across questions
-- Questions must reference specific lines or evidence from passage
-- Include "best evidence" questions that reference previous answers
-- Vocabulary questions should test context clues, not memorization
-- Questions should test reasoning, not just recall
-- Match real SAT question style: clear, specific, evidence-based
-- Vary question types within a set (vocab-in-context, evidence, inference, structure, purpose, data) and avoid repeating stems`,
-      writing: `[WRITING SECTION - Official SAT Skill Domains]
-Generate questions aligned with these SAT Writing skill domains:
+PASSAGE TYPE VARIETY: Literature (fiction / literary nonfiction), history & social studies (documents, speeches, essays), and science (biology, chemistry, physics, earth science). Paired texts only appear on Cross-Text Connections questions.
 
-**Expression of Ideas (24% of section):**
-- Transitions: logical connectors (however, therefore, furthermore, etc.)
-- Sentence placement: where should a sentence be inserted?
-- Paragraph organization: logical order of sentences
-- Rhetorical synthesis: combine information from multiple sources
-- Logical sequence: chronological, cause-effect, spatial order
-- Conciseness: eliminate redundancy, wordiness
-- Precision: choose most precise word
-- Style and tone: maintain consistency
+CRITICAL R&W REQUIREMENTS:
+- Every "passage" MUST contain at least 2 complete sentences (each ending in . ! or ?). Aim for 2–6 sentences, roughly 30–120 words.
+- Rhetorical Synthesis is the ONLY exception: its passage is a bulleted note list with at least 3 bullets, each a short factual statement. Prefix bullets with "- " or "• ".
+- Cross-Text Connections passages contain TWO short texts in the same "passage" field, clearly labeled "Text 1" and "Text 2", each with at least 2 complete sentences.
+- Use authentic SAT-style language: academic, formal, precise. Avoid slang and first-person opinion.
+- Questions must be answerable from the passage alone; do not require outside knowledge.
+- Vary sub-skills inside a set — no two questions in a 5-question block share the same skillCategory.
+- Aim for the domain distribution 26 / 28 / 20 / 26 across sets of 4+ questions.
+- Never output line numbers or passage-labels inside the "question" field.`,
+      writing: `[READING & WRITING SECTION — Official Digital SAT Skill Domains]
+Digital SAT Reading and Writing use ONE section with FOUR content domains and exactly TEN sub-skills. Every question's skillCategory MUST be one of the ten skills below — no synonyms, no renamings.
 
-**Standard English Conventions (26% of section):**
-- Subject-verb agreement: singular/plural matching
-- Pronoun agreement: pronoun-antecedent matching, case (I/me, who/whom)
-- Verb tense: consistency, correct tense usage
-- Parallel structure: lists, comparisons, correlative conjunctions
-- Modifier placement: misplaced and dangling modifiers
-- Punctuation:
-  * Commas: lists, introductory elements, nonessential clauses, compound sentences
-  * Apostrophes: possessives, contractions
-  * Colons: introduce lists, explanations
-  * Semicolons: join independent clauses, separate list items with commas
-- Idioms: correct preposition usage, common phrases
-- Word choice: correct vs. incorrect word usage
-- Sentence boundaries: run-ons, fragments, comma splices
+**Information and Ideas (~26% of the R&W section):**
+- Central Ideas and Details — main claim or key supporting facts of a short passage.
+- Command of Evidence — point to the sentence, detail, OR quantitative data (graph/table) that best supports a given claim.
+- Inferences — draw a logical conclusion that must be true based on the passage.
 
-CRITICAL SAT WRITING REQUIREMENTS:
-- Provide a sentence or short paragraph with an underlined portion
-- Show the full sentence/paragraph with the underlined part clearly marked
-- Focus on ONE specific grammar rule or writing concept per question
-- Include "NO CHANGE" as an option when appropriate
-- "NO CHANGE" must be correct only sometimes (roughly 20-30% of writing questions). It must NOT be the correct answer for most items in a set.
-- If you include a no-change choice, write it exactly as "NO CHANGE" (not "No change to X", not paraphrased).
-- Never include a second option that is identical to the currently underlined word/phrase when "NO CHANGE" is present.
+**Craft and Structure (~28% of the R&W section):**
+- Words in Context — meaning of a high-utility academic word or phrase from surrounding context.
+- Text Structure and Purpose — how the passage is organized or the function of a specific sentence within the text.
+- Cross-Text Connections — compare two short related texts.
+
+**Expression of Ideas (~20% of the R&W section):**
+- Rhetorical Synthesis — bulleted notes; pick the sentence that best achieves a stated goal.
+- Transitions — choose the logical connecting word/phrase that fits the relationship between ideas.
+
+**Standard English Conventions (~26% of the R&W section):**
+- Sentence Boundaries — punctuation that joins/separates clauses (periods, semicolons, colons, commas, run-ons, fragments).
+- Form, Structure, and Sense — subject-verb agreement, pronoun-antecedent agreement, verb tense/aspect, modifier placement, parallel structure, possessives.
+
+CRITICAL WRITING REQUIREMENTS:
+- Every "passage" MUST contain at least 2 complete sentences (each ending in . ! or ?). Aim for 2–4 sentences.
+- Rhetorical Synthesis is the ONLY exception: its passage is a bulleted note list with at least 3 bullets, each prefixed with "- " or "• ".
+- Cross-Text Connections passages contain TWO short texts labeled "Text 1" and "Text 2", each with at least 2 complete sentences.
+- The "passage" is plain text — NEVER wrap words in brackets, **asterisks**, <angle brackets>, or __underscores__. No underline markers. No markdown.
+- For Standard English Conventions questions, the "question" field MUST clearly identify the target word, phrase, or punctuation using standard double quotes inside the stem. Examples:
+  * "Which choice best replaces \"they're\" in the sentence?"
+  * "Which choice of punctuation best completes the sentence after \"Tuesday\"?"
+  * "Which choice, if inserted after \"scientists\", best fits the context?"
+- Use the LITERAL symbol for punctuation ( , ; : . — ! ? " ' ). Do NOT spell punctuation out (never write "comma", "semicolon", "period" etc.).
+- Use digits for numbers (write 5, 12, 2024 — never "five", "twelve", "two thousand twenty-four").
+- For Standard English Conventions items, focus on ONE specific rule per question. Grammar errors (subject-verb, pronoun, verb tense, modifier, parallel structure) are ALWAYS tagged "Form, Structure, and Sense". Run-ons, comma splices, fragments, and sentence-joining punctuation are ALWAYS tagged "Sentence Boundaries".
+- Include "NO CHANGE" as an option when appropriate. It must be correct only sometimes (~20–30% of items). Write it exactly as "NO CHANGE".
+- Never include a second option identical to the currently targeted word/phrase when "NO CHANGE" is present.
 - In each 5-question block, vary the four answer choices; do not reuse the same option set across multiple questions.
-- Test common SAT grammar errors, not obscure rules
-- Questions should test editing skills, not just identification
-- Match real SAT question style: clear, unambiguous, test practical editing skills
-- Include questions that test both correctness and effectiveness
-- Vary question types within a set (transitions, boundaries, concision, precision, synthesis) and avoid repeating stems`,
+- Test common SAT grammar errors, not obscure rules.
+- Match real SAT style: clear, unambiguous, tests practical editing skills.`,
     };
 
+    (sectionGuidelines as Record<string, string>)["reading-writing"] = `${sectionGuidelines.reading}
+
+ADDITIONAL CONVENTIONS & EXPRESSION RULES (combined Digital SAT R&W section):
+- The "passage" is plain text — NEVER wrap words in brackets, **asterisks**, <angle brackets>, or __underscores__.
+- For Standard English Conventions questions, the "question" field MUST clearly identify the target word, phrase, or punctuation using standard double quotes inside the stem.
+- Use the LITERAL symbol for punctuation ( , ; : . — ! ? " ' ). Do NOT spell punctuation out.
+- Include "NO CHANGE" as an option when appropriate (~20–30% of convention items). Write it exactly as "NO CHANGE".
+- Never include a second option identical to the currently targeted word/phrase when "NO CHANGE" is present.`;
+
+    // Canonical Digital SAT R&W sub-skills. Every reading/writing question's
+    // skillCategory MUST be exactly one of these strings (see SKILL CATEGORY LOCK).
     const satRwQuestionTypes = [
-      "Central Ideas & Details",
-      "Command of Evidence (Textual)",
-      "Command of Evidence (Quantitative)",
+      "Central Ideas and Details",
+      "Command of Evidence",
       "Inferences",
       "Words in Context",
-      "Cross-text Connections",
+      "Text Structure and Purpose",
+      "Cross-Text Connections",
       "Rhetorical Synthesis",
       "Transitions",
-      "Boundaries",
-      "Form, Structure & Sense",
-      "Subject-Verb Agreement",
-      "Pronoun-Antecedent Agreement",
-      "Verb Tense & Aspect",
-      "Modifiers",
-      "Linking Clauses",
+      "Sentence Boundaries",
+      "Form, Structure, and Sense",
     ];
+
+    const CANONICAL_RW_SKILLS = new Set(satRwQuestionTypes);
+
+    // Normalizes any legacy / synonym / stray skill names the model may emit back
+    // to the canonical 10 R&W sub-skills. Keys are lowercased; unknown values fall
+    // through to a section-appropriate default below.
+    const rwSkillAliases: Record<string, string> = {
+      // Information and Ideas
+      "main idea": "Central Ideas and Details",
+      "main ideas": "Central Ideas and Details",
+      "supporting details": "Central Ideas and Details",
+      "central ideas": "Central Ideas and Details",
+      "central ideas & details": "Central Ideas and Details",
+      "summarizing": "Central Ideas and Details",
+      "summary": "Central Ideas and Details",
+      "textual evidence": "Command of Evidence",
+      "command of evidence (textual)": "Command of Evidence",
+      "command of evidence (quantitative)": "Command of Evidence",
+      "evaluating evidence": "Command of Evidence",
+      "analyzing arguments": "Inferences",
+      "inference": "Inferences",
+      // Craft and Structure
+      "vocabulary in context": "Words in Context",
+      "vocab in context": "Words in Context",
+      "word choice": "Words in Context",
+      "text structure": "Text Structure and Purpose",
+      "author's purpose": "Text Structure and Purpose",
+      "authors purpose": "Text Structure and Purpose",
+      "point of view": "Text Structure and Purpose",
+      "rhetorical analysis": "Text Structure and Purpose",
+      "comparing texts": "Cross-Text Connections",
+      "cross-text connections": "Cross-Text Connections",
+      "cross text connections": "Cross-Text Connections",
+      "paired passages": "Cross-Text Connections",
+      // Expression of Ideas
+      "sentence placement": "Rhetorical Synthesis",
+      "paragraph organization": "Rhetorical Synthesis",
+      "logical sequence": "Rhetorical Synthesis",
+      "rhetorical synthesis": "Rhetorical Synthesis",
+      "transitions": "Transitions",
+      // Standard English Conventions — boundaries
+      "boundaries": "Sentence Boundaries",
+      "sentence boundaries": "Sentence Boundaries",
+      "punctuation": "Sentence Boundaries",
+      "commas": "Sentence Boundaries",
+      "colons": "Sentence Boundaries",
+      "semicolons": "Sentence Boundaries",
+      "colons and semicolons": "Sentence Boundaries",
+      "linking clauses": "Sentence Boundaries",
+      "run-ons": "Sentence Boundaries",
+      "comma splices": "Sentence Boundaries",
+      "fragments": "Sentence Boundaries",
+      // Standard English Conventions — form/structure/sense
+      "form, structure, and sense": "Form, Structure, and Sense",
+      "form, structure & sense": "Form, Structure, and Sense",
+      "subject-verb agreement": "Form, Structure, and Sense",
+      "subject verb agreement": "Form, Structure, and Sense",
+      "pronoun-antecedent agreement": "Form, Structure, and Sense",
+      "pronoun antecedent agreement": "Form, Structure, and Sense",
+      "pronoun agreement": "Form, Structure, and Sense",
+      "verb tense": "Form, Structure, and Sense",
+      "verb tense & aspect": "Form, Structure, and Sense",
+      "verb tense and aspect": "Form, Structure, and Sense",
+      "modifiers": "Form, Structure, and Sense",
+      "modifier placement": "Form, Structure, and Sense",
+      "parallel structure": "Form, Structure, and Sense",
+      "conciseness": "Form, Structure, and Sense",
+      "precision": "Form, Structure, and Sense",
+      "idioms": "Form, Structure, and Sense",
+      "idioms and word choice": "Form, Structure, and Sense",
+      "apostrophes": "Form, Structure, and Sense",
+      "possessives": "Form, Structure, and Sense",
+    };
+
+    const canonicalizeRwSkill = (input: string | null | undefined, forSection: "reading" | "writing"): string => {
+      const trimmed = (input || "").trim();
+      if (!trimmed) {
+        return forSection === "reading" ? "Central Ideas and Details" : "Form, Structure, and Sense";
+      }
+      if (CANONICAL_RW_SKILLS.has(trimmed)) return trimmed;
+      const aliased = rwSkillAliases[trimmed.toLowerCase()];
+      if (aliased) return aliased;
+      // Unknown — fall back based on section default.
+      return forSection === "reading" ? "Central Ideas and Details" : "Form, Structure, and Sense";
+    };
 
     const satStemTemplates = [
       "Which choice completes the text with the most logical and precise word or phrase?",
@@ -312,21 +457,79 @@ CRITICAL SAT WRITING REQUIREMENTS:
       "For a research report, which choice most effectively uses relevant information from the notes?",
     ];
 
+    const seenStemsBlock =
+      recentStemPreviews.length > 0
+        ? `RECENT QUESTION STEMS THIS USER HAS ALREADY SEEN (do NOT repeat these — vary scenario, numbers, passage content, and answer choices):\n${recentStemPreviews
+            .map((s, i) => `  ${i + 1}. ${s}`)
+            .join("\n")}\n`
+        : "";
+    const seenFingerprintsBlock =
+      fingerprintsForPrompt.length > 0
+        ? `PREVIOUSLY SEEN QUESTIONS (do not regenerate; fingerprint hashes for reference): ${fingerprintsForPrompt.join(", ")}\n`
+        : "";
+
+    const mathDifficultyRules = `MATH DIFFICULTY RULES (non-negotiable):
+- Easy: a SINGLE direct operation; the answer is a whole number; no setup required; no fractions, no negatives, no multi-step reasoning. The student should be able to answer in one step.
+- Medium: 2–3 discrete steps; requires writing AND solving an equation; may involve fractions, negatives, or moderate algebraic manipulation; a clear method must be chosen.
+- Hard: multi-step reasoning that connects TWO concepts; abstract or non-obvious setup; the answer is not immediately apparent; at least one distractor MUST mirror a predictable student mistake (e.g. solving for x instead of 2x, sign error, forgetting to distribute, off-by-one, picking the intermediate value instead of the final answer).
+`;
+
+    const rwDifficultyRules = `READING & WRITING DIFFICULTY RULES (non-negotiable):
+- Easy: the answer is DIRECTLY STATED in the passage; no inference is required; vocabulary is plain.
+- Medium: the answer requires combining TWO pieces of passage information OR understanding tone/purpose; vocabulary is moderate.
+- Hard: the answer requires distinguishing between TWO very close options; the passage uses complex syntax or advanced vocabulary; wrong answers are designed to exploit common misreadings (too broad, too narrow, opposite meaning, out of scope).
+`;
+
+    const distractorRules = `DISTRACTOR RULES (apply to every question):
+- Every wrong answer MUST be plausible: a student who misread or made one specific error would choose it.
+- No answer should be obviously absurd or dismissible at a glance.
+- Math wrong answers must come from a specific, predictable mistake: forgetting to distribute, solving for x instead of 2x, sign error, computing the wrong sub-step, dropping a unit, off-by-one.
+- R&W wrong answers must come from real misreadings of the passage: too broad, too narrow, opposite meaning, or out of scope.
+`;
+
+    const rwStemTemplatesBlock = `READING & WRITING STEM TEMPLATES — use one of these stems verbatim (or with the noted blank filled in). Do not invent new stems:
+1. "Which choice completes the text with the most logical and precise word or phrase?"
+2. "Which choice most logically completes the text?"
+3. "Which choice best states the main purpose of the text?"
+4. "Which choice best describes the overall structure of the text?"
+5. "Which choice best describes the function of the underlined sentence in the text as a whole?"
+6. "As used in the text, what does the word ___ most nearly mean?"
+7. "Which choice best maintains the sentence pattern already established in the text?"
+8. "Which transition word or phrase most logically connects the two sentences?"
+9. "Which finding, if true, would most directly support the claim?"
+10. "Based on the texts, how would [Author 2] most likely respond to [Author 1's] claim that ___?"
+11. "For a research report on ___, which choice most effectively uses relevant information from the notes?"
+
+PASSAGE/STIMULUS REQUIREMENT: every R&W question MUST include a passage or stimulus of authentic SAT length and tone (typically 40–150 words; ≥3 short bullets for Rhetorical Synthesis; two short texts labeled "Text 1" / "Text 2" for Cross-Text Connections).
+
+STEM VARIETY RULE: No two questions in a set may use the same stem template. If you used "Which choice most logically completes the text?" for question 1, you MUST use a different stem for every subsequent question. Vary the skill being tested AND the wording of the question every single time.`;
+
+    const mathWordingRules = `MATH WORDING RULES (non-negotiable):
+- State only what is needed to solve. No filler, no fluff.
+- Introduce variables explicitly: "Let x represent..." (or equivalent).
+- Word problems must end with a direct question: "What is the value of x?", "How many ___ are there?", "What is the total ___?".
+- Never explain inside the question what concept is being tested.
+- Use plain text math notation: x^2, sqrt(), pi, >=, <=. Do not use LaTeX.`;
+
+    const selfVerificationBlock = `SELF-VERIFICATION (mandatory before you finalize each question):
+- Silently solve the question yourself from scratch. Confirm that the option you marked correct EXACTLY matches your solution.
+- For MATH questions: write your step-by-step working into the "_scratchpad" field. The scratchpad will not be shown to the user but it MUST contain real working — do not leave it blank for math items.
+- For READING & WRITING questions: in "_scratchpad", briefly note WHICH sentence(s) of the passage justify the correct answer and WHY each distractor is wrong (one short line each is fine). Every answer choice MUST be grounded in the passage text — DO NOT introduce outside facts, rules, or information not present in the passage or official SAT guidelines.
+- If, after self-verification, you have ANY doubt about the correct answer, regenerate the entire question rather than returning a potentially wrong answer.`;
+
     const buildSystemPrompt = (requestedCount: number) => `You are an expert SAT question generator trained on the Digital SAT framework. Create questions that feel authentic and closely match real Digital SAT style in wording, difficulty, and format. Return ONLY valid JSON — no markdown, no extra text.
 
 {
   "passage": "string or null",
   "questions": [
     {
+      "_scratchpad": "internal step-by-step working (mandatory for math; brief justification for R&W)",
       "passage": "string or null",
       "question": "string",
       "options": ["string", "string", "string", "string"],
       "section": "Reading & Writing" | "Math",
-      "skillCategory": "specific SAT sub-skill (e.g. 'Linear Equations', 'Transitions', 'Vocabulary in Context')",
+      "skillCategory": "specific SAT sub-skill (e.g. 'Linear Equations', 'Data Interpretation', 'Transitions', 'Words in Context')",
       "correctAnswer": "A" | "B" | "C" | "D",
-      "explanation_correct": "string",
-      "explanation_incorrect": { "A": "string|null", "B": "string|null", "C": "string|null", "D": "string|null" },
-      "strategy_tip": "string",
       "difficulty": "Easy" | "Medium" | "Hard",
       "graphData": null,
       "desmosExpression": null
@@ -340,9 +543,14 @@ ABSOLUTE RULES:
 - Distractors must be plausible near-misses — wrong for one specific, testable reason (sign error, misread detail, wrong operation, constraint miss).
 - Never output anything except the JSON.
 ${
+  section !== "math"
+    ? `- SKILL CATEGORY LOCK: For reading and writing, \`skillCategory\` MUST be EXACTLY one of these 10 strings — no synonyms, no renamings, no inventions:\n  ${satRwQuestionTypes.map((s) => `"${s}"`).join(", ")}\n  Never use "Main Idea", "Supporting Details", "Textual Evidence", "Vocabulary in Context", "Word Choice", "Author's Purpose", "Point of View", "Rhetorical Analysis", "Comparing Texts", "Paired Passages", "Sentence Placement", "Paragraph Organization", "Logical Sequence", "Conciseness", "Precision", "Boundaries" (unqualified), "Punctuation", "Commas", "Apostrophes", "Colons", "Semicolons", "Idioms", "Subject-Verb Agreement", "Pronoun-Antecedent Agreement", "Pronoun Agreement", "Verb Tense", "Modifiers", "Parallel Structure", or "Linking Clauses". Map them: grammar errors (subject-verb, pronoun, verb tense, modifiers, parallel structure, possessives) → "Form, Structure, and Sense"; run-ons, comma splices, fragments, and clause-joining punctuation → "Sentence Boundaries"; word-choice/vocabulary in context → "Words in Context"; author purpose / structure / function → "Text Structure and Purpose"; notes-to-sentence goal items → "Rhetorical Synthesis"; paired-passage comparison → "Cross-Text Connections".`
+    : ""
+}
+${
   topicLocked
-    ? `- TOPIC LOCK: Every question tests ONLY "${topicTrimmed}". skillCategory must be "${topicTrimmed}" or a direct sub-skill. Do NOT drift to other SAT domains.`
-    : `- Each question must use a DIFFERENT skillCategory — no two questions in a 5-question block share the same sub-skill. Use specific sub-skill names (e.g. "Linear Equations", "Transitions", "Vocabulary in Context") — not broad domain names.`
+    ? `- TOPIC LOCK (STRICT): You are locked to the topic: "${topicTrimmed}". Every element of every question — the setup, the solution method, and the skill being tested — MUST directly involve "${topicTrimmed}" and nothing else. The skillCategory field MUST equal "${topicTrimmed}" exactly. If you cannot generate a question purely about "${topicTrimmed}", say so by emitting fewer questions instead of drifting to an adjacent topic. DO NOT drift to other SAT domains.`
+    : `- Each question must use a DIFFERENT skillCategory — no two questions in a 5-question block share the same sub-skill. Use specific sub-skill names (e.g. "Linear Equations", "Ratios & Rates", "Transitions", "Words in Context") — not broad domain names like "Algebra" or "Advanced Math".`
 }
 ${
   difficultyLocked && difficulty && difficulty !== "Mixed"
@@ -350,26 +558,39 @@ ${
     : `- Tag each question with its TRUE difficulty. Roughly 20% Easy, 60% Medium, 20% Hard.`
 }
 
-DIFFICULTY RUBRIC (SAT-calibrated):
-- Easy (SAT ~400–500): 1–2 direct steps, no hidden traps, clear unambiguous setup.
-- Medium (SAT ~550–650): 2–3 steps, requires method selection or mild abstraction.
-- Hard (SAT ~700+): Multi-concept reasoning, non-obvious setup, deliberate trap answer included. A short or concise question can still be Hard — length alone does not determine difficulty.
+${mathDifficultyRules}
+${rwDifficultyRules}
+${distractorRules}
+${section === "math" ? mathWordingRules : rwStemTemplatesBlock}
+${selfVerificationBlock}
 
+${seenFingerprintsBlock}${seenStemsBlock}${
+  seenStemsBlock || seenFingerprintsBlock
+    ? "Do not generate a question that tests the same concept in the same way as any of the previously seen questions above. Vary the scenario, numbers, passage content, and answer choices every time.\n"
+    : ""
+}
 ${sectionGuidelines[section as keyof typeof sectionGuidelines] || sectionGuidelines.math}
 
 FORMAT BY SECTION:
 - Math: Self-contained questions. Use Digital SAT stems ("What value of x satisfies…", "Function f is defined by…", "In the xy-plane…"). At least 1 word problem per 5 questions. Vary types (equations, word problems, functions, geometry).
-- Reading: "passage" field = 50–150 words, excerpt style (never "This passage is about…"). "question" field = ONLY the question text, never the passage text. Vary question types (evidence, inference, vocab-in-context, structure, purpose).
-- Writing: "passage" field = sentence/paragraph with revision target in [brackets]. "NO CHANGE" as an option only when original is correct (20–30% of questions max). Never repeat identical option sets within a block.
+- Reading: "passage" field = 30–150 words, excerpt style (never "This passage is about…"). MUST contain AT LEAST 2 complete sentences, each ending in . ! or ?. "question" field = ONLY the question text, never the passage text. EXCEPTION: Rhetorical Synthesis items use a bulleted note list instead of prose (at least 3 bullets, each prefixed with "- " or "• "). Cross-Text Connections items contain TWO short texts labeled "Text 1" and "Text 2", each with at least 2 complete sentences.
+
+PASSAGE TOPIC ROTATION (mandatory):
+Each passage in a set MUST come from a different domain. Cycle through these in order, one per question:
+1. Literary fiction or literary nonfiction (a character, narrator, or personal essay)
+2. History or social studies (a speech, letter, document, or argument from history)
+3. Natural science (biology, chemistry, physics, or earth science — a study, finding, or explanation)
+4. Humanities (art, philosophy, linguistics, or cultural analysis)
+5. Social science (economics, psychology, sociology, or political science)
+
+Never use the same domain twice in a row. Never generate two passages about the same subject matter within a single test session.
+- Writing: "passage" field = plain sentence/paragraph WITHOUT any brackets, bold, or underline markup. MUST contain AT LEAST 2 complete sentences (unless the question is Rhetorical Synthesis, in which case the passage is a ≥3-bullet note list). The "question" field must quote the exact word/phrase/punctuation being revised using standard double quotes (e.g., Which choice best replaces "they're" in the sentence?). Use literal punctuation symbols (, ; : . — ! ? ' ") and digits for numbers — never spell them out. "NO CHANGE" as an option only when original is correct (20–30% of questions max). Never repeat identical option sets within a block.
 
 VARIETY: No near-duplicate stems or scenarios. Each question in a set should feel distinct in context and structure.
 
-EXPLANATIONS (keep concise):
-- explanation_correct: 1–2 short sentences on why the answer is correct.
-- explanation_incorrect: one sentence per wrong choice naming the specific mistake.
-- strategy_tip: one short actionable sentence.
+NO EXPLANATIONS: Do NOT include explanations, rationales, or strategy tips for the user. The "_scratchpad" field is internal; you must still populate it for self-verification but it will be removed before the question reaches the student. Only return the question, options, correctAnswer, difficulty, skillCategory, and _scratchpad fields.
 
-${topicLocked ? `TOPIC REMINDER: "${topicTrimmed}" only — every question must stay on this topic.` : topic ? `Focus area: ${topic}` : ""}
+${topicLocked ? `TOPIC REMINDER: "${topicTrimmed}" only — every question must stay on this topic. skillCategory must equal "${topicTrimmed}".` : topic ? `Focus area: ${topic}` : ""}
 ${difficulty && difficulty !== "Mixed"
   ? `DIFFICULTY REMINDER: All questions must be ${difficulty.toUpperCase()}. Do not water down.`
   : ""}
@@ -383,8 +604,11 @@ ${difficulty && difficulty !== "Mixed"
 
     const MAX_BLOCK_ATTEMPTS = topicLocked || difficultyLocked ? 4 : 2;
     const MAX_SET_ATTEMPTS = strictConfigNoFallback ? 2 : 1;
+    const isSmallSet = questionCount <= 5;
     const generationStartedAt = Date.now();
-    const generationDeadlineMs = strictConfigNoFallback
+    const generationDeadlineMs = isSmallSet
+      ? 58000
+      : strictConfigNoFallback
       ? questionCount >= 20
         ? 180000
         : questionCount >= 10
@@ -436,7 +660,7 @@ ${difficulty && difficulty !== "Mixed"
 
     const longCriticalSkillRules = topicLocked
       ? `- Each question must assess ONLY the student-selected topic "${topicTrimmed}" (or a clear sub-skill under it). skillCategory must be "${topicTrimmed}" or a tighter sub-label that obviously belongs under that topic. Do NOT use unrelated SAT skills.\n- Vary stems, numbers, and contexts while staying on-topic; do not vary by jumping to other domains.`
-      : `- Each question must target exactly ONE specific SAT sub-skill (e.g. "Linear Equations", "Systems of Equations", "Ratios & Proportions", "Quadratic Functions", "Exponential Growth", "Geometry: Triangles", "Trigonometry", "Subject-Verb Agreement", "Pronoun Agreement", "Parallel Structure", "Transitions", "Punctuation: Commas", "Vocabulary in Context", "Textual Evidence", "Author's Purpose"). Do NOT use broad domain names like "Heart of Algebra" or "Standard English Conventions" — always give the specific sub-skill name.\n- Each question in a set must have a DIFFERENT skillCategory (no two questions share the same sub-skill within a 5-question block).`;
+      : `- Each question must target exactly ONE specific SAT sub-skill. Math examples: "Linear Equations", "Systems of Equations", "Quadratic Equations", "Non-linear Functions", "Ratios & Rates", "Data Interpretation", "Area & Volume", "Triangles", "Trigonometry", "Circles". R&W examples: "Central Ideas and Details", "Command of Evidence", "Words in Context", "Transitions", "Sentence Boundaries", "Form, Structure, and Sense". Do NOT use broad domain names like "Algebra" or "Standard English Conventions" — always give the specific sub-skill name.\n- Each question in a set must have a DIFFERENT skillCategory (no two questions share the same sub-skill within a 5-question block).`;
 
     const varietyRequirementsBlock = topicLocked
       ? `VARIETY (topic-locked mode):
@@ -451,7 +675,10 @@ ${difficulty && difficulty !== "Mixed"
       ? `- Math: Authentic Digital SAT style for "${topicTrimmed}" only; word problems only when they genuinely fit this topic (do not use generic algebra word problems as filler).`
       : `- Math: Include word problems with real-world contexts`;
 
-    const sectionForAlignment = section as "math" | "reading" | "writing";
+    const sectionForAlignment =
+      section === "reading-writing"
+        ? "reading"
+        : (section as "math" | "reading" | "writing");
 
     const applyConfigFilters = <
       T extends {
@@ -459,12 +686,19 @@ ${difficulty && difficulty !== "Mixed"
         passage?: string | null;
         skillCategory?: string;
         skillFocus?: string;
+        correctAnswer?: string;
+        options?: Record<string, string> | string[] | null;
       },
     >(
       list: T[]
     ): T[] => {
       let out = list;
       if (topicLocked) {
+        // STRICT: skillCategory must equal the locked topic exactly.
+        out = out.filter((q) =>
+          skillExactlyMatchesTopic(topicTrimmed, q.skillCategory || q.skillFocus || "")
+        );
+        // Then re-validate stem alignment for math sub-skill drift safety.
         out = out.filter((q) =>
           questionAlignsWithLockedTopic(topicTrimmed, sectionForAlignment, {
             question: String(q.question || ""),
@@ -484,6 +718,19 @@ ${difficulty && difficulty !== "Mixed"
           })
         );
       }
+      // Cross-session fingerprint dedup: drop anything the user has already seen.
+      if (seenFingerprintSet.size > 0) {
+        out = out.filter((q) => {
+          const fp = computeFingerprint({
+            question: String(q.question || ""),
+            options: q.options ?? null,
+            correctAnswer: q.correctAnswer,
+            skillCategory: q.skillCategory,
+            skillFocus: q.skillFocus,
+          });
+          return !fp || !seenFingerprintSet.has(fp);
+        });
+      }
       return out;
     };
 
@@ -494,7 +741,9 @@ ${difficulty && difficulty !== "Mixed"
     ) => {
       const timeoutMs =
         options.timeoutMs ??
-        (strictConfigNoFallback
+        (isSmallSet
+          ? 45000
+          : strictConfigNoFallback
           ? requestedCount >= 20
             ? 55000
             : requestedCount >= 10
@@ -505,15 +754,15 @@ ${difficulty && difficulty !== "Mixed"
             : requestedCount >= 10
               ? 35000
               : 25000);
-      const attempts = options.attempts ?? (requestedCount >= 15 ? 2 : 1);
+      const attempts = options.attempts ?? (isSmallSet ? 1 : requestedCount >= 15 ? 2 : 1);
       let lastModelError: unknown;
       for (const modelName of modelCandidates) {
         try {
           const completion = await withRetry(
             () => getOpenAIClient().chat.completions.create({
       model: modelName,
-      temperature: 0.45,
-      max_tokens: Math.min(8000, Math.max(2400, requestedCount * 700)),
+      temperature: section === "math" ? 0.3 : 0.7,
+      max_tokens: Math.min(16000, Math.max(3000, requestedCount * 1200)),
       messages: [
         {
           role: "system",
@@ -533,8 +782,8 @@ ${difficulty && difficulty !== "Mixed"
             attempts,
             timeoutMs
           );
-          const responseText = completion.choices[0].message?.content || "{}";
-          const data = parseModelJson(responseText);
+          const data = (completion.choices[0].message as any).parsed ??
+            JSON.parse(completion.choices[0].message?.content || "{}");
     
           if (!Array.isArray(data.questions) || data.questions.length === 0) {
             throw new Error("Invalid response format from model.");
@@ -625,6 +874,18 @@ ${difficulty && difficulty !== "Mixed"
     const transformQuestions = (rawQuestions: any[], passage?: string): Record<string, any>[] => {
       const transformed: Array<Record<string, any> | null> = rawQuestions
         .map((q: any, index: number) => {
+          // Capture the model's self-verification scratchpad before any cleanup.
+          // Stripped from the persisted/returned shape; logged server-side when
+          // LOG_AI_SCRATCHPADS=1 for debugging hallucinated answers.
+          const rawScratchpad = typeof q._scratchpad === "string" ? q._scratchpad.trim() : "";
+          if (process.env.LOG_AI_SCRATCHPADS === "1" && rawScratchpad) {
+            console.info("[ai-scratchpad]", {
+              skill: q.skillCategory || q.skillFocus,
+              difficulty: q.difficulty,
+              scratchpad: rawScratchpad.slice(0, 600),
+            });
+          }
+
           const rawPassageForQuestion =
             typeof q.passage === "string" && q.passage.trim().length > 0 ? q.passage.trim() : passage;
           const passageForQuestion =
@@ -639,7 +900,7 @@ ${difficulty && difficulty !== "Mixed"
           }
           
           // For reading questions, remove passage text from question if it's duplicated
-          if (section === "reading" && passageForQuestion && questionText) {
+          if (isRwSection(section) && passageForQuestion && questionText) {
             // Check if question text contains passage (indicating duplication)
             const passageFirst50 = passageForQuestion.substring(0, 50).trim();
             if (questionText.includes(passageFirst50)) {
@@ -654,7 +915,7 @@ ${difficulty && difficulty !== "Mixed"
           }
 
           // Ensure reading question text never ends up blank after cleanup.
-          if (section === "reading" && (!questionText || questionText.trim().length === 0)) {
+          if (isRwSection(section) && (!questionText || questionText.trim().length === 0)) {
             questionText = "Which choice is best supported by the passage?";
           }
 
@@ -664,24 +925,44 @@ ${difficulty && difficulty !== "Mixed"
           questionText = truncateText(questionText, 500);
 
           let finalPassage = passageForQuestion;
-          if (section === "writing") {
-            if (passageForQuestion) {
-              const withTargetMarkup = ensureWritingTargetMarkup(passageForQuestion);
-              const boldedPassage = applyBoldToMarkedTarget(withTargetMarkup);
-              finalPassage = boldedPassage.valid ? boldedPassage.text : withTargetMarkup;
-              // Keep brackets/underlines in the passage, not the question prompt text.
-              questionText = questionText.replace(/\[([^\]]+)\]/g, "$1");
-            } else {
-              const withTargetMarkup = ensureWritingTargetMarkup(questionText);
-              const bolded = applyBoldToMarkedTarget(withTargetMarkup);
-              questionText = bolded.valid ? bolded.text : withTargetMarkup;
-            }
+          if (isRwSection(section)) {
+            // Strip any residual bracket/bold/angle/underscore markup the model may still emit.
+            const stripMarkup = (text: string) =>
+              text
+                .replace(/\[([^\]]+)\]/g, "$1")
+                .replace(/\*\*(.+?)\*\*/g, "$1")
+                .replace(/__(.+?)__/g, "$1")
+                .replace(/<([^>]+)>/g, "$1");
+            if (finalPassage) finalPassage = stripMarkup(finalPassage);
+            questionText = stripMarkup(questionText);
           }
 
-          if ((section === "reading" || section === "writing") && finalPassage) {
+          if (isRwSection(section) && finalPassage) {
             const words = String(finalPassage).trim().split(/\s+/).filter(Boolean).length;
             if (words < 25 || words > 250) {
               console.warn(`Soft filter: passage word count ${words} outside 25-250 range, keeping question`);
+            }
+
+            // Hard filter: every reading/writing passage must have at least 2 complete
+            // sentences (ending in . ! or ?). Rhetorical Synthesis is the only exception —
+            // its passage is a bulleted note list (≥3 short bullets).
+            const countSentences = (text: string) =>
+              (text.match(/[.!?](?=\s|$|["')\]])/g) || []).length;
+            const bulletCount = (finalPassage.match(/(^|\n)\s*[-•*]\s+\S/g) || []).length;
+            const skillLabel = String(q.skillCategory || q.skillFocus || "").toLowerCase();
+            const isRhetSynth = skillLabel.includes("rhetorical synthesis");
+
+            const passesSentenceRule = isRhetSynth
+              ? bulletCount >= 3
+              : countSentences(finalPassage) >= 2;
+
+            if (!passesSentenceRule) {
+              console.warn("Soft filter: passage failed 2-sentence rule, dropping question", {
+                isRhetSynth,
+                sentences: countSentences(finalPassage),
+                bullets: bulletCount,
+              });
+              return null;
             }
           }
           
@@ -714,8 +995,12 @@ ${difficulty && difficulty !== "Mixed"
             return null;
           }
 
-          if (section === "writing") {
-            const targetPhrase = extractMarkedTarget(finalPassage || questionText);
+          const skillLabelForValidation = String(q.skillCategory || q.skillFocus || "");
+          if (
+            section === "writing" ||
+            (section === "reading-writing" && isConventionSkill(skillLabelForValidation))
+          ) {
+            const targetPhrase = extractMarkedTarget(questionText) || extractMarkedTarget(finalPassage || "");
             const normalizedTarget = normalizeCompare(targetPhrase);
             const normalizedOptions = Object.entries(cleanedOptions).map(([letter, opt]) => {
               const normalized = normalizeWritingOption(opt);
@@ -768,18 +1053,18 @@ ${difficulty && difficulty !== "Mixed"
               options: Object.values(cleanedOptions),
             })
           ) {
-            console.warn("Soft filter: question did not pass likelySatStyleQuestion, keeping");
+            console.warn("Soft filter: question did not pass SAT-style heuristics, keeping");
           }
 
           if (
-            (section === "reading" || section === "writing") &&
+            isRwSection(section) &&
             hasGenericSatStem(questionText) &&
             String(finalPassage || "").length < 140
           ) {
             console.warn("Soft filter: generic SAT stem with short passage, keeping");
           }
 
-          if (section === "writing") {
+          if (section === "writing" || section === "reading-writing") {
             const skillLower = String(q.skillCategory || q.skillFocus || "").toLowerCase();
             const questionLower = String(questionText || "").toLowerCase();
             const hasTransitionSkillOrPrompt =
@@ -796,28 +1081,16 @@ ${difficulty && difficulty !== "Mixed"
             }
           }
           
-          // Keep explanations concise for faster generation and rendering
-          let explanationCorrect = cleanText(truncateText(q.explanation_correct || q.explanation || "", 220));
+          // Explanations are generated on demand at review time — keep empty here.
+          const explanationCorrect = "";
           const explanationIncorrect: Record<string, string> = {};
-          if (q.explanation_incorrect && typeof q.explanation_incorrect === "object") {
-            Object.entries(q.explanation_incorrect).forEach(([letter, reason]) => {
-              if (letter !== q.correctAnswer && reason) {
-                explanationIncorrect[letter] = cleanText(truncateText(reason as string, 140));
-              }
-            });
-          }
-          
-          let strategyTip = cleanText(truncateText(q.strategy_tip || "", 120));
-          if (!explanationCorrect) {
-            explanationCorrect = "The correct option best matches the SAT skill tested in this question.";
-          }
+          const strategyTip = "";
           
           // Validate question format
           const validation = validateQuestionFormat({
             question: questionText,
             options: Object.values(cleanedOptions),
             correctAnswer: q.correctAnswer,
-            explanation_correct: explanationCorrect,
           });
           
           if (!validation.valid) {
@@ -845,17 +1118,36 @@ ${difficulty && difficulty !== "Mixed"
           let skillFocus = q.skillCategory || q.skillFocus || topic;
 
           if (!skillFocus) {
-            const sectionDefaults = {
+            const sectionDefaults: Record<string, string> = {
               math: "Problem Solving",
               reading: "Reading Comprehension",
               writing: "Grammar & Usage",
+              "reading-writing": "Reading & Writing",
             };
-            skillFocus = sectionDefaults[section as keyof typeof sectionDefaults] || section.charAt(0).toUpperCase() + section.slice(1);
+            skillFocus = sectionDefaults[section] || section.charAt(0).toUpperCase() + section.slice(1);
           }
+
+          // Reading/Writing MUST use one of the canonical 10 sub-skills. Map any
+          // synonyms (e.g. "Main Idea", "Punctuation", "Subject-Verb Agreement") to
+          // their canonical parent before saving so the result-grid rollups stay clean.
+          if (section !== "math") {
+            const rwSection = section === "writing" ? "writing" : "reading";
+            skillFocus = canonicalizeRwSkill(skillFocus, rwSection);
+          }
+
           const skillCategory = ensureSingleSkill(skillFocus, skillFocus);
-          explanationCorrect = ensureBoldEmphasis(explanationCorrect, skillCategory);
-          strategyTip = ensureBoldEmphasis(strategyTip, skillCategory);
-    
+
+          // Self-verification gate: hard math questions MUST have a non-trivial
+          // scratchpad. If the model failed to think through the problem, drop it
+          // so the top-up loop replaces it with a properly verified question.
+          if (
+            section === "math" &&
+            questionDifficulty === "Hard" &&
+            rawScratchpad.replace(/\s+/g, "").length < 12
+          ) {
+            return null;
+          }
+
           return {
             passage: finalPassage,
             question: questionText,
@@ -871,10 +1163,24 @@ ${difficulty && difficulty !== "Mixed"
             section: section === "math" ? "Math" : "Reading & Writing",
             graphData: sanitizeGraphData(q.graphData),
             desmosExpression: sanitizeDesmosExpression(q.desmosExpression),
+            passageDomain: q.passageDomain || null,
+            // Internal-only — stripped before persist/response. See stripInternalFields().
+            _scratchpad: rawScratchpad,
           };
         });
 
       return transformed.flatMap((q) => (q ? [q] : []));
+    };
+
+    /**
+     * Strip internal-only fields (e.g. `_scratchpad`) before persisting to the DB
+     * or returning to the client. Always call before the final response or
+     * Prisma write.
+     */
+    const stripInternalFields = <T extends Record<string, any>>(question: T): T => {
+      const cleaned: Record<string, any> = { ...question };
+      delete cleaned._scratchpad;
+      return cleaned as T;
     };
 
     const normalizeMathStem = (text: string) => {
@@ -903,10 +1209,16 @@ ${difficulty && difficulty !== "Mixed"
     const isNoChangeOption = (text: string) => /^no\s*change\b/i.test(normalizeWritingOption(text));
 
     const extractMarkedTarget = (text: string) => {
-      const bracketMatch = String(text || "").match(/\[([^\]]+)\]/);
+      const raw = String(text || "");
+      const bracketMatch = raw.match(/\[([^\]]+)\]/);
       if (bracketMatch?.[1]) return bracketMatch[1].trim();
-      const boldMatch = String(text || "").match(/\*\*([^*]+)\*\*/);
+      const boldMatch = raw.match(/\*\*([^*]+)\*\*/);
       if (boldMatch?.[1]) return boldMatch[1].trim();
+      // Writing questions now quote the target word/phrase with standard or curly quotes.
+      const quoteMatch = raw.match(/["“]([^"”]{1,80})["”]/);
+      if (quoteMatch?.[1]) return quoteMatch[1].trim();
+      const singleQuoteMatch = raw.match(/['‘]([^'’]{1,80})['’]/);
+      if (singleQuoteMatch?.[1]) return singleQuoteMatch[1].trim();
       return "";
     };
 
@@ -991,7 +1303,7 @@ ${difficulty && difficulty !== "Mixed"
     })();
 
     const existingRwSignatures = new Set<string>();
-    if (section === "reading" || section === "writing") {
+    if (isRwSection(section)) {
       for (let start = 0; start < existingQuestionsForGeneration.length; start += 5) {
         const firstInBlock = existingQuestionsForGeneration[start];
         if (!firstInBlock) continue;
@@ -1002,48 +1314,14 @@ ${difficulty && difficulty !== "Mixed"
       }
     }
 
-    const ensureWritingTargetMarkup = (text: string) => {
-      if (!text) return text;
-      const normalized = text
-        .replace(/\*\*(.+?)\*\*/g, "[$1]")
-        .replace(/__(.+?)__/g, "[$1]")
-        .replace(/<([^>]+)>/g, "[$1]");
-
-      if (/\[[^\]]+\]/.test(normalized)) {
-        return normalized;
-      }
-
-      const phraseMatch = normalized.match(/([A-Za-z][A-Za-z'’-]*(?:\s+[A-Za-z][A-Za-z'’-]*){1,5})/);
-      if (!phraseMatch) {
-        return normalized;
-      }
-
-      return normalized.replace(phraseMatch[1], `[${phraseMatch[1]}]`);
-    };
-
     const isWordProblem = (text: string) => {
       return /percent|ratio|rate|speed|distance|time|hours|minutes|miles|cost|price|profit|loss|revenue|tickets|students|people|population|temperature|degrees|area|volume|length|width|height|mi|km|dollars|\$|per\s+hour|per\s+minute|per\s+day/i.test(text);
     };
 
-    const getMathDomain = (skill: string) => {
-      const normalized = skill.toLowerCase();
-      if (/linear|system|inequal|slope|intercept|function|graph/i.test(normalized)) {
-        return "Heart of Algebra";
-      }
-      if (/ratio|percent|stat|data|probab|scatter|table|chart|mean|median|mode|range/i.test(normalized)) {
-        return "Problem Solving & Data Analysis";
-      }
-      if (/quadratic|polynomial|exponent|radical|rational|nonlinear|function/i.test(normalized)) {
-        return "Passport to Advanced Math";
-      }
-      if (/geometry|circle|trig|triangle|angle|complex|coordinate/i.test(normalized)) {
-        return "Additional Topics";
-      }
-      return "Unknown";
-    };
+    const getMathDomain = (skill: string) => getMathTopicDomain(skill);
 
     const passesPassageRotation = (questions: any[]) => {
-      if (section !== "reading" && section !== "writing") return true;
+      if (!isRwSection(section)) return true;
       const blockSize = 5;
       let lastSignature = "";
       for (let start = 0; start < questions.length; start += blockSize) {
@@ -1146,6 +1424,33 @@ ${difficulty && difficulty !== "Mixed"
       return true;
     };
 
+    const passesUniqueSkillCategories = (questions: any[]) => {
+      if (topicLocked) return true;
+      const seen = new Set<string>();
+      for (const q of questions) {
+        const skill = normalizeCompare(String(q.skillCategory || q.skillFocus || ""));
+        if (!skill) continue;
+        if (seen.has(skill)) return false;
+        seen.add(skill);
+      }
+      return true;
+    };
+
+    const filterUniqueSkillCategories = (questions: any[]) => {
+      if (topicLocked) return questions;
+      const seen = new Set<string>();
+      return questions.filter((q, idx) => {
+        // After the first block of 5, allow skill repeats
+        if (idx >= 5) return true;
+        const skill = normalizeCompare(
+          String(q.skillCategory || q.skillFocus || "")
+        );
+        if (!skill || seen.has(skill)) return false;
+        seen.add(skill);
+        return true;
+      });
+    };
+
     const passesSetConstraints = (questions: any[]) => {
       const mathVarietyOk = topicLocked && section === "math" ? true : passesMathVariety(questions);
       const mathWordProblemsOk =
@@ -1154,7 +1459,8 @@ ${difficulty && difficulty !== "Mixed"
         passesPassageRotation(questions) &&
         mathVarietyOk &&
         mathWordProblemsOk &&
-        passesWritingOptionVariety(questions)
+        passesWritingOptionVariety(questions) &&
+        passesUniqueSkillCategories(questions)
       );
     };
 
@@ -1206,9 +1512,15 @@ ${difficulty && difficulty !== "Mixed"
         for (let attempt = 0; attempt < MAX_BLOCK_ATTEMPTS; attempt += 1) {
           if (isPastDeadline()) break;
           try {
+            const usedDomains = transformedAll
+              .map((q: any) => String(q.passageDomain || "")).filter(Boolean);
+            const domainHint = usedDomains.length > 0
+              ? ` Passage domains already used in this session: ${[...new Set(usedDomains)].join(", ")}. You MUST pick a completely different domain for this block.`
+              : "";
+
             const rwBlockExtra = topicLocked
-              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions. TOPIC LOCK: every question must target "${topicTrimmed}" only.${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`
-              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.`;
+              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions. TOPIC LOCK: every question must target "${topicTrimmed}" only.${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}${domainHint}`
+              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.${domainHint}`;
             const data = await getModelPayload(count, rwBlockExtra, { attempts: 1 });
             const blockPassage = data.passage;
             const transformed = applyConfigFilters(transformQuestions(data.questions, blockPassage));
@@ -1224,7 +1536,7 @@ ${difficulty && difficulty !== "Mixed"
             if (!signature) continue;
             if (existingRwSignatures.has(signature)) continue;
 
-            if ((section === "reading" || section === "writing") && unique.some((q) => !q.passage)) {
+            if (isRwSection(section) && unique.some((q) => !q.passage)) {
               continue;
             }
 
@@ -1287,18 +1599,21 @@ ${difficulty && difficulty !== "Mixed"
         const fastExtra =
           topicLocked || difficultyLocked
             ? `FAST MODE: One response, valid JSON.${topicLocked ? ` TOPIC LOCK "${topicTrimmed}" for every question.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty}.` : ""}`
-            : "FAST MODE: Return a complete, valid set in one response. Prioritize speed while keeping SAT style and valid JSON.";
+            : "FAST MODE: Return a complete, valid set in one response. Prioritize speed while keeping SAT style and valid JSON. Each question must use a DIFFERENT skillCategory.";
         const fastData = await getModelPayload(questionCount, fastExtra, {
           attempts: 1,
-          timeoutMs: questionCount >= 20 ? 45000 : 35000,
+          timeoutMs: Math.floor(generationDeadlineMs * 0.4),
         });
-        const fastTransformed = dedupeAndFilterNearDuplicates(
-          applyConfigFilters(transformQuestions(fastData.questions, fastData.passage))
+        const fastTransformed = filterUniqueSkillCategories(
+          dedupeAndFilterNearDuplicates(
+            applyConfigFilters(transformQuestions(fastData.questions, fastData.passage))
+          )
         ).slice(0, questionCount);
         const hasEnough = fastTransformed.length >= questionCount;
         const rwHasPassages =
           section === "math" || fastTransformed.every((q: any) => !!q.passage);
-        if (hasEnough && rwHasPassages) {
+        const constraintsOk = passesSetConstraints(fastTransformed);
+        if (hasEnough && rwHasPassages && constraintsOk) {
           passage = fastData.passage;
           transformedAll = fastTransformed;
         }
@@ -1306,6 +1621,7 @@ ${difficulty && difficulty !== "Mixed"
         console.warn("Fast-path generation failed, falling back to block mode:", fastPathError);
       }
 
+      if (!isSmallSet || transformedAll.length < Math.ceil(questionCount * 0.6)) {
       for (
         let setAttempt = transformedAll.length >= questionCount ? MAX_SET_ATTEMPTS : 0;
         setAttempt < MAX_SET_ATTEMPTS;
@@ -1355,7 +1671,7 @@ ${difficulty && difficulty !== "Mixed"
                 invalidIndexes.add(i);
                 continue;
               }
-              if ((section === "reading" || section === "writing") && block.questions.some((q) => !q.passage)) {
+              if (isRwSection(section) && block.questions.some((q) => !q.passage)) {
                 invalidIndexes.add(i);
                 continue;
               }
@@ -1397,6 +1713,7 @@ ${difficulty && difficulty !== "Mixed"
         }
         break;
       }
+      }
     }
 
     // If deadline is hit, continue with whatever we have and fill the rest using fallback questions.
@@ -1408,25 +1725,40 @@ ${difficulty && difficulty !== "Mixed"
       ? uniqueQuestions.slice(0, questionCount)
       : transformedAll.slice(0, questionCount);
 
-    finalQuestions = filterAgainstExistingQuestions(finalQuestions);
+    finalQuestions = filterUniqueSkillCategories(
+      filterAgainstExistingQuestions(finalQuestions)
+    );
 
-    // Single top-up pass if the first generation came up short.
-    if (finalQuestions.length < questionCount && !isPastDeadline()) {
+    // Top-up loop if the first generation came up short.
+    const maxTopUpPasses = isSmallSet ? 3 : 2;
+    for (let topUpPass = 0; topUpPass < maxTopUpPasses && finalQuestions.length < questionCount; topUpPass += 1) {
+      const allowPastDeadline = isSmallSet || questionCount - finalQuestions.length <= 3;
+      if (isPastDeadline() && !allowPastDeadline) break;
       try {
         const missing = questionCount - finalQuestions.length;
         const chunkSize = Math.min(5, missing);
-        const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct from prior stems. Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
+        const usedSkills = finalQuestions
+          .map((q: any) => String(q.skillCategory || q.skillFocus || "").trim())
+          .filter(Boolean);
+        const skillHint =
+          !topicLocked && usedSkills.length > 0
+            ? ` Each new question MUST use a different skillCategory than: ${usedSkills.join(", ")}.`
+            : "";
+        const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct stems and scenarios from prior items.${skillHint} Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
         const topUpData = await getModelPayload(chunkSize, topUpExtra, {
           attempts: 1,
-          timeoutMs: 30000,
+          timeoutMs: isSmallSet ? 28000 : 35000,
         });
         const topUpTransformed = applyConfigFilters(
           transformQuestions(topUpData.questions, topUpData.passage)
         );
-        const combined = dedupeAndFilterNearDuplicates([...finalQuestions, ...topUpTransformed]);
+        const combined = filterUniqueSkillCategories(
+          dedupeAndFilterNearDuplicates([...finalQuestions, ...topUpTransformed])
+        );
         finalQuestions = filterAgainstExistingQuestions(combined).slice(0, questionCount);
       } catch (topUpError) {
         console.warn("Practice generation top-up failed:", topUpError);
+        break;
       }
     }
 
@@ -1446,11 +1778,25 @@ ${difficulty && difficulty !== "Mixed"
         ? `Generated ${finalQuestions.length} of ${questionCount} requested questions.`
         : undefined;
 
-    if (section === "reading" && !passage && finalQuestions.every((q: any) => !q.passage)) {
+    if (isRwSection(section) && !passage && finalQuestions.every((q: any) => !q.passage)) {
       throw new Error("Reading passage is required for reading questions.");
     }
 
-    const normalizedQuestions = finalQuestions.map((q: any, idx: number) => ({ ...q, id: idx + 1 }));
+    // Compute fingerprints from the final question set BEFORE we strip internal
+    // fields so we can append them to the user's seen-list for next time.
+    const newFingerprints = computeFingerprints(
+      finalQuestions.map((q: any) => ({
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        skillCategory: q.skillCategory,
+        skillFocus: q.skillFocus,
+      }))
+    );
+
+    const normalizedQuestions = finalQuestions
+      .map((q: any) => stripInternalFields(q))
+      .map((q: any, idx: number) => ({ ...q, id: idx + 1 }));
 
     if (shouldUseCache && !cacheIsValid && normalizedQuestions.length === questionCount) {
       setCachedValue(cacheKey, { passage, questions: normalizedQuestions });
@@ -1504,6 +1850,21 @@ ${difficulty && difficulty !== "Mixed"
         },
       });
       practiceTestId = practiceTest.id;
+    }
+
+    // Append the newly generated fingerprints to the user's seen-list so future
+    // generations can avoid them. Single update; capped to MAX_FINGERPRINTS in
+    // mergeFingerprints.
+    if (newFingerprints.length > 0) {
+      try {
+        const merged = mergeFingerprints(seenFingerprintList, newFingerprints);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { seenQuestionFingerprints: JSON.stringify(merged) },
+        });
+      } catch (fpWriteError) {
+        console.warn("Failed to persist seen fingerprints:", fpWriteError);
+      }
     }
 
     const responseBody = cachedResponse

@@ -20,7 +20,7 @@ const websiteJsonLd = {
   name: "PeakPrep",
   url: "https://peakprep.app",
   description:
-    "PeakPrep personalizes SAT prep with AI study plans, practice tests, lessons, and flashcards.",
+    "PeakPrep personalizes SAT prep with AI study plans, practice tests, and lessons.",
   potentialAction: {
     "@type": "SearchAction",
     target: "https://peakprep.app/lessons",

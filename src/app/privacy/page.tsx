@@ -52,7 +52,7 @@ export default function PrivacyPolicy() {
               <div>
                 <h3 className="font-semibold text-slate-900 mb-2">Usage Data</h3>
                 <p className="leading-relaxed">
-                  We collect data about how you use Peak Prep, including practice tests you complete, flashcards you create, study plans you generate, and your progress and scores. This data helps us provide and improve our services.
+                  We collect data about how you use Peak Prep, including practice tests you complete, study plans you generate, and your progress and scores. This data helps us provide and improve our services.
                 </p>
               </div>
               <div>
@@ -79,7 +79,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 mb-3">AI-Generated Content</h2>
             <p className="text-slate-700 leading-relaxed">
-              Peak Prep uses artificial intelligence (OpenAI) to generate practice questions, flashcards, study plans, and educational content. This content is created for educational purposes only and is not official SAT® material. We do not guarantee the accuracy or completeness of AI-generated content, and it should be used as a study aid, not a replacement for official SAT® preparation materials.
+              Peak Prep uses artificial intelligence (OpenAI) to generate practice questions, study plans, and educational content. This content is created for educational purposes only and is not official SAT® material. We do not guarantee the accuracy or completeness of AI-generated content, and it should be used as a study aid, not a replacement for official SAT® preparation materials.
             </p>
           </section>
 
@@ -100,7 +100,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-slate-900 mb-3">Data Retention</h2>
             <p className="text-slate-700 leading-relaxed">
-              We retain your account and usage data (practice tests, flashcards, study plans, progress) until you delete your account. Once you request account deletion, we remove your personal data and associated content from our systems. Server logs and operational data may be retained for a limited period (e.g., up to 90 days) for security and troubleshooting. Data processed by third parties (such as Stripe and OpenAI) is retained according to their respective policies.
+              We retain your account and usage data (practice tests, study plans, progress) until you delete your account. Once you request account deletion, we remove your personal data and associated content from our systems. Server logs and operational data may be retained for a limited period (e.g., up to 90 days) for security and troubleshooting. Data processed by third parties (such as Stripe and OpenAI) is retained according to their respective policies.
             </p>
           </section>
 

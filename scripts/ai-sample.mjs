@@ -26,11 +26,6 @@ const scenarios = [
     body: { section: "writing", questionCount: 5, topic: "comma usage", difficulty: "Easy" },
   },
   {
-    name: "flashcards-quadratics",
-    endpoint: "/api/generate-flashcards",
-    body: { topic: "quadratic equations" },
-  },
-  {
     name: "lesson-grammar",
     endpoint: "/api/ai/lessons",
     body: { topic: "subject-verb agreement", difficulty: "easy" },

@@ -14,77 +14,6 @@ function truncateWords(text: string, maxWords: number): string {
 }
 
 /**
- * Validates flashcard format
- */
-export function validateFlashcardFormat(card: any): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!card.front || typeof card.front !== "string") {
-    errors.push("Front is required and must be a string");
-  } else {
-    const frontWords = card.front.trim().split(/\s+/).length;
-    if (frontWords < 1 || frontWords > 4) {
-      errors.push(`Front must be 1-4 words (found ${frontWords})`);
-    }
-  }
-
-  if (!card.back || typeof card.back !== "string") {
-    errors.push("Back is required and must be a string");
-  } else {
-    const backText: string = String(card.back).trim();
-    const lines = backText
-      .split("\n")
-      .map((line: string) => line.trim())
-      .filter((line: string) => Boolean(line));
-    if (lines.length < 3 || lines.length > 5) {
-      errors.push(`Back must be 3-5 lines (found ${lines.length})`);
-    }
-    if (lines.length > 0 && lines[0].startsWith("•")) {
-      errors.push("First line must be a definition/key idea (not a bullet)");
-    }
-    const bulletLines = lines.filter((line: string) => line.startsWith("•"));
-    const tipLines = bulletLines.filter((line: string) => /^•\s*Tip:/i.test(line));
-    const exampleLines = bulletLines.filter((line: string) => /^•\s*Example:/i.test(line));
-    const keyLines = bulletLines.filter((line: string) => !/^•\s*(Tip|Example):/i.test(line));
-
-    if (keyLines.length < 2 || keyLines.length > 3) {
-      errors.push(`Back must include 2-3 key-point bullets (found ${keyLines.length})`);
-    }
-    if (tipLines.length !== 1) {
-      errors.push(`Back must include exactly 1 tip bullet starting with "Tip:" (found ${tipLines.length})`);
-    }
-    if (exampleLines.length > 1) {
-      errors.push(`Back can include at most 1 example bullet (found ${exampleLines.length})`);
-    }
-
-    for (const keyLine of keyLines) {
-      const words = keyLine.replace(/^•\s*/, "").split(/\s+/).filter(Boolean).length;
-      if (words > 15) {
-        errors.push(`Key-point bullets must be <=15 words: "${keyLine}"`);
-      }
-    }
-
-    const lowerSet = new Set<string>();
-    for (const line of lines) {
-      const normalized = line.toLowerCase();
-      if (lowerSet.has(normalized)) {
-        errors.push("Back contains repeated lines");
-        break;
-      }
-      lowerSet.add(normalized);
-    }
-  }
-
-  // Difficulty and tag are optional; route will default to Medium / Grammar
-  if (card.difficulty && !["Easy", "Medium", "Hard"].includes(card.difficulty)) {
-    errors.push("Difficulty must be Easy, Medium, or Hard");
-  }
-  // Tag can be missing; we default it when saving
-
-  return { valid: errors.length === 0, errors };
-}
-
-/**
  * Validates question format
  */
 export function validateQuestionFormat(question: any): { valid: boolean; errors: string[] } {
@@ -274,94 +203,6 @@ export function applyBoldToMarkedTarget(text: string): { text: string; valid: bo
   return { text, valid: false };
 }
 
-export function ensureFlashcardBackFormat(card: any): { card: any; valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  const term = typeof card.front === "string" ? card.front.trim() : "Concept";
-  const rawBack = typeof card.back === "string" ? card.back.trim() : "";
-  if (!rawBack) {
-    errors.push("Back is required");
-    return { card, valid: false, errors };
-  }
-
-  const normalizeLine = (text: string, maxWords: number) =>
-    text
-      .replace(/\bSAT\b/gi, "")
-      .replace(/\*\*/g, "")
-      .replace(/\s+/g, " ")
-      .replace(/\s([,.;:!?])/g, "$1")
-      .trim()
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, maxWords)
-      .join(" ")
-      .replace(/[,:;\-–—]\s*$/, "")
-      .trim();
-
-  const lines: string[] = rawBack
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter((line: string) => Boolean(line));
-
-  const contentLines = lines.filter((line: string) => !line.startsWith("•"));
-  const bulletLines = lines.filter((line: string) => line.startsWith("•"));
-  const joinedContent = contentLines.join(" | ");
-  const fromLine = (regex: RegExp, source: string) => source.match(regex)?.[1]?.trim() || "";
-
-  const definitionSeed =
-    fromLine(/(?:What this tests|Definition|Key idea):\s*([^|]+)/i, joinedContent) ||
-    contentLines[0] ||
-    `${term} is a high-frequency rule tested in revision questions.`;
-  const definitionLine = normalizeLine(definitionSeed, 20).replace(/\.$/, "") + ".";
-
-  const keyCandidates = [
-    fromLine(/How it appears:\s*([^|]+)/i, joinedContent),
-    fromLine(/What this tests:\s*([^|]+)/i, joinedContent),
-    ...bulletLines
-      .filter((line) => !/^•\s*(Tip|Example):/i.test(line))
-      .map((line) => line.replace(/^•\s*/, "")),
-  ]
-    .map((line) => normalizeLine(line, 15))
-    .filter(Boolean);
-
-  const uniqueKeys: string[] = [];
-  for (const key of keyCandidates) {
-    const normalized = key.toLowerCase();
-    if (!uniqueKeys.some((existing) => existing.toLowerCase() === normalized)) {
-      uniqueKeys.push(key);
-    }
-  }
-  while (uniqueKeys.length < 2) {
-    uniqueKeys.push(
-      uniqueKeys.length === 0
-        ? normalizeLine("identify the grammar rule before checking choices", 15)
-        : normalizeLine("eliminate options that break clarity or correctness", 15)
-    );
-  }
-  const keyLines = uniqueKeys.slice(0, 3).map((line) => `• ${line}`);
-
-  const rawExample =
-    bulletLines.find((line) => /^•\s*Example:/i.test(line))?.replace(/^•\s*Example:\s*/i, "") ||
-    (lines.find((line) => /example[:\s]/i.test(line)) || "").replace(/^.*example[:\s]*/i, "");
-  const exampleLine = rawExample ? `• Example: ${normalizeLine(rawExample, 12)}` : "";
-
-  const rawTip =
-    bulletLines.find((line) => /^•\s*Tip:/i.test(line))?.replace(/^•\s*Tip:\s*/i, "") ||
-    fromLine(/(?:Quick\s+)?Tip:\s*([^|]+)/i, joinedContent) ||
-    "underline the key signal word before choosing";
-  const tipLine = `• Tip: ${normalizeLine(rawTip, 12)}`;
-
-  const rebuiltLines = [definitionLine, ...keyLines];
-  if (exampleLine && rebuiltLines.length < 4) {
-    rebuiltLines.push(exampleLine);
-  }
-  rebuiltLines.push(tipLine);
-
-  const rebuilt = rebuiltLines.slice(0, 5).join("\n");
-  card.back = rebuilt;
-  const validation = validateFlashcardFormat(card);
-  return { card, valid: validation.valid, errors: validation.errors };
-}
-
 export function ensureTaskDuration(task: string): string {
   if (!task || typeof task !== "string") return task;
   const hasDuration = /\b\d{1,2}\s?(?:-|–)?\s?\d{1,2}?\s?(?:min|mins|minutes)\b/i.test(task);
@@ -471,8 +312,56 @@ export function hasGenericSatStem(text: string): boolean {
   );
 }
 
+/**
+ * Canonical Digital SAT R&W question stems (paraphrased to match what the model
+ * actually emits — exact-string matching is too strict because the model varies
+ * minor wording). Used by `looksLikeSatStem` to confirm authentic stem style.
+ */
+const RW_CANONICAL_STEM_PATTERNS: RegExp[] = [
+  /\bmost logical and precise word or phrase\b/i,
+  /\bmost logically completes the text\b/i,
+  /\bmain purpose of the text\b/i,
+  /\boverall structure of the text\b/i,
+  /\bfunction of the underlined sentence\b/i,
+  /\bas used in the text,? what does the word\b/i,
+  /\bsentence pattern already established\b/i,
+  /\bmost logically connects (?:the|two) (?:two )?sentences\b/i,
+  /\b(?:transition word or phrase|transition)\b.*\bconnects\b/i,
+  /\bmost directly support(?:s)? the (?:claim|researcher's|author's)\b/i,
+  /\bhow would (?:author 2|author 1|the second author|the first author)\b/i,
+  /\bmost effectively uses relevant information from the notes\b/i,
+];
+
+const MATH_CANONICAL_STEM_PATTERNS: RegExp[] = [
+  /\bwhat is the value of\b/i,
+  /\bwhich (?:value|equation|expression|inequality|function|graph)\b/i,
+  /\bhow many\b/i,
+  /\bwhat is the (?:total|sum|difference|product|ratio|average|mean|median|mode|range)\b/i,
+  /\bif\s+.+\s+(?:is|=|equals)\b/i,
+  /\bfunction f is defined by\b/i,
+  /\bin the xy-?plane\b/i,
+  /\bsystem of equations\b/i,
+];
+
+/**
+ * Boost on top of `likelySatStyleQuestion`: returns true when the stem matches
+ * one of the canonical Digital SAT templates (R&W) or follows authentic
+ * SAT math phrasing. Used as a soft-validator at generation time.
+ */
+export function looksLikeSatStem(
+  question: string,
+  section: "math" | "reading" | "writing" | "reading-writing"
+): boolean {
+  const stem = String(question || "").trim();
+  if (!stem) return false;
+  if (section === "math") {
+    return MATH_CANONICAL_STEM_PATTERNS.some((re) => re.test(stem));
+  }
+  return RW_CANONICAL_STEM_PATTERNS.some((re) => re.test(stem));
+}
+
 export function likelySatStyleQuestion(params: {
-  section: "math" | "reading" | "writing";
+  section: "math" | "reading" | "writing" | "reading-writing";
   question: string;
   passage?: string;
   options: string[];
@@ -494,16 +383,21 @@ export function likelySatStyleQuestion(params: {
   if (!p || p.length < 80) return false;
   if (hasGenericSatStem(q) && p.length < 120) return false;
 
-  if (section === "writing") {
-    const hasEditingSignal =
-      /\b(revision|sentence|punctuation|grammar|transition|concise|concision|standard written english|underlined|replace)\b/i.test(
-        q
-      );
-    return hasEditingSignal;
-  }
-
+  const hasWritingSignal =
+    /\b(revision|sentence|punctuation|grammar|transition|concise|concision|standard written english|underlined|replace)\b/i.test(
+      q
+    );
   const hasReadingSignal =
     /\b(passage|author|evidence|supports|implies|suggests|infer|central idea|purpose|tone|according to)\b/i.test(q);
+
+  if (section === "writing") {
+    return hasWritingSignal;
+  }
+
+  if (section === "reading-writing") {
+    return hasReadingSignal || hasWritingSignal;
+  }
+
   return hasReadingSignal;
 }
 

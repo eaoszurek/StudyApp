@@ -60,7 +60,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 2. **Click "Add product"**
 3. **Create your subscription product**:
    - **Name**: "Peak Prep Premium" (or your product name)
-   - **Description**: "Unlimited SAT practice tests, flashcards, and study plans"
+   - **Description**: "Unlimited SAT practice tests, study plans, and micro-lessons"
    - **Pricing model**: Recurring
    - **Price**: Set your monthly/yearly price (e.g., $9.99/month)
    - **Billing period**: Monthly or Yearly
@@ -158,7 +158,8 @@ The following files need to be created/updated (I'll help you with these):
 - [ ] `src/components/SettingsSidebar.tsx` - Add subscription management UI
 - [ ] `src/app/dashboard/page.tsx` - Show subscription status
 - [ ] `src/app/practice/page.tsx` - Check subscription for premium features
-- [ ] `src/app/flashcards/page.tsx` - Check subscription for premium features
+- [ ] `src/app/lessons/page.tsx` - Check subscription for premium features
+- [ ] `src/app/study-plan/page.tsx` - Check subscription for premium features
 
 ---
 
@@ -198,19 +199,17 @@ When ready for production:
 Consider these pricing tiers:
 
 1. **Free Tier**:
-   - Limited practice tests (e.g., 5 per month)
-   - Limited flashcards (e.g., 3 sets)
-   - Basic study plans
+   - Limited practice tests, study plans, and micro-lessons
+   - Basic progress tracking
 
-2. **Premium Monthly** ($9.99/month):
+2. **Premium Monthly** ($5/month):
    - Unlimited practice tests
-   - Unlimited flashcards
-   - Advanced study plans
-   - Progress tracking
+   - Full adaptive study plans
+   - Unlimited micro-lessons
+   - Trail Buddy AI help and detailed skill tracking
 
-3. **Premium Yearly** ($79.99/year - save ~33%):
-   - Same as monthly
-   - Better value for committed students
+3. **Premium Yearly** (optional):
+   - Same as monthly at a discounted annual rate
 
 ---
 

@@ -7,7 +7,6 @@ const FEATURE_PATHS = [
   "/dashboard",
   "/practice",
   "/study-plan",
-  "/flashcards",
   "/lessons",
   "/progress",
 ];

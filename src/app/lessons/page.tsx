@@ -7,9 +7,11 @@ import PageHeader from "@/components/ui/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
 import FeatureIcon from "@/components/ui/FeatureIcon";
-import { SAT_TOPICS } from "@/data/topics";
+import Link from "next/link";
+import { SAT_TOPICS, getMathTopicDomain } from "@/data/topics";
+import { markLessonCompleted } from "@/utils/lessonCompletion";
+import PremiumGateModal, { isPremiumGateError } from "@/components/PremiumGateModal";
 interface Lesson {
   title: string;
   goal: string;
@@ -22,7 +24,6 @@ interface Lesson {
     explanation?: string;
     explanation_incorrect?: Record<string, string>;
   }[];
-  relatedFlashcards: string[];
 }
 
 const splitIntoBullets = (text: string): string[] => {
@@ -72,40 +73,29 @@ export default function Lessons() {
   const [openDropdown, setOpenDropdown] = useState<"Math" | "Reading" | "Writing" | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const router = useRouter();
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    subscriptionStatus: string | null;
-    hasSubscription: boolean;
+
+  const [accessStatus, setAccessStatus] = useState<{
+    allowed: boolean;
+    isPremium: boolean;
   } | null>(null);
-  const [freeUsageCount, setFreeUsageCount] = useState(0);
+  const [showPremiumGateModal, setShowPremiumGateModal] = useState(false);
 
-  const handleRelatedFlashcardClick = (flashcardTopic: string) => {
-    // Navigate to flashcards page with topic in URL
-    router.push(`/flashcards?topic=${encodeURIComponent(flashcardTopic)}`);
-  };
-
-  // Check subscription status
   useEffect(() => {
-    const fetchSubscription = async () => {
+    const fetchAccessStatus = async () => {
       try {
-        const response = await fetch("/api/stripe/subscription-status");
+        const response = await fetch("/api/user/access-status");
         if (response.ok) {
           const data = await response.json();
-          setSubscriptionStatus({
-            subscriptionStatus: data.subscriptionStatus,
-            hasSubscription: data.hasSubscription,
+          setAccessStatus({
+            allowed: Boolean(data.allowed),
+            isPremium: Boolean(data.isPremium),
           });
         }
       } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
+        console.error("Failed to fetch access status:", error);
       }
     };
-    fetchSubscription();
-
-    // Get free tier usage count
-    const stored = localStorage.getItem("free_tier_usage");
-    const count = stored ? parseInt(stored, 10) : 0;
-    setFreeUsageCount(count);
+    fetchAccessStatus();
   }, []);
 
   // Close dropdown when clicking outside
@@ -153,12 +143,8 @@ export default function Lessons() {
       return;
     }
 
-    // Check free tier limit (1 use total across all features)
-    const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
-      setError(
-        `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
-      );
+    if (accessStatus && !accessStatus.isPremium && !accessStatus.allowed) {
+      setShowPremiumGateModal(true);
       return;
     }
 
@@ -177,25 +163,39 @@ export default function Lessons() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Failed to generate lesson.");
+        const message = data.error || "Failed to generate lesson.";
+        if (isPremiumGateError(res.status, message)) {
+          setShowPremiumGateModal(true);
+          setAccessStatus((prev) =>
+            prev ? { ...prev, allowed: false } : { allowed: false, isPremium: false }
+          );
+          return;
+        }
+        throw new Error(message);
       }
 
       const data = await res.json();
       setLesson(data);
 
-      // Increment free tier usage for free users
-      if (!subscriptionStatus?.hasSubscription) {
-        const newCount = freeUsageCount + 1;
-        setFreeUsageCount(newCount);
-        localStorage.setItem("free_tier_usage", newCount.toString());
-        // Set reset date if not set
-        const now = new Date();
-        const lastReset = localStorage.getItem("free_tier_usage_reset");
-        if (!lastReset) {
-          localStorage.setItem("free_tier_usage_reset", now.toISOString());
+      if (!accessStatus?.isPremium) {
+        try {
+          const statusRes = await fetch("/api/user/access-status");
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            setAccessStatus({
+              allowed: Boolean(statusData.allowed),
+              isPremium: Boolean(statusData.isPremium),
+            });
+          }
+        } catch {
+          // ignore refresh errors
         }
       }
     } catch (err: any) {
+      if (isPremiumGateError(0, err?.message || "")) {
+        setShowPremiumGateModal(true);
+        return;
+      }
       setError(err.message || "Failed to generate lesson.");
     } finally {
       setLoading(false);
@@ -211,6 +211,10 @@ export default function Lessons() {
     setSelectedAnswers({ ...selectedAnswers, [questionIndex]: answer });
     // Automatically show answer when selected
     setShowAnswers({ ...showAnswers, [questionIndex]: true });
+    // Mark this lesson as completed once the student engages with at least one
+    // practice question at the end of the lesson.
+    const topicForCompletion = (selectedTopic || topic || "").trim();
+    if (topicForCompletion) markLessonCompleted(topicForCompletion);
   };
 
   const toggleAnswer = (questionIndex: number) => {
@@ -265,12 +269,12 @@ export default function Lessons() {
         />
       )}
 
-      {subscriptionStatus && !subscriptionStatus.hasSubscription && (
+      {accessStatus && !accessStatus.isPremium && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                {freeUsageCount >= 1 ? "Free Starter Used" : "Free Starter: 1 checkpoint remaining"}
+                {accessStatus.allowed ? "Free Starter: 1 checkpoint remaining" : "Free Starter Used"}
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 font-medium">
                 Unlock unlimited practice tests, adaptive plans, and Trail Buddy for $5/month
@@ -302,6 +306,11 @@ export default function Lessons() {
           </div>
         </div>
       )}
+
+      <PremiumGateModal
+        open={showPremiumGateModal}
+        onClose={() => setShowPremiumGateModal(false)}
+      />
 
       {!lesson ? (
         <>
@@ -453,7 +462,7 @@ export default function Lessons() {
 
           {/* Practice Questions */}
           <GlassPanel className="mb-6">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
               <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Practice Questions</h3>
               <PrimaryButton variant="secondary" onClick={generateMorePractice} disabled={loading}>
                 {loading ? "Generating..." : "Generate More Practice"}
@@ -561,26 +570,38 @@ export default function Lessons() {
             </div>
           </GlassPanel>
 
-          {/* Related Flashcards */}
-          {lesson.relatedFlashcards && lesson.relatedFlashcards.length > 0 && (
-            <GlassPanel>
-              <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-4">Related Flashcards</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 font-medium">
-                Click on any topic to generate flashcards for practice
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {lesson.relatedFlashcards.map((flashcard, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleRelatedFlashcardClick(flashcard)}
-                    className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-600 hover:border-sky-400 dark:hover:border-sky-500 transition-colors cursor-pointer"
+          {/* Cross-feature CTA: drill this topic in Practice now that the lesson is done. */}
+          {(() => {
+            const drillTopic = (selectedTopic || topic || "").trim();
+            if (!drillTopic) return null;
+            const isMathTopic = getMathTopicDomain(drillTopic) !== "Unknown";
+            const practiceSection = isMathTopic ? "math" : "reading-writing";
+            const practiceHref = `/practice?autostart=1&section=${encodeURIComponent(practiceSection)}&topic=${encodeURIComponent(drillTopic)}&difficulty=Mixed&questions=10`;
+            return (
+              <GlassPanel className="mb-6 border border-sky-200 dark:border-sky-700 bg-sky-50/70 dark:bg-sky-900/20">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs uppercase tracking-[0.3em] text-sky-700 dark:text-sky-300 font-semibold">
+                      Next step
+                    </p>
+                    <h4 className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+                      Now drill this topic
+                    </h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 font-medium">
+                      Lock in what you just learned with a focused {drillTopic} practice set.
+                    </p>
+                  </div>
+                  <Link
+                    href={practiceHref}
+                    className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white text-sm font-bold transition-all border-2 border-sky-600 shadow-[0_4px_0_rgba(14,165,233,0.3)] hover:-translate-y-0.5 active:translate-y-1"
                   >
-                    {flashcard} →
-                  </button>
-                ))}
-              </div>
-            </GlassPanel>
-          )}
+                    Start a {drillTopic} practice test
+                    <span aria-hidden>→</span>
+                  </Link>
+                </div>
+              </GlassPanel>
+            );
+          })()}
 
           {error && (
             <GlassPanel className="mt-6 border border-rose-500/30 dark:border-rose-500/50 bg-rose-50 dark:bg-rose-900/30">

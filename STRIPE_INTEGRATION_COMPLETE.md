@@ -15,8 +15,11 @@ All Stripe integration code has been implemented! Here's what was created:
 1. **`src/lib/auth.ts`** - Added subscription status to session user interface
 2. **`src/components/SettingsSidebar.tsx`** - Added subscription management UI
 3. **`src/app/dashboard/page.tsx`** - Added subscription status banner
-4. **`src/app/practice/page.tsx`** - Added free tier limits (5 tests/month) and upgrade prompts
-5. **`src/app/flashcards/page.tsx`** - Added free tier limits (3 sets) and upgrade prompts
+4. **`src/app/practice/page.tsx`** - Added free tier limits and upgrade prompts
+5. **`src/app/lessons/page.tsx`** - Added free tier limits and upgrade prompts
+6. **`src/app/study-plan/page.tsx`** - Added free tier limits and upgrade prompts
+
+> **Note:** Flashcards were removed from the product. Micro-Lessons replaced that workflow.
 
 ## Features Implemented
 
@@ -27,13 +30,12 @@ All Stripe integration code has been implemented! Here's what was created:
 - Subscription status tracking in database
 
 ### ✅ Free Tier Limits
-- **Practice Tests**: 5 per month for free users
-- **Flashcard Sets**: 3 for free users
+- **Combined AI usage**: 1 free generation across practice tests, study plans, and micro-lessons (enforced server-side via `premiumGate.ts`)
 - Premium users get unlimited access
 
 ### ✅ UI Components
 - Subscription status display in settings sidebar
-- Upgrade prompts on dashboard, practice, and flashcards pages
+- Upgrade prompts on dashboard, practice, lessons, and study-plan pages
 - Premium badge for active subscribers
 
 ## Next Steps

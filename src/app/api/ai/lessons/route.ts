@@ -24,7 +24,6 @@ const LessonResponseSchema = z.object({
   explanation: z.array(z.string()),
   example: z.string(),
   practice: z.array(LessonPracticeQuestionSchema),
-  relatedFlashcards: z.array(z.string())
 });
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
 import { rateLimit } from "@/lib/rate-limit";
@@ -131,8 +130,7 @@ FORMAT:
         "D": "string (why this answer is wrong)"
       }
     }
-  ],
-  "relatedFlashcards": ["string", "string"]
+  ]
 }
 
 RULES (Tutor-like approach):
@@ -155,9 +153,6 @@ RULES (Tutor-like approach):
 - If the user does not give difficulty, default to easy.
 - If the topic is not SAT-related, redirect by giving a simple SAT-relevant version of it.
 - Generate 1-2 practice questions that reinforce the lesson.
-- If generating 2 practice questions, make them different in format and avoid repeating stems.
-- If the topic is Math, include at least one word problem in the practice questions.
-- Related flashcards should be 2-4 relevant terms/concepts that connect to this lesson.
 - Make explanations encouraging and educational - help students understand, not just memorize.
 - Format all text cleanly - no unbroken blobs of text, use proper line breaks where needed.
 - Use **bold** sparingly (1-2 per section) to emphasize key terms or rules.
@@ -304,15 +299,6 @@ Return ONLY valid JSON. No markdown, no commentary, no extra text.`,
     }
     if (data.practice.length === 0) {
       throw new Error("Failed to generate valid practice questions. Please retry.");
-    }
-
-    // Ensure relatedFlashcards is an array and clean
-    if (!Array.isArray(data.relatedFlashcards)) {
-      data.relatedFlashcards = [];
-    } else {
-      data.relatedFlashcards = data.relatedFlashcards
-        .map((flashcard: string) => cleanText(truncateText(flashcard, 50)))
-        .filter((flashcard: string) => flashcard.length > 0);
     }
 
     const { user } = accessContext;

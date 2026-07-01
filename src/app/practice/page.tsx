@@ -6,17 +6,28 @@ import PageHeader from "@/components/ui/PageHeader";
 import PrimaryButton from "@/components/ui/PrimaryButton";
 import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import { motion } from "framer-motion";
-import { calculateSectionScore, getPercentile, getScoreInterpretation } from "@/utils/satScoring";
-import { MIN_ESTIMATE_QUESTIONS, savePracticeSession } from "@/utils/scoreTracking";
-import WritingQuestion from "@/components/ui/WritingQuestion";
+import { calculateSectionScore } from "@/utils/satScoring";
+import { savePracticeSession } from "@/utils/scoreTracking";
+import { recordPracticeDay } from "@/utils/streakTracking";
+import { recordWeeklyPractice } from "@/utils/weeklyGoal";
 import FeatureIcon from "@/components/ui/FeatureIcon";
-import DesmosCalculator from "@/components/ui/DesmosCalculator";
-import { Calculator, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import QuestionChart, { type QuestionGraphData } from "@/components/ui/QuestionChart";
 import DesmosGraph from "@/components/ui/DesmosGraph";
 import { getTopicsForSection } from "@/data/topics";
-type SectionType = "math" | "reading" | "writing";
+import PracticeTopBar from "@/components/practice/PracticeTopBar";
+import TopicConfigSelect from "@/components/practice/TopicConfigSelect";
+import PracticeBottomBar from "@/components/practice/PracticeBottomBar";
+import PracticeCalculatorPanel from "@/components/practice/PracticeCalculatorPanel";
+import PracticeResultsHeader from "@/components/practice/PracticeResultsHeader";
+import ConfidenceRow from "@/components/practice/ConfidenceRow";
+import PremiumGateModal, { isPremiumGateError } from "@/components/PremiumGateModal";
+type SectionType = "math" | "reading-writing";
 type OptionLetter = "A" | "B" | "C" | "D";
+type Confidence = "got_it" | "unsure" | "no_idea";
+
+const TIMER_PREF_KEY = "peakprep_show_timer";
+const CONFIDENCE_PREFIX = "peakprep_practice_confidence_";
 
 interface PracticeQuestion {
   id: number;
@@ -61,6 +72,7 @@ interface PracticeProgressSnapshot {
   score: number;
   satScore: { scaled: number; raw: number; maxRaw: number } | null;
   userAnswers: Record<number, OptionLetter>;
+  userConfidence?: Record<number, Confidence>;
   targetQuestionCount: number;
 }
 
@@ -102,27 +114,22 @@ const renderFormattedText = (text: string) => {
 
 export default function PracticeTests() {
   // Check subscription status and free usage
-  React.useEffect(() => {
-    const fetchSubscription = async () => {
+  React.  useEffect(() => {
+    const fetchAccessStatus = async () => {
       try {
-        const response = await fetch("/api/stripe/subscription-status");
+        const response = await fetch("/api/user/access-status");
         if (response.ok) {
           const data = await response.json();
-          setSubscriptionStatus({
-            subscriptionStatus: data.subscriptionStatus,
-            hasSubscription: data.hasSubscription,
+          setAccessStatus({
+            allowed: Boolean(data.allowed),
+            isPremium: Boolean(data.isPremium),
           });
         }
       } catch (error) {
-        console.error("Failed to fetch subscription status:", error);
+        console.error("Failed to fetch access status:", error);
       }
     };
-    fetchSubscription();
-
-    // Get free tier usage count
-    const stored = localStorage.getItem("free_tier_usage");
-    const count = stored ? parseInt(stored, 10) : 0;
-    setFreeUsageCount(count);
+    fetchAccessStatus();
   }, []);
   
   const [testType, setTestType] = useState<SectionType | null>(null);
@@ -143,14 +150,17 @@ export default function PracticeTests() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userAnswers, setUserAnswers] = useState<Record<number, OptionLetter>>({});
-  const [subscriptionStatus, setSubscriptionStatus] = useState<{
-    subscriptionStatus: string | null;
-    hasSubscription: boolean;
+  const [userConfidence, setUserConfidence] = useState<Record<number, Confidence>>({});
+  const [accessStatus, setAccessStatus] = useState<{
+    allowed: boolean;
+    isPremium: boolean;
   } | null>(null);
-  const [freeUsageCount, setFreeUsageCount] = useState(0);
+  const [showPremiumGateModal, setShowPremiumGateModal] = useState(false);
   const [targetQuestionCount, setTargetQuestionCount] = useState(5);
   const [isBatchLoading, setIsBatchLoading] = useState(false);
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
+  const [batchFailureDismissed, setBatchFailureDismissed] = useState(false);
+  const [pendingResume, setPendingResume] = useState<PracticeProgressSnapshot | null>(null);
   const [practiceHydrated, setPracticeHydrated] = useState(false);
   const [showCalculator, setShowCalculator] = useState(false);
   const [selectedReviewIndex, setSelectedReviewIndex] = useState<number | null>(null);
@@ -160,6 +170,46 @@ export default function PracticeTests() {
   const [trailBuddyError, setTrailBuddyError] = useState<string | null>(null);
   const [trailBuddyStepMode, setTrailBuddyStepMode] = useState(false);
   const [reviewExplanationOpen, setReviewExplanationOpen] = useState(false);
+  const [explanationCache, setExplanationCache] = useState<
+    Record<
+      number,
+      {
+        explanation_correct: string;
+        explanation_incorrect: Record<string, string>;
+        strategy_tip: string;
+      }
+    >
+  >({});
+  const [explanationLoading, setExplanationLoading] = useState<Record<number, boolean>>({});
+  const [explanationError, setExplanationError] = useState<Record<number, string>>({});
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [timerPaused, setTimerPaused] = useState(false);
+  // Timer is hidden by default. Once the user toggles, we persist their choice.
+  const [timerHidden, setTimerHidden] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(TIMER_PREF_KEY);
+    if (stored === "show") setTimerHidden(false);
+    else if (stored === "hide") setTimerHidden(true);
+    // Default (no stored preference) keeps timer hidden.
+  }, []);
+
+  const handleToggleTimerVisibility = () => {
+    setTimerHidden((prev) => {
+      const next = !prev;
+      try {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(TIMER_PREF_KEY, next ? "hide" : "show");
+        }
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+  const [splitLeftPct, setSplitLeftPct] = useState(50);
+  const splitContainerRef = React.useRef<HTMLDivElement | null>(null);
   const batchLoadingRef = React.useRef(false);
   const sectionTopics = testType ? getTopicsForSection(testType) : [];
   const isProgressiveMode = targetQuestionCount > 5;
@@ -176,25 +226,63 @@ export default function PracticeTests() {
   }, [testType, showResults, practiceSet]);
 
   useEffect(() => {
+    if (!practiceSet || showResults || timerPaused) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [practiceSet, showResults, timerPaused]);
+
+  const isTestActive = Boolean(practiceSet) && !showResults;
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    if (isTestActive) {
+      document.body.setAttribute("data-hide-nav", "true");
+    } else {
+      document.body.removeAttribute("data-hide-nav");
+    }
+    return () => {
+      document.body.removeAttribute("data-hide-nav");
+    };
+  }, [isTestActive]);
+
+  const applyResumeSnapshot = (parsed: PracticeProgressSnapshot) => {
+    setTestType(parsed.testType);
+    setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
+    setPracticeSet(parsed.practiceSet);
+    setCurrentTestId(parsed.currentTestId || null);
+    currentTestIdRef.current = parsed.currentTestId || null;
+    setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
+    setSelectedAnswer(parsed.selectedAnswer || null);
+    setShowResults(Boolean(parsed.showResults));
+    setScore(parsed.score || 0);
+    setSatScore(parsed.satScore || null);
+    setUserAnswers(parsed.userAnswers || {});
+    setUserConfidence(parsed.userConfidence || {});
+    setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
+    setShowConfig(false);
+    setPendingResume(null);
+    setBatchLoadError(null);
+    setBatchFailureDismissed(false);
+  };
+
+  const handleStartFresh = () => {
+    localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+    setPendingResume(null);
+  };
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(PRACTICE_PROGRESS_KEY);
       if (!saved) return;
       const parsed = JSON.parse(saved) as PracticeProgressSnapshot;
       if (!parsed || !parsed.practiceSet || !parsed.testType) return;
-
-      setTestType(parsed.testType);
-      setConfig(parsed.config || { questionCount: 5, topic: "", difficulty: "Mixed" });
-      setPracticeSet(parsed.practiceSet);
-      setCurrentTestId(parsed.currentTestId || null);
-      currentTestIdRef.current = parsed.currentTestId || null;
-      setCurrentQuestion(Math.max(0, parsed.currentQuestion || 0));
-      setSelectedAnswer(parsed.selectedAnswer || null);
-      setShowResults(Boolean(parsed.showResults));
-      setScore(parsed.score || 0);
-      setSatScore(parsed.satScore || null);
-      setUserAnswers(parsed.userAnswers || {});
-      setTargetQuestionCount(parsed.targetQuestionCount || parsed.config?.questionCount || 5);
-      setShowConfig(false);
+      if (parsed.showResults) {
+        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        return;
+      }
+      setPendingResume(parsed);
     } catch (restoreError) {
       console.error("Failed to restore practice progress:", restoreError);
     } finally {
@@ -206,7 +294,9 @@ export default function PracticeTests() {
     if (!practiceHydrated) return;
     try {
       if (!practiceSet || !testType) {
-        localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        if (!pendingResume) {
+          localStorage.removeItem(PRACTICE_PROGRESS_KEY);
+        }
         return;
       }
       const snapshot: PracticeProgressSnapshot = {
@@ -220,6 +310,7 @@ export default function PracticeTests() {
         score,
         satScore,
         userAnswers,
+        userConfidence,
         targetQuestionCount,
       };
       localStorage.setItem(PRACTICE_PROGRESS_KEY, JSON.stringify(snapshot));
@@ -237,8 +328,10 @@ export default function PracticeTests() {
     score,
     satScore,
     userAnswers,
+    userConfidence,
     targetQuestionCount,
     practiceHydrated,
+    pendingResume,
   ]);
 
   const fetchPracticeBatchWithRetry = async (
@@ -270,8 +363,12 @@ export default function PracticeTests() {
           if (res.status === 429 || res.status >= 500) {
             shouldRetry = true;
           }
-          const error = new Error(message) as Error & { shouldRetry?: boolean };
+          const error = new Error(message) as Error & {
+            shouldRetry?: boolean;
+            isPremiumGate?: boolean;
+          };
           error.shouldRetry = shouldRetry;
+          error.isPremiumGate = isPremiumGateError(res.status, message);
           throw error;
         }
         return (await res.json()) as PracticeSet & { id?: string };
@@ -291,6 +388,69 @@ export default function PracticeTests() {
     throw lastError ?? new Error("practice_request_failed");
   };
 
+  const loadProgressiveBatchRef = React.useRef<() => Promise<boolean>>(async () => false);
+
+  loadProgressiveBatchRef.current = async (): Promise<boolean> => {
+    if (!practiceSet || !testType || !currentTestIdRef.current) return false;
+    const remaining = targetQuestionCount - practiceSet.questions.length;
+    if (remaining <= 0) return true;
+
+    batchLoadingRef.current = true;
+    setIsBatchLoading(true);
+    setBatchLoadError(null);
+
+    try {
+      const batchSize = Math.min(5, remaining);
+      const nextBatch = await fetchPracticeBatchWithRetry({
+        section: testType,
+        questionCount: batchSize,
+        topic: config.topic || undefined,
+        difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
+        existingTestId: currentTestIdRef.current,
+      });
+      setPracticeSet((prev) => {
+        if (!prev) return prev;
+        const baseIndex = prev.questions.length;
+        const normalized = nextBatch.questions.map((q, idx) => ({
+          ...q,
+          id: baseIndex + idx + 1,
+        }));
+        return {
+          ...prev,
+          passage: prev.passage || nextBatch.passage,
+          questions: [...prev.questions, ...normalized],
+        };
+      });
+      return true;
+    } catch (e) {
+      const isGate =
+        e instanceof Error &&
+        "isPremiumGate" in e &&
+        Boolean((e as Error & { isPremiumGate?: boolean }).isPremiumGate);
+      if (isGate) {
+        setShowPremiumGateModal(true);
+        setAccessStatus((prev) =>
+          prev ? { ...prev, allowed: false } : { allowed: false, isPremium: false }
+        );
+        return false;
+      }
+      const m = e instanceof Error ? e.message : "";
+      setBatchLoadError(
+        m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
+      );
+      return false;
+    } finally {
+      batchLoadingRef.current = false;
+      setIsBatchLoading(false);
+    }
+  };
+
+  const retryBatchLoad = () => {
+    setBatchFailureDismissed(false);
+    setBatchLoadError(null);
+    void loadProgressiveBatchRef.current();
+  };
+
   const handleSectionSelect = (type: SectionType) => {
     setTestType(type);
     setShowConfig(true);
@@ -306,24 +466,24 @@ export default function PracticeTests() {
     const selectedConfig = overrides?.config ?? config;
     if (!selectedSection) return;
 
-    // Check free tier limit (1 use total across all features)
-    const FREE_TIER_LIMIT = 1;
-    if (!subscriptionStatus?.hasSubscription && freeUsageCount >= FREE_TIER_LIMIT) {
-      setError(
-        `You've used your free starter access. Unlock Plus for $5/month to keep your momentum going.`
-      );
+    // Check free tier limit (server-authoritative)
+    if (accessStatus && !accessStatus.isPremium && !accessStatus.allowed) {
+      setShowPremiumGateModal(true);
       return;
     }
 
     setLoading(true);
     setError(null);
     setBatchLoadError(null);
+    setBatchFailureDismissed(false);
+    setPendingResume(null);
     setPracticeSet(null);
     setCurrentQuestion(0);
     setSelectedAnswer(null);
     setShowResults(false);
     setScore(0);
     setUserAnswers({});
+    setUserConfidence({});
     setShowConfig(false);
     setTargetQuestionCount(selectedConfig.questionCount);
     setSelectedReviewIndex(null);
@@ -332,6 +492,12 @@ export default function PracticeTests() {
     setTrailBuddyError(null);
     setTrailBuddyStepMode(false);
     setReviewExplanationOpen(false);
+    setExplanationCache({});
+    setExplanationLoading({});
+    setExplanationError({});
+    setElapsedSeconds(0);
+    setTimerPaused(false);
+    setTimerHidden(false);
     setTestType(selectedSection);
     setConfig(selectedConfig);
 
@@ -350,23 +516,33 @@ export default function PracticeTests() {
       currentTestIdRef.current = data.id || null;
       setPracticeSet(data);
 
-      // Increment free tier usage ONLY for free users (premium users have unlimited)
-      if (!subscriptionStatus?.hasSubscription) {
-        const newCount = freeUsageCount + 1;
-        setFreeUsageCount(newCount);
-        localStorage.setItem("free_tier_usage", newCount.toString());
-        // Set reset date if not set
-        const now = new Date();
-        const lastReset = localStorage.getItem("free_tier_usage_reset");
-        if (!lastReset) {
-          localStorage.setItem("free_tier_usage_reset", now.toISOString());
+      if (!accessStatus?.isPremium) {
+        try {
+          const statusRes = await fetch("/api/user/access-status");
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            setAccessStatus({
+              allowed: Boolean(statusData.allowed),
+              isPremium: Boolean(statusData.isPremium),
+            });
+          }
+        } catch {
+          // ignore refresh errors
         }
-      } else {
-        // Premium user - clear any usage count
-        localStorage.setItem("free_tier_usage", "0");
-        setFreeUsageCount(0);
       }
     } catch (err) {
+      const isGate =
+        err instanceof Error &&
+        "isPremiumGate" in err &&
+        Boolean((err as Error & { isPremiumGate?: boolean }).isPremiumGate);
+      if (isGate) {
+        setShowPremiumGateModal(true);
+        setAccessStatus((prev) =>
+          prev ? { ...prev, allowed: false } : { allowed: false, isPremium: false }
+        );
+        setShowConfig(true);
+        return;
+      }
       const msg = err instanceof Error ? err.message : "";
       setError(
         msg && msg !== "practice_request_failed" ? msg : TEST_RETRY_MESSAGE
@@ -381,14 +557,19 @@ export default function PracticeTests() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("autostart") !== "1") return;
     const sectionParam = params.get("section");
-    if (!sectionParam || !["math", "reading", "writing"].includes(sectionParam)) return;
+    const section =
+      sectionParam === "math"
+        ? "math"
+        : sectionParam === "reading-writing" || sectionParam === "reading" || sectionParam === "writing"
+          ? "reading-writing"
+          : null;
+    if (!section) return;
 
     const parsedConfig: TestConfig = {
       questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
       topic: params.get("topic") || "",
       difficulty: (params.get("difficulty") as TestConfig["difficulty"]) || "Mixed",
     };
-    const section = sectionParam as SectionType;
     window.history.replaceState({}, "", "/practice");
     void generateTest({ section, config: parsedConfig });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -396,51 +577,14 @@ export default function PracticeTests() {
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
+    if (batchFailureDismissed) return;
     const loaded = practiceSet.questions.length;
     const remaining = targetQuestionCount - loaded;
     const questionsLeftInLoadedBatch = loaded - (currentQuestion + 1);
 
     // Start with 1-2 questions, then keep a buffer ahead in background.
     if (remaining > 0 && questionsLeftInLoadedBatch <= 2 && !batchLoadingRef.current) {
-      batchLoadingRef.current = true;
-      setIsBatchLoading(true);
-      setBatchLoadError(null);
-
-      const load = async () => {
-        try {
-          const batchSize = Math.min(5, remaining);
-          const nextBatch = await fetchPracticeBatchWithRetry({
-            section: testType,
-            questionCount: batchSize,
-            topic: config.topic || undefined,
-            difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
-            existingTestId: currentTestIdRef.current,
-          });
-          setPracticeSet((prev) => {
-            if (!prev) return prev;
-            const baseIndex = prev.questions.length;
-            const normalized = nextBatch.questions.map((q, idx) => ({
-              ...q,
-              id: baseIndex + idx + 1,
-            }));
-            return {
-              ...prev,
-              passage: prev.passage || nextBatch.passage,
-              questions: [...prev.questions, ...normalized],
-            };
-          });
-        } catch (e) {
-          const m = e instanceof Error ? e.message : "";
-          setBatchLoadError(
-            m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
-          );
-        } finally {
-          batchLoadingRef.current = false;
-          setIsBatchLoading(false);
-        }
-      };
-
-      void load();
+      void loadProgressiveBatchRef.current();
     }
   }, [
     isProgressiveMode,
@@ -450,6 +594,7 @@ export default function PracticeTests() {
     config.topic,
     config.difficulty,
     testType,
+    batchFailureDismissed,
   ]);
 
   const handleAnswerSelect = (answer: OptionLetter) => {
@@ -464,40 +609,16 @@ export default function PracticeTests() {
       setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
     } else {
       // In progressive mode, wait for remaining batches before finishing.
-      if (isProgressiveMode && practiceSet.questions.length < targetQuestionCount) {
-        setBatchLoadError(null);
+      if (
+        isProgressiveMode &&
+        practiceSet.questions.length < targetQuestionCount &&
+        !batchFailureDismissed
+      ) {
         if (!batchLoadingRef.current) {
-          batchLoadingRef.current = true;
-          setIsBatchLoading(true);
-          try {
-            const remaining = targetQuestionCount - practiceSet.questions.length;
-            const batchSize = Math.min(5, remaining);
-            const nextBatch = await fetchPracticeBatchWithRetry({
-              section: testType,
-              questionCount: batchSize,
-              topic: config.topic || undefined,
-              difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
-              existingTestId: currentTestIdRef.current || undefined,
-            });
-            const baseIndex = practiceSet.questions.length;
-            const normalized = nextBatch.questions.map((q, idx) => ({
-              ...q,
-              id: baseIndex + idx + 1,
-            }));
-            const updatedQuestions = [...practiceSet.questions, ...normalized];
-            setPracticeSet({ ...practiceSet, questions: updatedQuestions });
+          const ok = await loadProgressiveBatchRef.current();
+          if (ok) {
             setCurrentQuestion(currentQuestion + 1);
             setSelectedAnswer(userAnswers[currentQuestion + 1] || null);
-            return;
-          } catch (e) {
-            const m = e instanceof Error ? e.message : "";
-            setBatchLoadError(
-              m && m !== "practice_request_failed" ? m : BATCH_RETRY_MESSAGE
-            );
-            return;
-          } finally {
-            batchLoadingRef.current = false;
-            setIsBatchLoading(false);
           }
         }
         return;
@@ -522,7 +643,29 @@ export default function PracticeTests() {
       }
     });
     setScore(correct);
-    
+
+    // Retention hooks: count this completion toward the practice streak and
+    // weekly goal. Both are localStorage-only and idempotent within a day.
+    try {
+      recordPracticeDay();
+      recordWeeklyPractice();
+    } catch (retentionError) {
+      console.warn("Failed to record retention metrics:", retentionError);
+    }
+
+    // Persist per-question confidence so the results review can use it later
+    // (e.g. "trust your gut" panel showing how Unsure vs Got it scored).
+    try {
+      if (typeof window !== "undefined" && currentTestId && Object.keys(userConfidence).length > 0) {
+        window.localStorage.setItem(
+          `${CONFIDENCE_PREFIX}${currentTestId}`,
+          JSON.stringify(userConfidence)
+        );
+      }
+    } catch (confErr) {
+      console.warn("Failed to persist confidence:", confErr);
+    }
+
     // Calculate SAT score
     if (testType) {
       const sectionScore = calculateSectionScore(testType, correct, questions.length);
@@ -538,6 +681,7 @@ export default function PracticeTests() {
               scaledScore: sectionScore.scaled,
               rawScore: correct,
               maxRawScore: questions.length,
+              answers: questions.map((_, idx) => userAnswers[idx] ?? null),
             }),
           });
         } catch (error) {
@@ -572,6 +716,7 @@ export default function PracticeTests() {
     setScore(0);
     setSatScore(null);
     setUserAnswers({});
+    setUserConfidence({});
     setConfig({
       questionCount: 5,
       topic: "",
@@ -584,6 +729,15 @@ export default function PracticeTests() {
     setTrailBuddyStepMode(false);
     setReviewExplanationOpen(false);
     setShowCalculator(false);
+    setExplanationCache({});
+    setExplanationLoading({});
+    setExplanationError({});
+    setElapsedSeconds(0);
+    setTimerPaused(false);
+    setTimerHidden(false);
+    setBatchLoadError(null);
+    setBatchFailureDismissed(false);
+    setPendingResume(null);
     localStorage.removeItem(PRACTICE_PROGRESS_KEY);
   };
 
@@ -646,9 +800,18 @@ export default function PracticeTests() {
 
   const sectionCards = [
     { type: "math" as SectionType, title: "Math Trail", desc: "Algebra, functions, data analysis, geometry checkpoints.", icon: "math" as const },
-    { type: "reading" as SectionType, title: "Reading Trail", desc: "Evidence, main ideas, rhetoric, synthesis checkpoints.", icon: "reading" as const },
-    { type: "writing" as SectionType, title: "Writing Trail", desc: "Grammar, clarity, transitions, structure checkpoints.", icon: "writing" as const },
+    { type: "reading-writing" as SectionType, title: "Reading & Writing Trail", desc: "Comprehension, rhetoric, grammar, and expression checkpoints — one combined section, just like the Digital SAT.", icon: "reading" as const },
   ];
+
+  const getSubjectThemeClass = (type: SectionType) => {
+    if (type === "math") return "subject-theme-math";
+    return "subject-theme-reading-writing";
+  };
+
+  const getSectionLabel = (type: SectionType | null) => {
+    if (!type) return "";
+    return type === "math" ? "Math" : "Reading & Writing";
+  };
 
   return (
     <div className="px-3 sm:px-4 md:px-6 pb-6 sm:pb-8 md:pb-10 max-w-6xl mx-auto overflow-x-hidden w-full">
@@ -660,12 +823,12 @@ export default function PracticeTests() {
         />
       )}
 
-      {subscriptionStatus && !subscriptionStatus.hasSubscription && (
+      {accessStatus && !accessStatus.isPremium && (
         <div className="premium-banner mb-6 p-4 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
-                {freeUsageCount >= 1 ? "Free Starter Used" : "Free Starter: 1 checkpoint remaining"}
+                {accessStatus.allowed ? "Free Starter: 1 checkpoint remaining" : "Free Starter Used"}
               </h3>
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 font-medium">
                 Unlock unlimited practice tests, adaptive plans, and Trail Buddy for $5/month
@@ -698,22 +861,70 @@ export default function PracticeTests() {
         </div>
       )}
 
+      <PremiumGateModal
+        open={showPremiumGateModal}
+        onClose={() => setShowPremiumGateModal(false)}
+      />
+
+      {pendingResume && !practiceSet && !loading && (
+        <div
+          className="mb-6 px-4 py-3 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+          role="status"
+        >
+          <p className="text-sm text-sky-900 dark:text-sky-100 font-medium">
+            You have an unfinished practice test. Resume it?
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => applyResumeSnapshot(pendingResume)}
+              className="px-4 py-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-semibold transition-colors"
+            >
+              Resume
+            </button>
+            <button
+              type="button"
+              onClick={handleStartFresh}
+              className="px-4 py-2 rounded-lg bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-700 text-sky-900 dark:text-sky-100 text-sm font-semibold hover:bg-sky-50 dark:hover:bg-slate-700 transition-colors"
+            >
+              Start fresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading && !practiceSet && targetQuestionCount > 0 && (
+        <div
+          className="mb-6 px-4 py-3 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex items-center gap-3"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0"
+            aria-hidden
+          />
+          <p className="text-sm text-sky-900 dark:text-sky-100 font-medium">
+            Generating your questions... (0 of {targetQuestionCount} ready)
+          </p>
+        </div>
+      )}
+
       {!testType && (
-        <div className="grid gap-4 md:grid-cols-3 md:items-stretch">
+        <div className="grid gap-4 md:grid-cols-2 md:items-stretch">
           {sectionCards.map((card, idx) => (
             <button
               key={card.type}
               onClick={() => handleSectionSelect(card.type)}
               className="text-left h-full flex flex-col"
             >
-              <GlassPanel delay={idx * 0.05} className="h-full">
+              <GlassPanel delay={idx * 0.05} className={`h-full feature-themed-card ${getSubjectThemeClass(card.type)}`}>
                 <div className="flex flex-col gap-2 h-full">
-                  <div className="w-10 h-10 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                  <div className="feature-icon-shell w-10 h-10 flex items-center justify-center rounded-2xl">
                     <FeatureIcon name={card.icon} size={24} />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{card.title}</h3>
+                  <h3 className="feature-title text-lg font-semibold">{card.title}</h3>
                   <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-medium">{card.desc}</p>
-                  <span className="text-xs uppercase tracking-[0.4em] text-slate-600 dark:text-slate-400 mt-auto pt-2 font-semibold">
+                  <span className="feature-kicker text-xs uppercase tracking-[0.4em] mt-auto pt-2 font-semibold inline-flex items-center">
                     Configure test <ArrowRight size={12} className="inline ml-1" />
                   </span>
                 </div>
@@ -737,7 +948,7 @@ export default function PracticeTests() {
                 <ArrowLeft size={14} className="mr-1" /> Back to trails
               </button>
               <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
-                Configure your {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Trail Checkpoint
+                Configure your {getSectionLabel(testType)} Trail Checkpoint
               </h2>
               <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
                 Set your trail markers and difficulty level for this checkpoint.
@@ -768,22 +979,19 @@ export default function PracticeTests() {
 
             {/* Topic (Optional) */}
             <div>
-              <label className="block text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3">
+              <label
+                htmlFor="practice-specific-topic"
+                className="block text-sm font-semibold text-slate-800 dark:text-slate-200 mb-3"
+              >
                 Specific topic <span className="text-slate-600 dark:text-slate-400">(optional)</span>
               </label>
               <div className="mb-3">
-                <select
+                <TopicConfigSelect
+                  id="practice-specific-topic"
+                  topics={sectionTopics}
                   value={config.topic || ""}
-                  onChange={(e) => setConfig({ ...config, topic: e.target.value })}
-                  className="ai-config-input w-full px-4 py-2.5 rounded-2xl border-2 border-slate-300 dark:border-slate-600 hover:border-sky-400 dark:hover:border-sky-500 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-400/20 dark:focus:ring-sky-500/20 font-medium transition-all"
-                >
-                  <option value="">Choose an SAT subcategory</option>
-                  {sectionTopics.map((topic) => (
-                    <option key={topic} value={topic}>
-                      {topic}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(topic) => setConfig({ ...config, topic })}
+                />
               </div>
               <input
                 type="text"
@@ -791,10 +999,8 @@ export default function PracticeTests() {
                 onChange={(e) => setConfig({ ...config, topic: e.target.value })}
                 placeholder={
                   testType === "math"
-                    ? "e.g., Linear Functions, Quadratic Equations, Geometry"
-                    : testType === "reading"
-                    ? "e.g., Historical Passages, Science Texts, Literature"
-                    : "e.g., Grammar Rules, Sentence Structure, Punctuation"
+                    ? "e.g., Systems of Equations, Ratios & Rates, Trigonometry"
+                    : "e.g., Words in Context, Transitions, Sentence Boundaries"
                 }
                 className="ai-config-input w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-400/20 dark:focus:ring-sky-500/20 font-medium"
               />
@@ -866,78 +1072,25 @@ export default function PracticeTests() {
             pct: Math.round((correct / total) * 100),
           }))
           .sort((a, b) => a.pct - b.pct);
-        const R = 28;
-        const circumference = 2 * Math.PI * R;
         return (
           <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
             <div className="p-4 sm:p-6 space-y-5">
-              {/* Results + scaled score in one row */}
-              <div>
-                <div className={`grid gap-3 ${satScore ? "md:grid-cols-2" : "grid-cols-1"}`}>
-                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 text-center">
-                    <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold mb-2">Results</p>
-                    <p className="text-4xl font-bold text-slate-900 dark:text-white mb-1">
-                      {score}<span className="text-2xl font-normal text-slate-400 dark:text-slate-500">/{practiceSet.questions.length}</span>
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {Math.round((score / practiceSet.questions.length) * 100)}% correct
-                    </p>
-                  </div>
-                  {satScore && (
-                    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-4 text-center space-y-1">
-                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400 font-semibold">SAT Scaled Score</p>
-                      <p className="text-5xl font-bold text-blue-600 dark:text-blue-400">{satScore.scaled}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {testType === "math" ? "Math" : testType === "reading" ? "Reading" : "Writing"} Section &middot; 200&ndash;800
-                      </p>
-                      {testType && practiceSet.questions.length >= MIN_ESTIMATE_QUESTIONS && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                          Est. Total: <span className="font-bold text-slate-900 dark:text-white">{satScore.scaled * 2}</span> / 1600
-                          {" "}&middot; Top {100 - getPercentile(satScore.scaled * 2)}% &middot; {getScoreInterpretation(satScore.scaled * 2)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Skill performance circles */}
-              {skillStats.length > 0 && (
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Performance by Skill</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {skillStats.map(({ skill, correct, total, pct }) => {
-                      const color = pct >= 80 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
-                      const dashOffset = circumference - (circumference * pct) / 100;
-                      return (
-                        <div key={skill} className="flex flex-col items-center gap-1 p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
-                          <div className="relative flex items-center justify-center w-[72px] h-[72px]">
-                            <svg width="72" height="72" viewBox="0 0 72 72" className="-rotate-90">
-                              <circle cx="36" cy="36" r={R} fill="none" stroke="#e2e8f0" strokeWidth="6" className="dark:stroke-slate-700" />
-                              <circle
-                                cx="36" cy="36" r={R}
-                                fill="none"
-                                stroke={color}
-                                strokeWidth="6"
-                                strokeDasharray={circumference}
-                                strokeDashoffset={dashOffset}
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            <span className="absolute text-base font-bold text-slate-900 dark:text-white">{pct}%</span>
-                          </div>
-                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 text-center leading-tight mt-1">{skill}</p>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400">{correct}/{total} correct</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+              {/* New motivating results header — headline, weak-skill spotlight,
+                  score trend, performance band, what-to-do-next CTAs. */}
+              {testType && (
+                <PracticeResultsHeader
+                  testType={testType}
+                  correct={score}
+                  total={practiceSet.questions.length}
+                  scaledScore={satScore?.scaled ?? null}
+                  skillStats={skillStats}
+                  topic={config.topic}
+                />
               )}
 
-              {/* Question review grid + detail */}
+              {/* Question review */}
               <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Question Review Grid</p>
+                <p className="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400 font-semibold mb-4">Review your answers</p>
                 {(() => {
                   const firstIncorrect = practiceSet.questions.findIndex((q, idx) => userAnswers[idx] !== q.correctAnswer);
                   const activeIdxRaw = selectedReviewIndex ?? (firstIncorrect >= 0 ? firstIncorrect : 0);
@@ -946,7 +1099,21 @@ export default function PracticeTests() {
                   const activeIsCorrect = userAnswers[activeIdx] === activeQuestion.correctAnswer;
                   const activeUserAnswer = userAnswers[activeIdx];
                   const activePassage = (activeQuestion as any)?.passage || practiceSet.passage;
-                  const hasExplanation = !!(activeQuestion.explanation_correct || activeQuestion.explanation);
+                  const cachedExplanation = explanationCache[activeIdx];
+                  const liveExplanationCorrect =
+                    cachedExplanation?.explanation_correct ||
+                    activeQuestion.explanation_correct ||
+                    activeQuestion.explanation ||
+                    "";
+                  const liveExplanationIncorrect =
+                    cachedExplanation?.explanation_incorrect ||
+                    activeQuestion.explanation_incorrect ||
+                    {};
+                  const liveStrategyTip =
+                    cachedExplanation?.strategy_tip || activeQuestion.strategy_tip || "";
+                  const isExplanationLoading = Boolean(explanationLoading[activeIdx]);
+                  const explanationFetchError = explanationError[activeIdx];
+                  const hasLoadedExplanation = Boolean(liveExplanationCorrect);
                   const getOptionText = (letter?: string) => {
                     if (!letter) return "-";
                     const normalized = letter.toUpperCase() as OptionLetter;
@@ -954,6 +1121,63 @@ export default function PracticeTests() {
                   };
                   const activeUserAnswerText = activeUserAnswer ? getOptionText(activeUserAnswer) : "-";
                   const activeCorrectAnswerText = getOptionText(activeQuestion.correctAnswer);
+
+                  const ensureExplanation = async () => {
+                    if (hasLoadedExplanation || isExplanationLoading) return;
+                    setExplanationError((prev) => {
+                      const next = { ...prev };
+                      delete next[activeIdx];
+                      return next;
+                    });
+                    setExplanationLoading((prev) => ({ ...prev, [activeIdx]: true }));
+                    try {
+                      const res = await fetch("/api/explain-question", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          testType: testType || "math",
+                          question: activeQuestion.question,
+                          passage: activePassage ? String(activePassage) : undefined,
+                          options: activeQuestion.options,
+                          correctAnswer: activeQuestion.correctAnswer,
+                          userAnswer: activeUserAnswer || null,
+                          skillFocus: activeQuestion.skillFocus,
+                          difficulty: activeQuestion.difficulty,
+                        }),
+                      });
+                      if (!res.ok) {
+                        throw new Error("explanation_failed");
+                      }
+                      const data = await res.json();
+                      setExplanationCache((prev) => ({
+                        ...prev,
+                        [activeIdx]: {
+                          explanation_correct: String(data.explanation_correct || ""),
+                          explanation_incorrect: (data.explanation_incorrect || {}) as Record<string, string>,
+                          strategy_tip: String(data.strategy_tip || ""),
+                        },
+                      }));
+                    } catch {
+                      setExplanationError((prev) => ({
+                        ...prev,
+                        [activeIdx]: "We couldn't load the explanation right now. Try again.",
+                      }));
+                    } finally {
+                      setExplanationLoading((prev) => {
+                        const next = { ...prev };
+                        delete next[activeIdx];
+                        return next;
+                      });
+                    }
+                  };
+
+                  const handleToggleExplanation = () => {
+                    setReviewExplanationOpen((prev) => {
+                      const next = !prev;
+                      if (next) void ensureExplanation();
+                      return next;
+                    });
+                  };
 
                   return (
                     <div className="grid gap-3 md:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.7fr)] items-start">
@@ -1018,27 +1242,13 @@ export default function PracticeTests() {
 
                         {activePassage && (
                           <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 p-3">
-                            {testType === "writing" ? (
-                              <WritingQuestion
-                                question={String(activePassage)}
-                                className="text-sm text-slate-700 dark:text-slate-200"
-                              />
-                            ) : (
                               <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-line">
                                 {String(activePassage)}
                               </p>
-                            )}
                           </div>
                         )}
 
-                        {testType === "writing" ? (
-                          <WritingQuestion
-                            question={activeQuestion.question}
-                            className="text-sm text-slate-700 dark:text-slate-200"
-                          />
-                        ) : (
-                          <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{activeQuestion.question}</p>
-                        )}
+                        <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">{activeQuestion.question}</p>
 
                         <div className="flex flex-wrap gap-2 text-xs">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold border ${
@@ -1055,44 +1265,64 @@ export default function PracticeTests() {
                           )}
                         </div>
 
-                        {hasExplanation && (
-                          <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 p-3">
-                            <button
-                              type="button"
-                              onClick={() => setReviewExplanationOpen((v) => !v)}
-                              className="w-full flex items-center justify-between text-left"
-                              aria-expanded={reviewExplanationOpen}
-                            >
-                              <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Why this is right</p>
-                              <span className="text-slate-500 dark:text-slate-400">
-                                {reviewExplanationOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                              </span>
-                            </button>
-                            <div
-                              className={`overflow-hidden transition-all duration-300 ease-out ${
-                                reviewExplanationOpen ? "max-h-[900px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
-                              }`}
-                            >
-                              {renderFormattedText(activeQuestion.explanation_correct || activeQuestion.explanation || "")}
-                              {activeQuestion.explanation_incorrect && Object.keys(activeQuestion.explanation_incorrect).length > 0 && (
-                                <div className="mt-2 space-y-1">
-                                  {Object.entries(activeQuestion.explanation_incorrect).map(([letter, reason]) => (
-                                    <div key={letter} className="text-sm text-slate-600 dark:text-slate-400">
-                                      <span className="font-semibold text-red-600 dark:text-red-400">Option {letter} ({getOptionText(letter)}):</span>{" "}
-                                      {renderFormattedText(reason)}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {activeQuestion.strategy_tip && (
-                                <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
-                                  <p className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wide mb-1">Strategy Tip</p>
-                                  {renderFormattedText(activeQuestion.strategy_tip)}
-                                </div>
-                              )}
-                            </div>
+                        <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 p-3">
+                          <button
+                            type="button"
+                            onClick={handleToggleExplanation}
+                            className="w-full flex items-center justify-between text-left"
+                            aria-expanded={reviewExplanationOpen}
+                          >
+                            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">Why this is right</p>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {reviewExplanationOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            </span>
+                          </button>
+                          <div
+                            className={`overflow-hidden transition-all duration-300 ease-out ${
+                              reviewExplanationOpen ? "max-h-[900px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"
+                            }`}
+                          >
+                            {isExplanationLoading && !hasLoadedExplanation && (
+                              <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 py-2">
+                                <span className="w-3.5 h-3.5 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" aria-hidden />
+                                Generating explanation...
+                              </div>
+                            )}
+                            {explanationFetchError && !hasLoadedExplanation && (
+                              <div className="flex flex-col gap-2 py-1">
+                                <p className="text-sm text-rose-600 dark:text-rose-400">{explanationFetchError}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => void ensureExplanation()}
+                                  className="self-start text-xs font-semibold text-sky-700 dark:text-sky-300 hover:underline"
+                                >
+                                  Try again
+                                </button>
+                              </div>
+                            )}
+                            {hasLoadedExplanation && (
+                              <>
+                                {renderFormattedText(liveExplanationCorrect)}
+                                {liveExplanationIncorrect && Object.keys(liveExplanationIncorrect).length > 0 && (
+                                  <div className="mt-2 space-y-1">
+                                    {Object.entries(liveExplanationIncorrect).map(([letter, reason]) => (
+                                      <div key={letter} className="text-sm text-slate-600 dark:text-slate-400">
+                                        <span className="font-semibold text-red-600 dark:text-red-400">Option {letter} ({getOptionText(letter)}):</span>{" "}
+                                        {renderFormattedText(reason)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {liveStrategyTip && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700">
+                                    <p className="text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wide mb-1">Strategy Tip</p>
+                                    {renderFormattedText(liveStrategyTip)}
+                                  </div>
+                                )}
+                              </>
+                            )}
                           </div>
-                        )}
+                        </div>
 
                         <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
                           <p className="text-xs uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400 font-semibold mb-2">Trail Buddy Question Box</p>
@@ -1193,190 +1423,275 @@ export default function PracticeTests() {
         const hasPassage = !!(((q as any)?.passage) || practiceSet.passage);
         const passageText = (q as any)?.passage || practiceSet.passage || "";
         const totalQ = isProgressiveMode ? targetQuestionCount : practiceSet.questions.length;
-        const difficultyClass =
-          q.difficulty === "Easy" ? "sat-badge-easy" :
-          q.difficulty === "Hard" ? "sat-badge-hard" : "sat-badge-medium";
-        const subjectClass = testType === "math" ? "sat-badge-math" : "sat-badge-english";
-        const subjectLabel = testType === "math" ? "Math" : "English";
+        const subjectLabel = testType === "math" ? "Math" : "Reading & Writing";
         const nextLabel = currentQuestion === practiceSet.questions.length - 1
-          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount ? "Load Next 5" : "Finish")
-          : "Next Question";
+          ? (isProgressiveMode && practiceSet.questions.length < targetQuestionCount && !batchFailureDismissed
+              ? "Load Next 5"
+              : "Finish")
+          : "Next";
+        const answeredIndices = new Set<number>(
+          Object.keys(userAnswers).map((key) => Number(key)).filter((n) => !Number.isNaN(n))
+        );
+        const showMathSplit = testType === "math" && showCalculator;
+        const useSplitLayout = hasPassage || showMathSplit;
+
+        const handleJumpTo = (index: number) => {
+          if (!practiceSet || index < 0 || index >= practiceSet.questions.length) return;
+          setCurrentQuestion(index);
+          setSelectedAnswer(userAnswers[index] || null);
+        };
+
+        const handleDividerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          const container = splitContainerRef.current;
+          if (!container) return;
+          const target = event.currentTarget;
+          try { target.setPointerCapture(event.pointerId); } catch { /* noop */ }
+
+          const onMove = (moveEvent: PointerEvent) => {
+            const rect = container.getBoundingClientRect();
+            if (rect.width <= 0) return;
+            const relative = moveEvent.clientX - rect.left;
+            const pct = (relative / rect.width) * 100;
+            const clamped = Math.max(25, Math.min(75, pct));
+            setSplitLeftPct(clamped);
+          };
+          const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            try { target.releasePointerCapture(event.pointerId); } catch { /* noop */ }
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+        };
 
         return (
-          <GlassPanel className="mt-8 ai-output-scope sat-practice-shell !p-0 overflow-hidden">
-            {isBatchLoading &&
-            isProgressiveMode &&
-            practiceSet.questions.length < targetQuestionCount &&
-            currentQuestion === practiceSet.questions.length - 1 ? (
-              <div className="flex flex-col items-center justify-center py-16 sm:py-24 text-center p-8">
-                <div className="w-10 h-10 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-6" aria-hidden />
-                <p className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Loading more questions...</p>
-                <p className="text-sm text-slate-600 dark:text-slate-400">This usually takes a moment.</p>
-              </div>
-            ) : (
-              <div className="p-5 sm:p-7">
-                {practiceSet.warning && (
-                  <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200 font-medium">
-                    {practiceSet.warning}
-                  </div>
-                )}
-                {/* Header: progress bar + inline calculator */}
-                <div className="mb-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Question {currentQuestion + 1} of {totalQ}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">
-                        {Math.round(practiceProgressPercent)}% complete
-                      </span>
-                      {testType === "math" && (
-                        <button
-                          type="button"
-                          className="sat-calc-btn"
-                          onClick={() => setShowCalculator((prev) => !prev)}
-                          aria-label={showCalculator ? "Close calculator" : "Open calculator"}
+          <div className="pb-test-fullscreen">
+            <div className="pb-test-inner">
+              <>
+                  {isProgressiveMode && (() => {
+                    const loadedCount = practiceSet.questions.length;
+                    const showFailed =
+                      Boolean(batchLoadError) &&
+                      loadedCount < targetQuestionCount &&
+                      !batchFailureDismissed;
+                    const showLoading =
+                      loadedCount < targetQuestionCount && isBatchLoading && !showFailed;
+
+                    if (showFailed) {
+                      return (
+                        <div
+                          className="mx-4 mt-3 mb-1 px-4 py-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                          role="alert"
                         >
-                          <Calculator size={14} />
-                          {showCalculator ? "Close Calculator" : "Open Calculator"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="sat-progress-track">
-                    <div className="sat-progress-fill" style={{ width: `${practiceProgressPercent}%` }} />
-                  </div>
-                </div>
-
-                {/* Main content: two-col with passage, single-col otherwise */}
-                <div className={hasPassage ? "flex flex-col md:flex-row" : ""}>
-
-                  {/* Left: passage — natural height (no internal scrollbar) */}
-                  {hasPassage && (
-                    <div className="md:w-[50%] shrink-0 md:border-r border-slate-200 dark:border-slate-700 md:pr-6 md:mr-6 mb-4 md:mb-0">
-                      <div className="sat-passage rounded-lg md:rounded-none bg-slate-50 dark:bg-slate-800/40 md:bg-transparent md:dark:bg-transparent p-4 md:p-0">
-                        {testType === "writing" ? (
-                          <WritingQuestion
-                            question={String(passageText)}
-                            className="sat-passage-text text-slate-800 dark:text-slate-200"
-                          />
-                        ) : (
-                          <p className="sat-passage-text text-slate-800 dark:text-slate-200 whitespace-pre-line text-[15px] leading-[1.75]">
-                            {passageText}
+                          <p className="text-sm text-rose-900 dark:text-rose-100 font-medium">
+                            Some questions couldn&apos;t load. You can continue with {loadedCount}{" "}
+                            questions or retry.
                           </p>
-                        )}
+                          <div className="flex flex-wrap gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setBatchFailureDismissed(true)}
+                              className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-100 text-sm font-semibold hover:bg-rose-50 dark:hover:bg-slate-700 transition-colors"
+                            >
+                              Continue anyway
+                            </button>
+                            <button
+                              type="button"
+                              onClick={retryBatchLoad}
+                              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors"
+                            >
+                              Retry loading
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (showLoading) {
+                      return (
+                        <div
+                          className="mx-4 mt-3 mb-1 px-4 py-3 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex items-center gap-3"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <div
+                            className="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin shrink-0"
+                            aria-hidden
+                          />
+                          <p className="text-sm text-sky-900 dark:text-sky-100 font-medium">
+                            Generating your questions... ({loadedCount} of {targetQuestionCount}{" "}
+                            ready)
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
+
+                  <PracticeTopBar
+                    elapsedSeconds={elapsedSeconds}
+                    timerPaused={timerPaused}
+                    timerHidden={timerHidden}
+                    onTogglePause={() => setTimerPaused((prev) => !prev)}
+                    onToggleHide={handleToggleTimerVisibility}
+                    onGoBack={() => {
+                      if (typeof window !== "undefined" && window.confirm("Exit this test? Your progress will be cleared.")) {
+                        resetTest();
+                      }
+                    }}
+                    testType={testType}
+                    showCalculator={showCalculator}
+                    onToggleCalculator={
+                      testType === "math" ? () => setShowCalculator((prev) => !prev) : undefined
+                    }
+                  />
+
+                  <div className="pb-test-body">
+                    {practiceSet.warning && (
+                      <div className="mb-4 px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-sm text-amber-800 dark:text-amber-200 font-medium">
+                        {practiceSet.warning}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Right (or full-width): question + options */}
-                  <div className={hasPassage ? "flex-1 min-w-0" : ""}>
-                    {/* Badges above question */}
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      <span className={`sat-badge-subject inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${subjectClass}`}>
-                        {subjectLabel}
-                      </span>
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${difficultyClass}`}>
-                        {q.difficulty}
-                      </span>
-                    </div>
-
-                    {/* Graph / chart data */}
-                    {q.graphData && (
-                      <QuestionChart data={q.graphData as QuestionGraphData} />
-                    )}
-                    {testType === "math" && q.desmosExpression && (
-                      <DesmosGraph expressions={[q.desmosExpression as string]} />
                     )}
 
-                    {/* Question text */}
-                    {testType === "writing" ? (
-                      <>
-                        {hasPassage ? (
-                          <p className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-2">
-                            {q.question
-                              .replace(/\[([^\]]+)\]/g, "$1")
-                              .replace(/\*\*(.+?)\*\*/g, "$1")}
+                    {useSplitLayout ? (
+                      <div className="pb-split-layout" ref={splitContainerRef}>
+                        <div className="pb-split-left" style={{ width: `${splitLeftPct}%` }}>
+                          {showMathSplit ? (
+                            <PracticeCalculatorPanel />
+                          ) : (
+                            <div className="sat-passage rounded-lg md:rounded-none bg-slate-50 dark:bg-slate-800/40 md:bg-transparent md:dark:bg-transparent p-4 md:p-0">
+                                <p className="sat-passage-text whitespace-pre-line">
+                                  {passageText}
+                                </p>
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          className="pb-split-divider-handle"
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label="Drag to resize panels"
+                          onPointerDown={handleDividerPointerDown}
+                        >
+                          <span className="pb-split-divider-grip" aria-hidden />
+                        </div>
+                        <div
+                          className="pb-split-right"
+                          style={{ width: `${100 - splitLeftPct}%` }}
+                        >
+                          <div className="pb-question-chrome">
+                            <span className="pb-question-tile" aria-label={`Question ${currentQuestion + 1}`}>
+                              {currentQuestion + 1}
+                            </span>
+                          </div>
+
+                          {q.graphData && (
+                            <QuestionChart data={q.graphData as QuestionGraphData} />
+                          )}
+                          {testType === "math" && q.desmosExpression && !showMathSplit && (
+                            <DesmosGraph expressions={[q.desmosExpression as string]} />
+                          )}
+
+                          <p className="sat-question-text mb-5 leading-relaxed">
+                            {q.question}
                           </p>
-                        ) : (
-                          <WritingQuestion
-                            question={q.question}
-                            className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-2"
+
+                          <ConfidenceRow
+                            value={userConfidence[currentQuestion]}
+                            onChange={(c) =>
+                              setUserConfidence((prev) => ({ ...prev, [currentQuestion]: c }))
+                            }
                           />
-                        )}
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
-                          Choose the best revision for the underlined portion.
-                        </p>
-                      </>
+
+                          <div className="space-y-2.5 mb-2">
+                            {(Object.keys(q.options) as OptionLetter[]).map((optionLetter) => {
+                              const isSelected = selectedAnswer === optionLetter;
+                              return (
+                                <button
+                                  key={optionLetter}
+                                  onClick={() => handleAnswerSelect(optionLetter)}
+                                  className={`sat-option w-full text-left flex items-center gap-3 ${
+                                    isSelected ? "sat-option-selected" : "sat-option-unselected"
+                                  }`}
+                                >
+                                  <span className="sat-option-letter shrink-0">{optionLetter}</span>
+                                  <span>{q.options[optionLetter]}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
                     ) : (
-                      <p className="sat-question-text text-base sm:text-lg text-slate-900 dark:text-white mb-5 leading-relaxed">
-                        {q.question}
-                      </p>
-                    )}
+                      <div>
+                        <div className="pb-question-chrome">
+                          <span className="pb-question-tile" aria-label={`Question ${currentQuestion + 1}`}>
+                            {currentQuestion + 1}
+                          </span>
+                        </div>
 
-                    {/* Answer options */}
-                    <div className="space-y-2.5 mb-6">
-                      {(Object.keys(q.options) as OptionLetter[]).map((optionLetter) => {
-                        const isSelected = selectedAnswer === optionLetter;
-                        return (
-                          <button
-                            key={optionLetter}
-                            onClick={() => handleAnswerSelect(optionLetter)}
-                            className={`sat-option w-full text-left flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
-                              isSelected ? "sat-option-selected" : "sat-option-unselected"
-                            }`}
-                          >
-                            <span className="sat-option-letter shrink-0">{optionLetter}</span>
-                            <span>{q.options[optionLetter]}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
+                        {q.graphData && (
+                          <QuestionChart data={q.graphData as QuestionGraphData} />
+                        )}
+                        {testType === "math" && q.desmosExpression && (
+                          <DesmosGraph expressions={[q.desmosExpression as string]} />
+                        )}
 
-                    {/* Navigation */}
-                    <div className="flex justify-between items-center gap-4 pt-1">
-                      <button
-                        type="button"
-                        className="sat-btn-prev"
-                        onClick={handlePrevious}
-                        disabled={currentQuestion === 0}
-                      >
-                        Previous
-                      </button>
-                      <button
-                        type="button"
-                        className="sat-btn-next"
-                        onClick={() => void handleNext()}
-                      >
-                        {nextLabel}
-                      </button>
-                    </div>
+                        <p className="sat-question-text mb-5 leading-relaxed">
+                          {q.question}
+                        </p>
 
-                    {isProgressiveMode && (
-                      <div className="pt-3 text-xs text-slate-500 dark:text-slate-400">
-                        {isBatchLoading
-                          ? "Loading next questions in the background..."
-                          : `Loaded ${practiceSet.questions.length} of ${targetQuestionCount} questions.`}
+                        <ConfidenceRow
+                          value={userConfidence[currentQuestion]}
+                          onChange={(c) =>
+                            setUserConfidence((prev) => ({ ...prev, [currentQuestion]: c }))
+                          }
+                        />
+
+                        <div className="space-y-2.5 mb-2">
+                          {(Object.keys(q.options) as OptionLetter[]).map((optionLetter) => {
+                            const isSelected = selectedAnswer === optionLetter;
+                            return (
+                              <button
+                                key={optionLetter}
+                                onClick={() => handleAnswerSelect(optionLetter)}
+                                className={`sat-option w-full text-left flex items-center gap-3 ${
+                                  isSelected ? "sat-option-selected" : "sat-option-unselected"
+                                }`}
+                              >
+                                <span className="sat-option-letter shrink-0">{optionLetter}</span>
+                                <span>{q.options[optionLetter]}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
-                    {batchLoadError && (
-                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">
-                        {batchLoadError}
-                      </p>
-                    )}
                   </div>
-                </div>
-              </div>
-            )}
-          </GlassPanel>
+
+                  <PracticeBottomBar
+                    currentIndex={currentQuestion}
+                    totalQuestions={totalQ}
+                    answeredIndices={answeredIndices}
+                    onJumpTo={handleJumpTo}
+                    onPrevious={handlePrevious}
+                    onNext={() => void handleNext()}
+                    canGoPrevious={currentQuestion > 0}
+                    isLastQuestion={currentQuestion === practiceSet.questions.length - 1}
+                    nextLabel={nextLabel}
+                    questionInfo={{
+                      difficulty: q.difficulty,
+                      skillFocus: q.skillFocus,
+                      subjectLabel,
+                    }}
+                  />
+              </>
+            </div>
+          </div>
         );
       })()}
-      {practiceSet && !showResults && testType === "math" && (
-        <DesmosCalculator
-          isOpen={showCalculator}
-          onToggle={() => setShowCalculator((prev) => !prev)}
-        />
-      )}
     </div>
   );
 }

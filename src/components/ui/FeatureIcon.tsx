@@ -3,7 +3,6 @@
 import {
   Flag,
   Map,
-  Layers,
   BookOpen,
   TrendingUp,
   Mountain,
@@ -24,7 +23,6 @@ import {
 export type FeatureIconName =
   | "practice"      // Practice Tests
   | "study-plan"    // Study Plans
-  | "flashcards"   // Flashcards
   | "lessons"      // Micro-Lessons
   | "progress"     // Progress
   | "dashboard"    // Base camp / Home
@@ -45,7 +43,6 @@ export type FeatureIconName =
 const iconMap: Record<FeatureIconName, LucideIcon> = {
   practice: Flag,
   "study-plan": Map,
-  flashcards: Layers,
   lessons: BookOpen,
   progress: TrendingUp,
   dashboard: Home,

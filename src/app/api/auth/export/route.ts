@@ -26,7 +26,7 @@ export async function GET() {
       );
     }
 
-    const [userData, flashcardSets, practiceTests, studyPlans, microLessons] =
+    const [userData, practiceTests, studyPlans, microLessons] =
       await Promise.all([
         prisma.user.findUnique({
           where: { id: user.id },
@@ -40,7 +40,6 @@ export async function GET() {
             updatedAt: true,
           },
         }),
-        prisma.flashcardSet.findMany({ where: { userId: user.id }, take: 1000 }),
         prisma.practiceTest.findMany({ where: { userId: user.id }, take: 1000 }),
         prisma.studyPlan.findMany({ where: { userId: user.id }, take: 1000 }),
         prisma.microLesson.findMany({ where: { userId: user.id }, take: 1000 }),
@@ -49,7 +48,6 @@ export async function GET() {
     const exportData = {
       exportDate: new Date().toISOString(),
       account: userData,
-      flashcardSets,
       practiceTests,
       studyPlans,
       microLessons,

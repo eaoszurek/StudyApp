@@ -542,8 +542,22 @@ export default function Progress({
         ) : (
           <div className="space-y-3">
             {recentSessions.slice(0, RECENT_ACTIVITY_LIMIT).map((session, idx) => {
-              const sectionIcon = session.section === "math" ? "math" : session.section === "reading" ? "reading" : "writing";
-              const sectionName = session.section === "math" ? "Math" : session.section === "reading" ? "Reading" : "Writing";
+              const sectionIcon =
+                session.section === "math"
+                  ? "math"
+                  : session.section === "reading-writing"
+                    ? "reading"
+                    : session.section === "reading"
+                      ? "reading"
+                      : "writing";
+              const sectionName =
+                session.section === "math"
+                  ? "Math"
+                  : session.section === "reading-writing"
+                    ? "Reading & Writing"
+                    : session.section === "reading"
+                      ? "Reading"
+                      : "Writing";
               const score = session.score && typeof session.score === 'object' && 'scaled' in session.score 
                 ? session.score.scaled 
                 : 0;

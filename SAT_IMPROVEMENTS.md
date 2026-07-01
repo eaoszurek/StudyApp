@@ -144,21 +144,12 @@
 - Include specific practice recommendations
 - Add milestone checkpoints with score goals
 
-### 9. **Flashcard System Enhancements**
-**Problem:** Basic spaced repetition, no SAT-specific features
-- Missing: Vocabulary word frequency (common SAT words)
-- Missing: Math formula cards
-- Missing: Grammar rule cards
-- Missing: Reading strategy cards
+### 9. **Flashcard System Enhancements** *(removed — use Micro-Lessons instead)*
+**Status:** Flashcards were removed from PeakPrep. Short skill review is handled by Micro-Lessons and focused practice drills.
 
-**Solution:**
-- Pre-built flashcard sets:
-  - Top 500 SAT vocabulary words
-  - Essential math formulas
-  - Grammar rules with examples
-  - Reading question types
-- Better spaced repetition algorithm
-- Track mastery per card
+~~**Problem:** Basic spaced repetition, no SAT-specific features~~
+
+~~**Solution:** Pre-built flashcard sets, spaced repetition~~
 
 ### 10. **Micro-Lessons Improvements**
 **Problem:** Lessons too generic
@@ -328,8 +319,7 @@
 ### Phase 3 (Enhancements):
 9. Advanced analytics
 10. Adaptive study plans
-11. Pre-built flashcard sets
-12. Mobile optimization
+11. Mobile optimization
 
 ### Phase 4 (Future):
 13. Social features

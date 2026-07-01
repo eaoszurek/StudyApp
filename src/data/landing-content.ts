@@ -17,7 +17,6 @@ export const landingContent = {
   },
   features: [
     { id: "route-maps", icon: "study-plan", title: "Personalized Route Maps", description: "Smart study plans that adapt to your pace, target elevation, and timeline.", link: "/study-plan" },
-    { id: "tools-supplies", icon: "flashcards", title: "Tools & Supplies", description: "Essential knowledge packs with SAT-accurate content to gear up for every concept.", link: "/flashcards" },
     { id: "checkpoints", icon: "practice", title: "Trail Checkpoints", description: "Full-length practice tests with instant altitude checks and expert guidance.", link: "/practice" },
     { id: "micro-lessons", icon: "lessons", title: "Micro-Lessons", description: "Quick 2-minute knowledge bursts to help you master tricky waypoints on the fly.", link: "/lessons" },
     { id: "backtrack", icon: "progress", title: "Progress Tracker", description: "Monitor your elevation gain and see exactly how far you've climbed.", link: "/progress" },
@@ -75,7 +74,7 @@ export const landingContent = {
       name: "Jordan K.",
       scoreImprovement: "+90 pts",
       quote:
-        "Not gonna pretend I love flashcards. I just needed someone to tell me what to do each day. I open it, do the chunk, done—way less spinning my wheels.",
+        "Not gonna pretend I love studying. I just needed someone to tell me what to do each day. I open it, do the chunk, done—way less spinning my wheels.",
     },
     {
       name: "Alex M.",
@@ -96,7 +95,7 @@ export const landingContent = {
   },
   seo: {
     title: "PeakPrep — Mountain-themed SAT prep app",
-    description: "PeakPrep personalizes your SAT study with Route Maps, Tools & Supplies flashcards, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
+    description: "PeakPrep personalizes your SAT study with Route Maps, micro-lessons, and checkpoint practice tests. Climb your way to your target score.",
     ogImage: "/images/og-peakprep.png",
   },
 };

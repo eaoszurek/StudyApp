@@ -439,7 +439,7 @@ export default function SettingsSidebar({ isOpen, onClose }: SettingsSidebarProp
           }
         }}
         title="Delete Account"
-        message="Are you sure you want to delete your account? This action cannot be undone. All your data including flashcards, practice tests, study plans, and lessons will be permanently deleted."
+        message="Are you sure you want to delete your account? This action cannot be undone. All your data including practice tests, study plans, and lessons will be permanently deleted."
         confirmText="Delete Account"
         cancelText="Cancel"
         danger={true}

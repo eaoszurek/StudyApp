@@ -36,12 +36,18 @@ export default function FeatureGrid({ features }: FeatureGridProps) {
             Everything you need to reach your peak
           </h2>
           <p className="text-base text-slate-700 leading-relaxed font-medium">
-            Five powerful tools designed to guide your climb to SAT success
+            {features.length === 1
+              ? "One powerful tool designed to guide your climb to SAT success"
+              : `${features.length} powerful tools designed to guide your climb to SAT success`}
           </p>
         </motion.div>
 
         {/* Feature Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 max-w-4xl mx-auto">
+        <div
+          className={`grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto ${
+            features.length >= 4 ? "lg:grid-cols-4" : "lg:grid-cols-3"
+          }`}
+        >
           {features.map((feature, idx) => (
             <motion.div
               key={feature.id}
