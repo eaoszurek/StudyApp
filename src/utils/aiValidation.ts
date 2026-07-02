@@ -290,8 +290,18 @@ export function jaccardSimilarity(a: string, b: string): number {
 }
 
 export function areNearDuplicateQuestions(a: string, b: string, threshold = 0.82): boolean {
-  const normA = normalizeForSimilarity(a);
-  const normB = normalizeForSimilarity(b);
+  const stripBoilerplate = (text: string) =>
+    normalizeForSimilarity(text)
+      .replace(/\bwhich choice\b/g, "choice")
+      .replace(/\bbest (states|describes|maintains|supports|completes)\b/g, "")
+      .replace(/\bas used in the text\b/g, "")
+      .replace(/\bmost logically completes\b/g, "")
+      .replace(/\bsentence pattern already established\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const normA = stripBoilerplate(a);
+  const normB = stripBoilerplate(b);
   if (!normA || !normB) return false;
   if (normA === normB) return true;
   if (normA.includes(normB) || normB.includes(normA)) {
