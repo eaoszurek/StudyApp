@@ -23,6 +23,7 @@ import {
 } from "@/utils/practiceTopicAlignment";
 import {
   questionAlignsWithLockedDifficulty,
+  looksLikeTrivialOneStepLinear,
   type LockedDifficulty,
 } from "@/utils/practiceDifficultyAlignment";
 import {
@@ -602,23 +603,24 @@ ${difficulty && difficulty !== "Mixed"
     const cacheKey = `generate-practice:v5-specific-skills:${JSON.stringify({ section, questionCount, topic, difficulty })}`;
     const cachedResponse = shouldUseCache ? getCachedValue<any>(cacheKey) : null;
 
-    const MAX_BLOCK_ATTEMPTS = topicLocked || difficultyLocked ? 4 : 2;
-    const MAX_SET_ATTEMPTS = strictConfigNoFallback ? 2 : 1;
+    const MAX_BLOCK_ATTEMPTS = topicLocked || difficultyLocked ? 6 : 3;
+    const MAX_SET_ATTEMPTS = strictConfigNoFallback ? 3 : 2;
     const isSmallSet = questionCount <= 5;
+    const isAppendBatch = Boolean(existingPracticeTest);
     const generationStartedAt = Date.now();
     const generationDeadlineMs = isSmallSet
-      ? 58000
+      ? 72000
       : strictConfigNoFallback
       ? questionCount >= 20
-        ? 180000
+        ? 195000
         : questionCount >= 10
-          ? 120000
-          : 90000
+          ? 135000
+          : 105000
       : questionCount >= 20
-        ? 120000
+        ? 135000
         : questionCount >= 10
-          ? 75000
-          : 55000;
+          ? 90000
+          : 65000;
     const isPastDeadline = () => Date.now() - generationStartedAt > generationDeadlineMs;
 
     const parseModelJson = (responseText: string) => {
@@ -688,28 +690,29 @@ ${difficulty && difficulty !== "Mixed"
         skillFocus?: string;
         correctAnswer?: string;
         options?: Record<string, string> | string[] | null;
+        difficulty?: string;
       },
     >(
-      list: T[]
+      list: T[],
+      options: { strictDifficulty?: boolean } = {}
     ): T[] => {
       let out = list;
       if (topicLocked) {
-        // STRICT: skillCategory must equal the locked topic exactly.
-        out = out.filter((q) =>
+        const exactMatch = out.filter((q) =>
           skillExactlyMatchesTopic(topicTrimmed, q.skillCategory || q.skillFocus || "")
         );
-        // Then re-validate stem alignment for math sub-skill drift safety.
-        out = out.filter((q) =>
+        const alignedMatch = out.filter((q) =>
           questionAlignsWithLockedTopic(topicTrimmed, sectionForAlignment, {
             question: String(q.question || ""),
             skillCategory: q.skillCategory,
             skillFocus: q.skillFocus,
           })
         );
+        out = exactMatch.length > 0 ? exactMatch : alignedMatch;
       }
       if (difficultyLocked && difficulty && difficulty !== "Mixed") {
         const lockedDiff = difficulty as LockedDifficulty;
-        out = out.filter((q) =>
+        const strict = out.filter((q) =>
           questionAlignsWithLockedDifficulty({
             question: String(q.question || ""),
             passage: q.passage,
@@ -717,6 +720,22 @@ ${difficulty && difficulty !== "Mixed"
             locked: lockedDiff,
           })
         );
+        if (strict.length > 0 || options.strictDifficulty) {
+          out = strict;
+        } else {
+          // Topic+difficulty locked: prefer strict matches, but keep plausible items
+          // rather than returning zero questions (503).
+          out = out.filter((q) => {
+            const stem = String(q.question || "");
+            if (lockedDiff === "Hard") {
+              return !looksLikeTrivialOneStepLinear(stem);
+            }
+            if (lockedDiff === "Easy") {
+              return stem.length <= 280;
+            }
+            return stem.length >= 40;
+          });
+        }
       }
       // Cross-session fingerprint dedup: drop anything the user has already seen.
       if (seenFingerprintSet.size > 0) {
@@ -739,22 +758,25 @@ ${difficulty && difficulty !== "Mixed"
       extraInstructions = "",
       options: { timeoutMs?: number; attempts?: number } = {}
     ) => {
+      const modelCount = isAppendBatch
+        ? Math.min(50, requestedCount + Math.max(2, Math.ceil(requestedCount * 0.5)))
+        : requestedCount;
       const timeoutMs =
         options.timeoutMs ??
         (isSmallSet
-          ? 45000
+          ? 52000
           : strictConfigNoFallback
           ? requestedCount >= 20
-            ? 55000
+            ? 60000
             : requestedCount >= 10
-              ? 45000
-              : 35000
+              ? 50000
+              : 40000
           : requestedCount >= 20
-            ? 45000
+            ? 50000
             : requestedCount >= 10
-              ? 35000
-              : 25000);
-      const attempts = options.attempts ?? (isSmallSet ? 1 : requestedCount >= 15 ? 2 : 1);
+              ? 40000
+              : 30000);
+      const attempts = options.attempts ?? (isSmallSet ? 2 : requestedCount >= 15 ? 2 : 1);
       let lastModelError: unknown;
       for (const modelName of modelCandidates) {
         try {
@@ -770,7 +792,7 @@ ${difficulty && difficulty !== "Mixed"
         },
         {
           role: "user",
-          content: `Generate ${requestedCount} SAT ${section} questions.${
+          content: `Generate ${modelCount} SAT ${section} questions (use the best ${requestedCount}; extra items may be discarded).${
             topicLocked ? ` REQUIRED TOPIC FOR EVERY QUESTION: "${topicTrimmed}".` : topic ? ` Focus on: ${topic}.` : ""
           }${difficulty && difficulty !== "Mixed" ? ` All questions must be ${difficulty.toUpperCase()} difficulty (SAT-calibrated); do not water down.` : ""}${
             extraInstructions ? ` ${extraInstructions}` : ""
@@ -1269,7 +1291,11 @@ ${difficulty && difficulty !== "Mixed"
         const existingStem = String(existing?.question || "");
         const existingPassage = String(existing?.passage || "");
         const existingOptions = getOptionSignature(existing);
-        const stemNearDuplicate = areNearDuplicateQuestions(candidateStem, existingStem, section === "math" ? 0.9 : 0.8);
+        const stemNearDuplicate = areNearDuplicateQuestions(
+          candidateStem,
+          existingStem,
+          section === "math" ? 0.92 : 0.86
+        );
         const passageNearDuplicate =
           section === "math"
             ? false
@@ -1613,7 +1639,7 @@ ${difficulty && difficulty !== "Mixed"
         const rwHasPassages =
           section === "math" || fastTransformed.every((q: any) => !!q.passage);
         const constraintsOk = passesSetConstraints(fastTransformed);
-        if (hasEnough && rwHasPassages && constraintsOk) {
+        if (hasEnough && rwHasPassages && (constraintsOk || topicLocked || isSmallSet)) {
           passage = fastData.passage;
           transformedAll = fastTransformed;
         }
@@ -1621,7 +1647,7 @@ ${difficulty && difficulty !== "Mixed"
         console.warn("Fast-path generation failed, falling back to block mode:", fastPathError);
       }
 
-      if (!isSmallSet || transformedAll.length < Math.ceil(questionCount * 0.6)) {
+      if (!isSmallSet || transformedAll.length < Math.ceil(questionCount * 0.5)) {
       for (
         let setAttempt = transformedAll.length >= questionCount ? MAX_SET_ATTEMPTS : 0;
         setAttempt < MAX_SET_ATTEMPTS;
@@ -1686,7 +1712,7 @@ ${difficulty && difficulty !== "Mixed"
               break;
             }
             rwRepairPasses += 1;
-            if (rwRepairPasses >= 2) {
+            if (rwRepairPasses >= 3) {
               break;
             }
 
@@ -1730,13 +1756,22 @@ ${difficulty && difficulty !== "Mixed"
     );
 
     // Top-up loop if the first generation came up short.
-    const maxTopUpPasses = isSmallSet ? 3 : 2;
+    const maxTopUpPasses = isAppendBatch ? 8 : isSmallSet ? 6 : 4;
     for (let topUpPass = 0; topUpPass < maxTopUpPasses && finalQuestions.length < questionCount; topUpPass += 1) {
-      const allowPastDeadline = isSmallSet || questionCount - finalQuestions.length <= 3;
+      const allowPastDeadline =
+        isSmallSet || isAppendBatch || questionCount - finalQuestions.length <= 3;
       if (isPastDeadline() && !allowPastDeadline) break;
       try {
         const missing = questionCount - finalQuestions.length;
         const chunkSize = Math.min(5, missing);
+        const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
+          .map((q: any) => String(q.question || "").slice(0, 80))
+          .filter(Boolean)
+          .slice(-8);
+        const dedupeHint =
+          existingStemHint.length > 0
+            ? ` Do NOT repeat these stems or scenarios: ${existingStemHint.join(" | ")}.`
+            : "";
         const usedSkills = finalQuestions
           .map((q: any) => String(q.skillCategory || q.skillFocus || "").trim())
           .filter(Boolean);
@@ -1744,10 +1779,10 @@ ${difficulty && difficulty !== "Mixed"
           !topicLocked && usedSkills.length > 0
             ? ` Each new question MUST use a different skillCategory than: ${usedSkills.join(", ")}.`
             : "";
-        const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct stems and scenarios from prior items.${skillHint} Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
+        const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct stems and scenarios from prior items.${dedupeHint}${skillHint} Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
         const topUpData = await getModelPayload(chunkSize, topUpExtra, {
-          attempts: 1,
-          timeoutMs: isSmallSet ? 28000 : 35000,
+          attempts: 2,
+          timeoutMs: isSmallSet ? 35000 : 45000,
         });
         const topUpTransformed = applyConfigFilters(
           transformQuestions(topUpData.questions, topUpData.passage)

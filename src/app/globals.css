@@ -2544,6 +2544,11 @@ html.dark .pb-question-tile,
   border-top: 1px solid rgba(15, 23, 42, 0.08);
   gap: 12px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.06);
 }
 
 html.dark .pb-bottom-bar,

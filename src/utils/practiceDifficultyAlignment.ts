@@ -23,9 +23,10 @@ export type LockedDifficulty = "Easy" | "Medium" | "Hard";
 function hasMathHardSignal(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    /\b(system of|two equations|inequalit|quadratic|nonlinear|parabol|vertex form|piecewise|composition|f\(g\(|g\(f\(|for all real|exactly one solution|infinitely many|no solution|constant k|maximum value|minimum value|greatest|least possible|expected value|standard deviation|margin of error|confidence|compound interest|exponential growth|logarithm|sin\(|cos\(|tan\(|radian|unit circle)\b/.test(
+    /\b(system of|two equations|inequalit|quadratic|parabol|vertex form|piecewise|composition|f\(g\(|g\(f\(|for all real|exactly one solution|infinitely many|no solution|constant k|maximum value|minimum value|greatest|least possible|expected value|standard deviation|margin of error|confidence|compound interest|exponential growth|logarithm|sin\(|cos\(|tan\(|radian|unit circle|discriminant|factored form|completing the square)\b/.test(
       t
     ) ||
+    /x²|x³|x\^2|x\^3/.test(text) ||
     /\b(shown in the figure|in the diagram|coordinate plane|regular polygon)\b/.test(t) ||
     (text.match(/=/g) || []).length >= 2 ||
     /\bif\s+.+\s+,\s+then\b/i.test(text) ||
@@ -57,7 +58,7 @@ function estimateMathSteps(text: string): number {
 }
 
 /** Very short stems that look like one-step linear plug-in (too weak for Hard). */
-function looksLikeTrivialOneStepLinear(text: string): boolean {
+export function looksLikeTrivialOneStepLinear(text: string): boolean {
   const t = text.replace(/\s+/g, " ").trim();
   if (t.length > 165) return false;
   const hasSimpleEq =
@@ -110,6 +111,8 @@ function mathAligns(stem: string, locked: LockedDifficulty): boolean {
 
   if (locked === "Hard") {
     if (looksLikeTrivialOneStepLinear(t)) return false;
+    // Quadratic / parabola items are valid Hard even when the stem is concise.
+    if (/\b(quadratic|parabola|vertex|discriminant|x²|x\^2|factored)\b/i.test(t)) return true;
     if (len < 50 && !hasHardSignal) return false;
     if (len < 85 && !hasHardSignal) return false;
     if (steps < 2 && !hasHardSignal) return false;
