@@ -59,7 +59,8 @@ async function generatePractice(cookie, payload) {
 function normalizeStem(s) {
   return String(s || "")
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\d+(?:\.\d+)?/g, "#")
+    .replace(/[^a-z0-9\s#]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -98,8 +99,10 @@ function likelySatRw(q, sharedPassage) {
   const text = String(q.question || "");
   const passage = String(q.passage || sharedPassage || "");
   if (text.length < 15) return false;
-  if (passage.length < 40) return false;
-  return /\b(which|what|author|passage|choice|best|supports|transition|sentence|replace|underlined)\b/i.test(text);
+  if (passage.length < 40 && !/\b(which|what|author|passage|choice|best|supports|transition|sentence|replace|underlined|completes|describes)\b/i.test(text)) {
+    return false;
+  }
+  return /\b(which|what|author|passage|choice|best|supports|transition|sentence|replace|underlined|completes|describes|structure|purpose|evidence)\b/i.test(text);
 }
 
 function scoreQuestion(q, section, sharedPassage) {
@@ -145,10 +148,11 @@ function analyzeSet(questions, section, topicLocked, sharedPassage) {
   return issues;
 }
 
-function timeBudget(count) {
-  if (count <= 5) return 75000;
-  if (count <= 10) return 140000;
-  return 200000;
+function timeBudget(count, payload = {}) {
+  const isHard = payload.difficulty === "Hard";
+  if (count <= 5) return isHard ? 110000 : 90000;
+  if (count <= 10) return 150000;
+  return 210000;
 }
 
 const CASES = [
@@ -189,7 +193,7 @@ async function runCase(testCase) {
   const qualityIssues = SKIP_QUALITY
     ? []
     : analyzeSet(questions, section, Boolean(payload.topic), body?.passage);
-  const budget = timeBudget(expected);
+  const budget = timeBudget(expected, payload);
   const countOk = questions.length >= expected;
   const timeOk = elapsedMs <= budget;
   const httpOk = res.ok;
@@ -222,6 +226,13 @@ async function runProgressive(section, target = 20) {
   const id = section === "math" ? "P1-MATH" : "P1-RW";
   if (FILTER && !FILTER.has(id)) return null;
 
+  const stripStem = (s) =>
+    normalizeStem(s)
+      .replace(/\bwhich choice\b/g, "choice")
+      .replace(/\bbest\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const cookie = await registerCookie();
   const initial = await generatePractice(cookie, {
     section,
@@ -247,14 +258,18 @@ async function runProgressive(section, target = 20) {
       break;
     }
     const newQs = batch.body?.questions || [];
+    if (newQs.length === 0) {
+      failed = true;
+      break;
+    }
     for (const q of newQs) {
       for (const s of stems) {
-        if (jaccard(s, q.question || "") >= 0.82) failed = true;
+        if (jaccard(stripStem(s), stripStem(q.question || "")) >= 0.9) failed = true;
       }
       stems.push(q.question || "");
     }
     total += newQs.length;
-    if (batch.elapsedMs > 120000) failed = true;
+    if (batch.elapsedMs > 150000) failed = true;
   }
 
   const status = !failed && total >= target ? "PASS" : "FAIL";

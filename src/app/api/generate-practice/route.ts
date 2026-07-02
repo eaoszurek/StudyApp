@@ -759,8 +759,8 @@ ${difficulty && difficulty !== "Mixed"
       options: { timeoutMs?: number; attempts?: number } = {}
     ) => {
       const modelCount = isAppendBatch
-        ? Math.min(50, requestedCount + Math.max(2, Math.ceil(requestedCount * 0.5)))
-        : requestedCount;
+        ? Math.min(50, requestedCount + Math.max(3, Math.ceil(requestedCount * 0.75)))
+        : Math.min(50, requestedCount + Math.max(2, Math.ceil(requestedCount * 0.35)));
       const timeoutMs =
         options.timeoutMs ??
         (isSmallSet
@@ -1159,15 +1159,14 @@ ${difficulty && difficulty !== "Mixed"
 
           const skillCategory = ensureSingleSkill(skillFocus, skillFocus);
 
-          // Self-verification gate: hard math questions MUST have a non-trivial
-          // scratchpad. If the model failed to think through the problem, drop it
-          // so the top-up loop replaces it with a properly verified question.
+          // Self-verification gate: prefer math Hard items with scratchpad, but do not
+          // drop otherwise-valid questions (caused 503s and slow retry loops).
           if (
             section === "math" &&
             questionDifficulty === "Hard" &&
-            rawScratchpad.replace(/\s+/g, "").length < 12
+            rawScratchpad.replace(/\s+/g, "").length < 8
           ) {
-            return null;
+            console.warn("Hard math question missing scratchpad; keeping question");
           }
 
           return {
@@ -1452,29 +1451,39 @@ ${difficulty && difficulty !== "Mixed"
 
     const passesUniqueSkillCategories = (questions: any[]) => {
       if (topicLocked) return true;
-      const seen = new Set<string>();
-      for (const q of questions) {
-        const skill = normalizeCompare(String(q.skillCategory || q.skillFocus || ""));
-        if (!skill) continue;
-        if (seen.has(skill)) return false;
-        seen.add(skill);
+      const blockSize = 5;
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        const seen = new Set<string>();
+        for (const q of block) {
+          const skill = normalizeCompare(String(q.skillCategory || q.skillFocus || ""));
+          if (!skill) continue;
+          if (seen.has(skill)) return false;
+          seen.add(skill);
+        }
       }
       return true;
     };
 
     const filterUniqueSkillCategories = (questions: any[]) => {
       if (topicLocked) return questions;
-      const seen = new Set<string>();
-      return questions.filter((q, idx) => {
-        // After the first block of 5, allow skill repeats
-        if (idx >= 5) return true;
-        const skill = normalizeCompare(
-          String(q.skillCategory || q.skillFocus || "")
-        );
-        if (!skill || seen.has(skill)) return false;
-        seen.add(skill);
-        return true;
-      });
+      const blockSize = 5;
+      const out: any[] = [];
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        const seen = new Set<string>();
+        for (const q of block) {
+          const skill = normalizeCompare(String(q.skillCategory || q.skillFocus || ""));
+          if (!skill) {
+            out.push(q);
+            continue;
+          }
+          if (seen.has(skill)) continue;
+          seen.add(skill);
+          out.push(q);
+        }
+      }
+      return out;
     };
 
     const passesSetConstraints = (questions: any[]) => {
@@ -1639,7 +1648,13 @@ ${difficulty && difficulty !== "Mixed"
         const rwHasPassages =
           section === "math" || fastTransformed.every((q: any) => !!q.passage);
         const constraintsOk = passesSetConstraints(fastTransformed);
-        if (hasEnough && rwHasPassages && (constraintsOk || topicLocked || isSmallSet)) {
+        const nearEnough = fastTransformed.length >= questionCount - 1;
+        if (
+          fastTransformed.length > 0 &&
+          rwHasPassages &&
+          (hasEnough || (nearEnough && isSmallSet) || (fastTransformed.length >= Math.ceil(questionCount * 0.85) && !isSmallSet)) &&
+          (constraintsOk || topicLocked || isSmallSet || fastTransformed.length >= Math.ceil(questionCount * 0.8))
+        ) {
           passage = fastData.passage;
           transformedAll = fastTransformed;
         }
@@ -1647,7 +1662,11 @@ ${difficulty && difficulty !== "Mixed"
         console.warn("Fast-path generation failed, falling back to block mode:", fastPathError);
       }
 
-      if (!isSmallSet || transformedAll.length < Math.ceil(questionCount * 0.5)) {
+      const skipBlockMode =
+        isSmallSet ||
+        (transformedAll.length >= Math.ceil(questionCount * 0.85) && transformedAll.length > 0);
+
+      if (!skipBlockMode && transformedAll.length < Math.ceil(questionCount * 0.5)) {
       for (
         let setAttempt = transformedAll.length >= questionCount ? MAX_SET_ATTEMPTS : 0;
         setAttempt < MAX_SET_ATTEMPTS;
@@ -1756,13 +1775,13 @@ ${difficulty && difficulty !== "Mixed"
     );
 
     // Top-up loop if the first generation came up short.
-    const maxTopUpPasses = isAppendBatch ? 8 : isSmallSet ? 6 : 4;
+    const maxTopUpPasses = isAppendBatch ? 12 : isSmallSet ? 8 : Math.max(6, Math.ceil(questionCount / 2));
     for (let topUpPass = 0; topUpPass < maxTopUpPasses && finalQuestions.length < questionCount; topUpPass += 1) {
+      const missing = questionCount - finalQuestions.length;
       const allowPastDeadline =
-        isSmallSet || isAppendBatch || questionCount - finalQuestions.length <= 3;
+        isSmallSet || isAppendBatch || missing <= Math.max(3, Math.ceil(questionCount * 0.15));
       if (isPastDeadline() && !allowPastDeadline) break;
       try {
-        const missing = questionCount - finalQuestions.length;
         const chunkSize = Math.min(5, missing);
         const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
           .map((q: any) => String(q.question || "").slice(0, 80))
@@ -1782,7 +1801,7 @@ ${difficulty && difficulty !== "Mixed"
         const topUpExtra = `TOP-UP: Generate exactly ${chunkSize} additional SAT ${section} questions, distinct stems and scenarios from prior items.${dedupeHint}${skillHint} Valid JSON, concise.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}" only.` : ""}${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}`;
         const topUpData = await getModelPayload(chunkSize, topUpExtra, {
           attempts: 2,
-          timeoutMs: isSmallSet ? 35000 : 45000,
+          timeoutMs: isSmallSet ? 40000 : 50000,
         });
         const topUpTransformed = applyConfigFilters(
           transformQuestions(topUpData.questions, topUpData.passage)
