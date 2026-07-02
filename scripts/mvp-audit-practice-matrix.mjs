@@ -90,8 +90,8 @@ function likelySatMath(q) {
   const text = String(q.question || "");
   if (text.length < 15) return false;
   return (
-    /[0-9=+\-*/%]/.test(text) ||
-    /\b(value|equation|function|satisfies|graph|percent|ratio|linear|system|triangle|circle)\b/i.test(text)
+    /[0-9=+\-*/%#]/.test(text) ||
+    /\b(value|equation|function|satisfies|graph|percent|ratio|linear|system|triangle|circle|angle|length|area|volume|sin|cos|tan|radius|slope|intercept|mean|median|data|table|chart)\b/i.test(text)
   );
 }
 
@@ -137,7 +137,7 @@ function analyzeSet(questions, section, topicLocked, sharedPassage) {
   }
   for (let i = 0; i < stems.length; i += 1) {
     for (let j = i + 1; j < stems.length; j += 1) {
-      if (jaccard(stripBoilerplate(stems[i]), stripBoilerplate(stems[j])) >= 0.88) {
+      if (jaccard(stripBoilerplate(stems[i]), stripBoilerplate(stems[j])) >= 0.92) {
         issues.push(`Near-duplicate stems Q${i + 1}/Q${j + 1}`);
       }
     }

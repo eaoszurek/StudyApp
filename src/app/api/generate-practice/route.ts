@@ -1466,24 +1466,9 @@ ${difficulty && difficulty !== "Mixed"
     };
 
     const filterUniqueSkillCategories = (questions: any[]) => {
-      if (topicLocked) return questions;
-      const blockSize = 5;
-      const out: any[] = [];
-      for (let start = 0; start < questions.length; start += blockSize) {
-        const block = questions.slice(start, start + blockSize);
-        const seen = new Set<string>();
-        for (const q of block) {
-          const skill = normalizeCompare(String(q.skillCategory || q.skillFocus || ""));
-          if (!skill) {
-            out.push(q);
-            continue;
-          }
-          if (seen.has(skill)) continue;
-          seen.add(skill);
-          out.push(q);
-        }
-      }
-      return out;
+      // Do not drop questions here — that caused partial sets (9/10, 18/20).
+      // Skill variety is enforced via passesUniqueSkillCategories during generation retries.
+      return questions;
     };
 
     const passesSetConstraints = (questions: any[]) => {
@@ -1662,11 +1647,10 @@ ${difficulty && difficulty !== "Mixed"
         console.warn("Fast-path generation failed, falling back to block mode:", fastPathError);
       }
 
-      const skipBlockMode =
-        isSmallSet ||
-        (transformedAll.length >= Math.ceil(questionCount * 0.85) && transformedAll.length > 0);
+      // Small sets use fast path + top-up only. Long sets use block mode until full count.
+      const skipBlockMode = isSmallSet || transformedAll.length >= questionCount;
 
-      if (!skipBlockMode && transformedAll.length < Math.ceil(questionCount * 0.5)) {
+      if (!skipBlockMode && transformedAll.length < questionCount) {
       for (
         let setAttempt = transformedAll.length >= questionCount ? MAX_SET_ATTEMPTS : 0;
         setAttempt < MAX_SET_ATTEMPTS;
@@ -1751,10 +1735,11 @@ ${difficulty && difficulty !== "Mixed"
         if (transformedAll.length < questionCount) {
           continue;
         }
-        // Prefer strict SAT constraints, but prioritize returning a valid set in time.
-        // A fully valid/clean set is still enforced by transform + question-level validation.
         if (!passesSetConstraints(transformedAll) && setAttempt < MAX_SET_ATTEMPTS - 1) {
-          break;
+          // Keep partial progress for top-up rather than discarding the whole set.
+          if (transformedAll.length < Math.ceil(questionCount * 0.6)) {
+            continue;
+          }
         }
         break;
       }
