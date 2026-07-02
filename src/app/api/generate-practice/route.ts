@@ -14,6 +14,7 @@ import {
   normalizeForSimilarity,
   areNearDuplicateQuestions,
   areAuditNearDuplicateStems,
+  passesAuditRwSignal,
   likelySatStyleQuestion,
   hasGenericSatStem,
 } from "@/utils/aiValidation";
@@ -1071,6 +1072,14 @@ ${difficulty && difficulty !== "Mixed"
           }
 
           if (
+            isRwSection(section) &&
+            !passesAuditRwSignal(questionText, String(finalPassage || ""), String(passage || ""))
+          ) {
+            console.warn("Hard filter: R&W question failed audit SAT signal check");
+            return null;
+          }
+
+          if (
             !likelySatStyleQuestion({
               section,
               question: questionText,
@@ -1816,6 +1825,30 @@ ${difficulty && difficulty !== "Mixed"
       } catch (topUpError) {
         console.warn("Practice generation top-up failed:", topUpError);
         break;
+      }
+    }
+
+    if (finalQuestions.length < questionCount && finalQuestions.length >= questionCount - 2) {
+      try {
+        const missing = questionCount - finalQuestions.length;
+        const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
+          .map((q: any) => String(q.question || "").slice(0, 80))
+          .filter(Boolean)
+          .slice(-10);
+        const emergencyExtra = `EMERGENCY TOP-UP: Generate exactly ${missing} more SAT ${section} questions. Each must use a canonical Digital SAT stem (e.g. "Which choice completes the text with the most logical and precise word or phrase?" or "Which choice best states the main purpose of the text?"). Distinct from: ${existingStemHint.join(" | ")}.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}".` : ""}`;
+        const emergencyData = await getModelPayload(missing, emergencyExtra, {
+          attempts: 3,
+          timeoutMs: 60000,
+        });
+        const emergencyTransformed = applyConfigFilters(
+          transformQuestions(emergencyData.questions, emergencyData.passage)
+        );
+        const combined = filterUniqueSkillCategories(
+          dedupeAndFilterNearDuplicates([...finalQuestions, ...emergencyTransformed])
+        );
+        finalQuestions = filterAgainstExistingQuestions(combined).slice(0, questionCount);
+      } catch (emergencyError) {
+        console.warn("Emergency practice top-up failed:", emergencyError);
       }
     }
 

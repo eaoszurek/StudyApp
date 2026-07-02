@@ -404,6 +404,27 @@ export function looksLikeSatStem(
   return RW_CANONICAL_STEM_PATTERNS.some((re) => re.test(stem));
 }
 
+export function passesAuditRwSignal(
+  question: string,
+  passage = "",
+  sharedPassage = ""
+): boolean {
+  const text = String(question || "");
+  const passageText = String(passage || sharedPassage || "");
+  if (text.length < 15) return false;
+  if (
+    passageText.length < 40 &&
+    !/\b(which|what|author|passage|choice|best|supports|transition|sentence|replace|underlined|completes|describes)\b/i.test(
+      text
+    )
+  ) {
+    return false;
+  }
+  return /\b(which|what|author|passage|choice|best|supports|transition|sentence|replace|underlined|completes|describes|structure|purpose|evidence)\b/i.test(
+    text
+  );
+}
+
 export function likelySatStyleQuestion(params: {
   section: "math" | "reading" | "writing" | "reading-writing";
   question: string;
