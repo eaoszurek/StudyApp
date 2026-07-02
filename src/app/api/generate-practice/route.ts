@@ -1291,17 +1291,14 @@ ${difficulty && difficulty !== "Mixed"
       return pool.some((existing) => {
         const existingStem = String(existing?.question || "");
         const existingPassage = String(existing?.passage || "");
-        if (areAuditNearDuplicateStems(candidateStem, existingStem, 0.92)) {
-          return true;
-        }
-        if (
-          !isRwSection(section) ||
-          candidatePassage.length <= 20 ||
-          existingPassage.length <= 20
-        ) {
-          return false;
-        }
-        return areNearDuplicateQuestions(candidatePassage, existingPassage, 0.82);
+        const stemNearDuplicate = areAuditNearDuplicateStems(candidateStem, existingStem, 0.92);
+        if (!stemNearDuplicate) return false;
+        if (section === "math") return true;
+        return (
+          candidatePassage.length > 20 &&
+          existingPassage.length > 20 &&
+          areNearDuplicateQuestions(candidatePassage, existingPassage, 0.82)
+        );
       });
     };
 
@@ -1470,14 +1467,33 @@ ${difficulty && difficulty !== "Mixed"
       return questions;
     };
 
+    const passesAuditStemUniqueness = (questions: any[]) => {
+      for (let i = 0; i < questions.length; i += 1) {
+        for (let j = i + 1; j < questions.length; j += 1) {
+          if (
+            areAuditNearDuplicateStems(
+              String(questions[i]?.question || ""),
+              String(questions[j]?.question || ""),
+              0.92
+            )
+          ) {
+            return false;
+          }
+        }
+      }
+      return true;
+    };
+
     const passesSetConstraints = (questions: any[]) => {
       const mathVarietyOk = topicLocked && section === "math" ? true : passesMathVariety(questions);
       const mathWordProblemsOk =
         topicLocked && section === "math" ? true : passesMathWordProblemQuota(questions);
+      const mathStemUniquenessOk = section !== "math" || passesAuditStemUniqueness(questions);
       return (
         passesPassageRotation(questions) &&
         mathVarietyOk &&
         mathWordProblemsOk &&
+        mathStemUniquenessOk &&
         passesWritingOptionVariety(questions) &&
         passesUniqueSkillCategories(questions)
       );
@@ -1633,9 +1649,12 @@ ${difficulty && difficulty !== "Mixed"
           section === "math" || fastTransformed.every((q: any) => !!q.passage);
         const constraintsOk = passesSetConstraints(fastTransformed);
         const nearEnough = fastTransformed.length >= questionCount - 1;
+        const mathStemsOk =
+          section !== "math" || passesAuditStemUniqueness(fastTransformed);
         if (
           fastTransformed.length > 0 &&
           rwHasPassages &&
+          mathStemsOk &&
           (hasEnough || (nearEnough && isSmallSet)) &&
           (constraintsOk || topicLocked || isSmallSet || hasEnough)
         ) {
