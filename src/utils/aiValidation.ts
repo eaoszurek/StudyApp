@@ -64,15 +64,18 @@ export function cleanMathNotation(text: string): string {
     }
   }
 
-  // Replace x^2 with x², x^3 with x³, etc.
+  const toSuperscript = (num: string) => {
+    const superscripts: Record<string, string> = {
+      "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+      "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
+    };
+    return num.split("").map((d: string) => superscripts[d] || d).join("");
+  };
+
+  // Replace x^2, x ^ 2, x^{2}, (x+1)^2 with superscripts
   const cleaned = text
-    .replace(/\^(\d+)/g, (match, num) => {
-      const superscripts: Record<string, string> = {
-        "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
-        "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"
-      };
-      return num.split("").map((d: string) => superscripts[d] || d).join("");
-    })
+    .replace(/\s*\^\s*\{\s*(\d+)\s*\}/g, (_match, num) => toSuperscript(num))
+    .replace(/\s*\^\s*(\d+)/g, (_match, num) => toSuperscript(num))
     // Fix common broken symbols
     .replace(/×/g, "×")
     .replace(/÷/g, "÷")
@@ -287,6 +290,37 @@ export function jaccardSimilarity(a: string, b: string): number {
   }
   const union = new Set([...aSet, ...bSet]).size;
   return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Stem similarity check aligned with scripts/mvp-audit-practice-matrix.mjs so
+ * generated sets pass the MVP audit rubric (number-masked Jaccard on stems).
+ */
+export function areAuditNearDuplicateStems(a: string, b: string, threshold = 0.92): boolean {
+  const normalizeStem = (s: string) =>
+    String(s || "")
+      .toLowerCase()
+      .replace(/\d+(?:\.\d+)?/g, "#")
+      .replace(/[^a-z0-9\s#]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const stripBoilerplate = (s: string) =>
+    normalizeStem(s)
+      .replace(/\bwhich choice\b/g, "choice")
+      .replace(/\bbest states\b/g, "")
+      .replace(/\bbest describes\b/g, "")
+      .replace(/\bas used in the text\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const sa = new Set(stripBoilerplate(a).split(" ").filter(Boolean));
+  const sb = new Set(stripBoilerplate(b).split(" ").filter(Boolean));
+  if (sa.size === 0 || sb.size === 0) return false;
+  let inter = 0;
+  for (const w of sa) if (sb.has(w)) inter += 1;
+  const union = sa.size + sb.size - inter;
+  return union > 0 && inter / union >= threshold;
 }
 
 export function areNearDuplicateQuestions(a: string, b: string, threshold = 0.82): boolean {

@@ -13,6 +13,7 @@ import {
   isPlaceholderOptionText,
   normalizeForSimilarity,
   areNearDuplicateQuestions,
+  areAuditNearDuplicateStems,
   likelySatStyleQuestion,
   hasGenericSatStem,
 } from "@/utils/aiValidation";
@@ -617,9 +618,9 @@ ${difficulty && difficulty !== "Mixed"
           ? 135000
           : 105000
       : questionCount >= 20
-        ? 135000
+        ? 200000
         : questionCount >= 10
-          ? 90000
+          ? 120000
           : 65000;
     const isPastDeadline = () => Date.now() - generationStartedAt > generationDeadlineMs;
 
@@ -666,10 +667,12 @@ ${difficulty && difficulty !== "Mixed"
 
     const varietyRequirementsBlock = topicLocked
       ? `VARIETY (topic-locked mode):
-- Change scenarios and wording between questions, but remain 100% on "${topicTrimmed}".
+- Change scenarios, wording, and stem structure between questions, but remain 100% on "${topicTrimmed}".
+- Never repeat the same question template with only different numbers — each stem must be structurally distinct.
 - Do not introduce other SAT topics to create variety.`
       : `VARIETY REQUIREMENTS (all sections):
-- Avoid repeating question stems or near-identical scenarios within a set.
+- Avoid repeating question stems or near-identical scenarios within a set (including across 5-question blocks).
+- Never reuse the same stem template with only different numbers.
 - Math: include at least one word problem per 5 questions, plus non-word problems; vary domains and representations (equations, graphs, tables).
 - Reading/Writing: vary question types across official SAT domains and avoid identical phrasing.`;
 
@@ -1285,24 +1288,20 @@ ${difficulty && difficulty !== "Mixed"
     const isNearDuplicateQuestion = (candidate: any, pool: any[]) => {
       const candidateStem = String(candidate?.question || "");
       const candidatePassage = String(candidate?.passage || "");
-      const candidateOptions = getOptionSignature(candidate);
       return pool.some((existing) => {
         const existingStem = String(existing?.question || "");
         const existingPassage = String(existing?.passage || "");
-        const existingOptions = getOptionSignature(existing);
-        const stemNearDuplicate = areNearDuplicateQuestions(
-          candidateStem,
-          existingStem,
-          section === "math" ? 0.92 : 0.86
-        );
-        const passageNearDuplicate =
-          section === "math"
-            ? false
-            : candidatePassage.length > 20 &&
-              existingPassage.length > 20 &&
-              areNearDuplicateQuestions(candidatePassage, existingPassage, 0.82);
-        const optionsSame = candidateOptions && existingOptions && candidateOptions === existingOptions;
-        return (stemNearDuplicate && optionsSame) || (stemNearDuplicate && passageNearDuplicate);
+        if (areAuditNearDuplicateStems(candidateStem, existingStem, 0.92)) {
+          return true;
+        }
+        if (
+          !isRwSection(section) ||
+          candidatePassage.length <= 20 ||
+          existingPassage.length <= 20
+        ) {
+          return false;
+        }
+        return areNearDuplicateQuestions(candidatePassage, existingPassage, 0.82);
       });
     };
 
@@ -1637,8 +1636,8 @@ ${difficulty && difficulty !== "Mixed"
         if (
           fastTransformed.length > 0 &&
           rwHasPassages &&
-          (hasEnough || (nearEnough && isSmallSet) || (fastTransformed.length >= Math.ceil(questionCount * 0.85) && !isSmallSet)) &&
-          (constraintsOk || topicLocked || isSmallSet || fastTransformed.length >= Math.ceil(questionCount * 0.8))
+          (hasEnough || (nearEnough && isSmallSet)) &&
+          (constraintsOk || topicLocked || isSmallSet || hasEnough)
         ) {
           passage = fastData.passage;
           transformedAll = fastTransformed;
@@ -1760,11 +1759,11 @@ ${difficulty && difficulty !== "Mixed"
     );
 
     // Top-up loop if the first generation came up short.
-    const maxTopUpPasses = isAppendBatch ? 12 : isSmallSet ? 8 : Math.max(6, Math.ceil(questionCount / 2));
+    const maxTopUpPasses = isAppendBatch ? 14 : isSmallSet ? 8 : Math.max(10, Math.ceil(questionCount / 2));
     for (let topUpPass = 0; topUpPass < maxTopUpPasses && finalQuestions.length < questionCount; topUpPass += 1) {
       const missing = questionCount - finalQuestions.length;
       const allowPastDeadline =
-        isSmallSet || isAppendBatch || missing <= Math.max(3, Math.ceil(questionCount * 0.15));
+        isSmallSet || isAppendBatch || missing <= Math.max(5, Math.ceil(questionCount * 0.25));
       if (isPastDeadline() && !allowPastDeadline) break;
       try {
         const chunkSize = Math.min(5, missing);
