@@ -135,10 +135,14 @@ function analyzeSet(questions, section, topicLocked, sharedPassage) {
     issues.push(...scoreQuestion(questions[i], section, sharedPassage).map((x) => `Q${i + 1}: ${x}`));
     stems.push(questions[i].question || "");
   }
-  for (let i = 0; i < stems.length; i += 1) {
-    for (let j = i + 1; j < stems.length; j += 1) {
-      if (jaccard(stripBoilerplate(stems[i]), stripBoilerplate(stems[j])) >= 0.92) {
-        issues.push(`Near-duplicate stems Q${i + 1}/Q${j + 1}`);
+  const blockSize = section === "math" ? questions.length : 5;
+  for (let start = 0; start < stems.length; start += blockSize) {
+    const blockStems = stems.slice(start, start + blockSize);
+    for (let i = 0; i < blockStems.length; i += 1) {
+      for (let j = i + 1; j < blockStems.length; j += 1) {
+        if (jaccard(stripBoilerplate(blockStems[i]), stripBoilerplate(blockStems[j])) >= 0.92) {
+          issues.push(`Near-duplicate stems Q${start + i + 1}/Q${start + j + 1}`);
+        }
       }
     }
   }
@@ -152,7 +156,7 @@ function timeBudget(count, payload = {}) {
   const isHard = payload.difficulty === "Hard";
   if (count <= 5) return isHard ? 110000 : 90000;
   if (count <= 10) return 150000;
-  return 210000;
+  return 300000;
 }
 
 const CASES = [

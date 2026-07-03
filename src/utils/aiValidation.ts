@@ -404,6 +404,17 @@ export function looksLikeSatStem(
   return RW_CANONICAL_STEM_PATTERNS.some((re) => re.test(stem));
 }
 
+export function passesAuditMathSignal(question: string): boolean {
+  const text = String(question || "");
+  if (text.length < 15) return false;
+  return (
+    /[0-9=+\-*/%#²³⁴⁵⁶⁷⁸⁹⁰¹]/.test(text) ||
+    /\b(value|equation|function|satisfies|graph|percent|ratio|linear|system|triangle|circle|angle|length|area|volume|sin|cos|tan|radius|slope|intercept|mean|median|data|table|chart|polynomial|exponent|variable|expression|inequality|coordinate|parabola|factor|probability|integer|fraction|decimal)\b/i.test(
+      text
+    )
+  );
+}
+
 export function passesAuditRwSignal(
   question: string,
   passage = "",

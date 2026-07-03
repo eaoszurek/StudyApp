@@ -14,6 +14,7 @@ import {
   normalizeForSimilarity,
   areNearDuplicateQuestions,
   areAuditNearDuplicateStems,
+  passesAuditMathSignal,
   passesAuditRwSignal,
   likelySatStyleQuestion,
   hasGenericSatStem,
@@ -619,7 +620,7 @@ ${difficulty && difficulty !== "Mixed"
           ? 135000
           : 105000
       : questionCount >= 20
-        ? 200000
+        ? 240000
         : questionCount >= 10
           ? 120000
           : 65000;
@@ -1068,6 +1069,11 @@ ${difficulty && difficulty !== "Mixed"
             Object.values(cleanedOptions).map((opt) => normalizeCompare(String(opt || ""))).filter(Boolean)
           );
           if (normalizedOptionSet.size < 4) {
+            return null;
+          }
+
+          if (section === "math" && !passesAuditMathSignal(questionText)) {
+            console.warn("Hard filter: math question failed audit SAT signal check");
             return null;
           }
 
@@ -1828,7 +1834,7 @@ ${difficulty && difficulty !== "Mixed"
       }
     }
 
-    if (finalQuestions.length < questionCount && finalQuestions.length >= questionCount - 2) {
+    if (finalQuestions.length < questionCount) {
       try {
         const missing = questionCount - finalQuestions.length;
         const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
