@@ -1499,16 +1499,40 @@ ${difficulty && difficulty !== "Mixed"
       return true;
     };
 
+    const passesRwBlockStemUniqueness = (questions: any[]) => {
+      if (section === "math") return true;
+      const blockSize = 5;
+      for (let start = 0; start < questions.length; start += blockSize) {
+        const block = questions.slice(start, start + blockSize);
+        for (let i = 0; i < block.length; i += 1) {
+          for (let j = i + 1; j < block.length; j += 1) {
+            if (
+              areAuditNearDuplicateStems(
+                String(block[i]?.question || ""),
+                String(block[j]?.question || ""),
+                0.92
+              )
+            ) {
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    };
+
     const passesSetConstraints = (questions: any[]) => {
       const mathVarietyOk = topicLocked && section === "math" ? true : passesMathVariety(questions);
       const mathWordProblemsOk =
         topicLocked && section === "math" ? true : passesMathWordProblemQuota(questions);
       const mathStemUniquenessOk = section !== "math" || passesAuditStemUniqueness(questions);
+      const rwBlockStemOk = passesRwBlockStemUniqueness(questions);
       return (
         passesPassageRotation(questions) &&
         mathVarietyOk &&
         mathWordProblemsOk &&
         mathStemUniquenessOk &&
+        rwBlockStemOk &&
         passesWritingOptionVariety(questions) &&
         passesUniqueSkillCategories(questions)
       );
@@ -1569,8 +1593,8 @@ ${difficulty && difficulty !== "Mixed"
               : "";
 
             const rwBlockExtra = topicLocked
-              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions. TOPIC LOCK: every question must target "${topicTrimmed}" only.${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""}${domainHint}`
-              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only.${domainHint}`;
+              ? `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions. TOPIC LOCK: every question must target "${topicTrimmed}" only.${difficultyLocked && difficulty && difficulty !== "Mixed" ? ` All ${difficulty} difficulty.` : ""} Each question must use a DISTINCT stem (vary wording; do not repeat the same template).${domainHint}`
+              : `This is block ${blockIndex + 1} of ${blockCounts.length}. Generate exactly ${count} questions for this block only. Each question must use a DISTINCT stem wording — never repeat the same question template within this block.${domainHint}`;
             const data = await getModelPayload(count, rwBlockExtra, { attempts: 1 });
             const blockPassage = data.passage;
             const transformed = applyConfigFilters(transformQuestions(data.questions, blockPassage));
@@ -1802,9 +1826,9 @@ ${difficulty && difficulty !== "Mixed"
       try {
         const chunkSize = Math.min(5, missing);
         const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
-          .map((q: any) => String(q.question || "").slice(0, 80))
+          .map((q: any) => String(q.question || "").slice(0, 100))
           .filter(Boolean)
-          .slice(-8);
+          .slice(isAppendBatch ? -25 : -12);
         const dedupeHint =
           existingStemHint.length > 0
             ? ` Do NOT repeat these stems or scenarios: ${existingStemHint.join(" | ")}.`

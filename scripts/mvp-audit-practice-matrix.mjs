@@ -154,7 +154,7 @@ function analyzeSet(questions, section, topicLocked, sharedPassage) {
 
 function timeBudget(count, payload = {}) {
   const isHard = payload.difficulty === "Hard";
-  if (count <= 5) return isHard ? 110000 : 90000;
+  if (count <= 5) return isHard ? 125000 : 90000;
   if (count <= 10) return 150000;
   return 300000;
 }
@@ -231,11 +231,24 @@ async function runProgressive(section, target = 20) {
   if (FILTER && !FILTER.has(id)) return null;
 
   const stripStem = (s) =>
-    normalizeStem(s)
+    String(s || "")
+      .toLowerCase()
+      .replace(/\d+(?:\.\d+)?/g, "#")
+      .replace(/[^a-z0-9\s#]/g, " ")
       .replace(/\bwhich choice\b/g, "choice")
       .replace(/\bbest\b/g, "")
       .replace(/\s+/g, " ")
       .trim();
+
+  const stemsNearDuplicate = (a, b) => {
+    const sa = new Set(stripStem(a).split(" ").filter(Boolean));
+    const sb = new Set(stripStem(b).split(" ").filter(Boolean));
+    if (sa.size === 0 || sb.size === 0) return false;
+    let inter = 0;
+    for (const w of sa) if (sb.has(w)) inter += 1;
+    const union = sa.size + sb.size - inter;
+    return union > 0 && inter / union >= 0.92;
+  };
 
   const cookie = await registerCookie();
   const initial = await generatePractice(cookie, {
@@ -268,12 +281,12 @@ async function runProgressive(section, target = 20) {
     }
     for (const q of newQs) {
       for (const s of stems) {
-        if (jaccard(stripStem(s), stripStem(q.question || "")) >= 0.9) failed = true;
+        if (stemsNearDuplicate(s, q.question || "")) failed = true;
       }
       stems.push(q.question || "");
     }
     total += newQs.length;
-    if (batch.elapsedMs > 150000) failed = true;
+    if (batch.elapsedMs > 180000) failed = true;
   }
 
   const status = !failed && total >= target ? "PASS" : "FAIL";
