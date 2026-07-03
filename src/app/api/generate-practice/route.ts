@@ -1859,13 +1859,16 @@ ${difficulty && difficulty !== "Mixed"
     }
 
     if (finalQuestions.length < questionCount) {
+      let emergencyAttempts = 0;
+      while (finalQuestions.length < questionCount && emergencyAttempts < 4) {
+        emergencyAttempts += 1;
       try {
         const missing = questionCount - finalQuestions.length;
         const existingStemHint = [...finalQuestions, ...existingQuestionsForGeneration]
-          .map((q: any) => String(q.question || "").slice(0, 80))
+          .map((q: any) => String(q.question || "").slice(0, 100))
           .filter(Boolean)
-          .slice(-10);
-        const emergencyExtra = `EMERGENCY TOP-UP: Generate exactly ${missing} more SAT ${section} questions. Each must use a canonical Digital SAT stem (e.g. "Which choice completes the text with the most logical and precise word or phrase?" or "Which choice best states the main purpose of the text?"). Distinct from: ${existingStemHint.join(" | ")}.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}".` : ""}`;
+          .slice(isAppendBatch ? -25 : -12);
+        const emergencyExtra = `EMERGENCY TOP-UP (attempt ${emergencyAttempts}): Generate exactly ${missing} more SAT ${section} questions. Each must use a canonical Digital SAT stem (e.g. "Which choice completes the text with the most logical and precise word or phrase?" or "Which choice best states the main purpose of the text?"). Distinct from: ${existingStemHint.join(" | ")}.${topicLocked ? ` TOPIC LOCK: "${topicTrimmed}".` : ""}`;
         const emergencyData = await getModelPayload(missing, emergencyExtra, {
           attempts: 3,
           timeoutMs: 60000,
@@ -1876,9 +1879,13 @@ ${difficulty && difficulty !== "Mixed"
         const combined = filterUniqueSkillCategories(
           dedupeAndFilterNearDuplicates([...finalQuestions, ...emergencyTransformed])
         );
-        finalQuestions = filterAgainstExistingQuestions(combined).slice(0, questionCount);
+        const next = filterAgainstExistingQuestions(combined).slice(0, questionCount);
+        if (next.length <= finalQuestions.length) break;
+        finalQuestions = next;
       } catch (emergencyError) {
         console.warn("Emergency practice top-up failed:", emergencyError);
+        break;
+      }
       }
     }
 

@@ -258,9 +258,24 @@ async function runProgressive(section, target = 20) {
   });
   const testId = initial.body?.id;
   let total = Array.isArray(initial.body?.questions) ? initial.body.questions.length : 0;
-  const stems = (initial.body?.questions || []).map((q) => q.question || "");
+  const priorItems = (initial.body?.questions || []).map((q) => ({
+    stem: q.question || "",
+    passage: q.passage || initial.body?.passage || "",
+  }));
   const batchTimes = [initial.elapsedMs];
   let failed = !initial.res.ok || !testId || total < 1;
+
+  const passageNearDuplicate = (a, b) => {
+    const na = stripStem(a);
+    const nb = stripStem(b);
+    if (!na || !nb || na.length < 20 || nb.length < 20) return false;
+    const sa = new Set(na.split(" ").filter(Boolean));
+    const sb = new Set(nb.split(" ").filter(Boolean));
+    let inter = 0;
+    for (const w of sa) if (sb.has(w)) inter += 1;
+    const union = sa.size + sb.size - inter;
+    return union > 0 && inter / union >= 0.82;
+  };
 
   while (!failed && total < target) {
     const batch = await generatePractice(cookie, {
@@ -280,10 +295,14 @@ async function runProgressive(section, target = 20) {
       break;
     }
     for (const q of newQs) {
-      for (const s of stems) {
-        if (stemsNearDuplicate(s, q.question || "")) failed = true;
+      const qPassage = q.passage || batch.body?.passage || "";
+      for (const existing of priorItems) {
+        if (!stemsNearDuplicate(existing.stem, q.question || "")) continue;
+        if (section === "math" || passageNearDuplicate(existing.passage, qPassage)) {
+          failed = true;
+        }
       }
-      stems.push(q.question || "");
+      priorItems.push({ stem: q.question || "", passage: qPassage });
     }
     total += newQs.length;
     if (batch.elapsedMs > 180000) failed = true;
