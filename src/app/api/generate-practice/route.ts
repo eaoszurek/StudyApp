@@ -153,7 +153,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const parseStoredQuestions = (raw: string | null | undefined): any[] => {
+    const parseStoredQuestions = (raw: string | null | undefined): unknown[] => {
       try {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
