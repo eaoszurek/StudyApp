@@ -145,10 +145,6 @@ async function expectAppendStatus(name, cookie, testId, payload, expectedStatus)
 }
 
 async function main() {
-  if (!process.env.OPENAI_API_KEY) {
-    console.warn("OPENAI_API_KEY is not set. Start the app with a dummy key for guard-only tests.");
-  }
-
   const { cookie, userId } = await registerUser();
   const completed = await createPracticeTest(userId, { completedAt: new Date() });
   const mismatched = await createPracticeTest(userId, { topic: "Linear Equations" });
