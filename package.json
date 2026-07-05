@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:append-guards": "node scripts/test-practice-append-guards.mjs",
     "ai:sample": "node scripts/ai-sample.mjs",
     "postinstall": "prisma generate"
   },
