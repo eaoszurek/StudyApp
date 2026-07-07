@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "ai:sample": "node scripts/ai-sample.mjs",
+    "test:append-guards": "node scripts/test-append-guards.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
