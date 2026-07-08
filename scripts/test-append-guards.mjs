@@ -114,6 +114,16 @@ async function postAppend(cookie, body) {
   return { status: res.status, data };
 }
 
+async function storedQuestionCount(testId) {
+  const practiceTest = await prisma.practiceTest.findUnique({
+    where: { id: testId },
+    select: { questions: true },
+  });
+  if (!practiceTest?.questions) return 0;
+  const parsed = JSON.parse(practiceTest.questions);
+  return Array.isArray(parsed) ? parsed.length : 0;
+}
+
 function record(name, ok, detail = "") {
   results.push({ name, ok, detail });
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
@@ -137,6 +147,10 @@ async function main() {
     completedRes.status === 409,
     `status=${completedRes.status}`
   );
+  record(
+    "completed append leaves stored questions unchanged",
+    (await storedQuestionCount(completed.practiceTest.id)) === 5
+  );
 
   const mismatched = await seedPracticeTest({
     topic: "Linear Equations",
@@ -154,6 +168,10 @@ async function main() {
     mismatchRes.status === 400,
     `status=${mismatchRes.status}`
   );
+  record(
+    "config-mismatch append leaves stored questions unchanged",
+    (await storedQuestionCount(mismatched.practiceTest.id)) === 5
+  );
 
   const capped = await seedPracticeTest({
     questionCount: 49,
@@ -170,6 +188,10 @@ async function main() {
     cappedRes.status === 400,
     `status=${cappedRes.status}`
   );
+  record(
+    "over-cap append leaves stored questions unchanged",
+    (await storedQuestionCount(capped.practiceTest.id)) === 49
+  );
 
   const priorMonth = await seedPracticeTest({
     createdAt: monthAgo(),
@@ -185,6 +207,10 @@ async function main() {
     "free users cannot append prior-month tests",
     priorMonthRes.status === 402,
     `status=${priorMonthRes.status}`
+  );
+  record(
+    "prior-month append leaves stored questions unchanged",
+    (await storedQuestionCount(priorMonth.practiceTest.id)) === 5
   );
 
   const failed = results.filter((r) => !r.ok);
