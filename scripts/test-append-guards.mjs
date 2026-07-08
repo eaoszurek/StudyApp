@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Focused non-AI regression checks for progressive practice append guards.
  *
