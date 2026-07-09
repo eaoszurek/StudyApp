@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaLibSql({
+    url: process.env.DATABASE_URL || "file:./dev.db",
+    authToken: process.env.TURSO_AUTH_TOKEN || undefined,
+  }),
+});
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
