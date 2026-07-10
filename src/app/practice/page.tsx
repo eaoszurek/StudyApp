@@ -392,8 +392,10 @@ export default function PracticeTests() {
 
   loadProgressiveBatchRef.current = async (): Promise<boolean> => {
     if (!practiceSet || !testType || !currentTestIdRef.current) return false;
+    if (batchLoadingRef.current) return false;
     const remaining = targetQuestionCount - practiceSet.questions.length;
     if (remaining <= 0) return true;
+    const expectedQuestionOffset = practiceSet.questions.length;
 
     batchLoadingRef.current = true;
     setIsBatchLoading(true);
@@ -407,6 +409,7 @@ export default function PracticeTests() {
         topic: config.topic || undefined,
         difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
         existingTestId: currentTestIdRef.current,
+        expectedQuestionOffset,
       });
       setPracticeSet((prev) => {
         if (!prev) return prev;
