@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import { createServer } from "node:http";
 import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
