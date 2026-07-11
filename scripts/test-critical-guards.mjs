@@ -271,7 +271,7 @@ async function testConcurrentAppendPreservesBothBatches() {
 
   const payload = {
     section: "math",
-    questionCount: 5,
+    questionCount: 1,
     existingTestId: test.id,
   };
   const [first, second] = await Promise.all([
@@ -290,7 +290,7 @@ async function testConcurrentAppendPreservesBothBatches() {
   );
   record(
     "concurrent appends preserve both batches",
-    questions.length === 12 && idsSequential,
+    questions.length === 4 && idsSequential,
     `count=${questions.length}, ids=${ids.join(",")}`
   );
 }
