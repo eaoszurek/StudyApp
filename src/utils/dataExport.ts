@@ -16,6 +16,45 @@ export interface ExportData {
 
 const EXPORT_VERSION = "1.0.0";
 
+function getFilenameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const match = header.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  return match?.[1] ? decodeURIComponent(match[1].replace(/"$/, "")) : null;
+}
+
+function triggerJsonDownload(data: BlobPart, filename: string): void {
+  const blob = data instanceof Blob ? data : new Blob([data], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function downloadServerExportIfAuthenticated(): Promise<boolean> {
+  const response = await fetch("/api/auth/export", {
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (response.status === 401) {
+    return false;
+  }
+
+  if (!response.ok) {
+    throw new Error("Failed to export server data");
+  }
+
+  const filename =
+    getFilenameFromContentDisposition(response.headers.get("Content-Disposition")) ||
+    `peakprep-data-export-${new Date().toISOString().split("T")[0]}.json`;
+  triggerJsonDownload(await response.blob(), filename);
+  return true;
+}
+
 /**
  * Export all user data to JSON
  */
@@ -55,16 +94,12 @@ export async function exportUserData(): Promise<string> {
  */
 export async function downloadExport(): Promise<void> {
   try {
+    if (await downloadServerExportIfAuthenticated()) {
+      return;
+    }
+
     const data = await exportUserData();
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `sat-prep-backup-${new Date().toISOString().split("T")[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    triggerJsonDownload(data, `sat-prep-backup-${new Date().toISOString().split("T")[0]}.json`);
   } catch (error) {
     console.error("Failed to download export:", error);
     throw error;

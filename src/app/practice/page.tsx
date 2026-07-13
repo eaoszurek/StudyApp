@@ -401,12 +401,14 @@ export default function PracticeTests() {
 
     try {
       const batchSize = Math.min(5, remaining);
+      const expectedQuestionOffset = practiceSet.questions.length;
       const nextBatch = await fetchPracticeBatchWithRetry({
         section: testType,
         questionCount: batchSize,
         topic: config.topic || undefined,
         difficulty: config.difficulty === "Mixed" ? undefined : config.difficulty,
         existingTestId: currentTestIdRef.current,
+        expectedQuestionOffset,
       });
       setPracticeSet((prev) => {
         if (!prev) return prev;

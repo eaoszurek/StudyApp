@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { hashPassword, createSession } from "@/lib/auth";
+import { hashPassword, createSession, getServerSession } from "@/lib/auth";
 import { checkOrigin, handleApiError } from "@/utils/apiHelpers";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/policy";
 import { rateLimit } from "@/lib/rate-limit";
@@ -53,6 +53,14 @@ export async function POST(req: Request) {
       if (existingUser.passwordHash) {
         return NextResponse.json(
           { error: "An account with this email already exists. Please sign in instead." },
+          { status: 409 }
+        );
+      }
+
+      const sessionUser = await getServerSession();
+      if (sessionUser?.id !== existingUser.id) {
+        return NextResponse.json(
+          { error: "An account with this email already exists. Please sign in first." },
           { status: 409 }
         );
       }
