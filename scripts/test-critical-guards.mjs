@@ -28,17 +28,23 @@ function jsonResponse(res, status, body) {
 }
 
 function mockQuestion(seed) {
-  const coefficient = seed + 2;
-  const constant = seed + 5;
-  const result = coefficient * 3 + constant;
+  const rate = seed + 2;
+  const fee = seed + 5;
+  const total = rate * 3 + fee;
+  const scenarios = [
+    `A ride-share company charges a flat booking fee of $${fee} plus $${rate} per mile. If a ride costs $${total}, how many miles long is the ride?`,
+    `A plant is ${fee} centimeters tall and grows ${rate} centimeters each week. After how many weeks will the plant be ${total} centimeters tall?`,
+    `A gym charges a signup fee of $${fee} and $${rate} for each class. If a member pays $${total} total, how many classes did the member take?`,
+    `A rental shop charges $${fee} plus $${rate} per hour for a kayak. If the total rental cost is $${total}, how many hours was the kayak rented?`,
+  ];
   return {
     _scratchpad: "Solve the linear equation for x.",
     passage: null,
-    question: `If ${coefficient}x + ${constant} = ${result}, what is the value of x?`,
-    options: ["0", "1", "2", "3"],
+    question: scenarios[seed % scenarios.length],
+    options: ["1", "2", "3", "4"],
     section: "Math",
     skillCategory: "Linear Equations",
-    correctAnswer: "D",
+    correctAnswer: "C",
     difficulty: "Easy",
     graphData: null,
     desmosExpression: null,
@@ -175,6 +181,10 @@ async function append(cookie, testId, extra = {}) {
   });
 }
 
+function responseSummary(result) {
+  return `status=${result.response.status} body=${JSON.stringify(result.body)}`;
+}
+
 async function readQuestionCount(testId) {
   const test = await prisma.practiceTest.findUniqueOrThrow({ where: { id: testId } });
   return JSON.parse(test.questions).length;
@@ -234,11 +244,19 @@ async function run() {
 
     const replayTest = await createPracticeTest(practiceUser.id);
     const replayFirst = await append(practiceCookie, replayTest.id, { expectedQuestionOffset: 1 });
-    assert.equal(replayFirst.response.status, 200, "first expected-offset append succeeds");
+    assert.equal(
+      replayFirst.response.status,
+      200,
+      `first expected-offset append succeeds (${responseSummary(replayFirst)})`
+    );
     assert.equal(await readQuestionCount(replayTest.id), 2, "first append persists one question");
     const afterReplayFirstAiCalls = openAiCallCount;
     const replaySecond = await append(practiceCookie, replayTest.id, { expectedQuestionOffset: 1 });
-    assert.equal(replaySecond.response.status, 200, "retry with old offset replays persisted slice");
+    assert.equal(
+      replaySecond.response.status,
+      200,
+      `retry with old offset replays persisted slice (${responseSummary(replaySecond)})`
+    );
     assert.equal(openAiCallCount, afterReplayFirstAiCalls, "replay did not call OpenAI again");
     assert.equal(await readQuestionCount(replayTest.id), 2, "replay did not duplicate questions");
 
@@ -247,8 +265,16 @@ async function run() {
       append(practiceCookie, concurrentTest.id),
       append(practiceCookie, concurrentTest.id),
     ]);
-    assert.equal(appendA.response.status, 200, "first concurrent append succeeds");
-    assert.equal(appendB.response.status, 200, "second concurrent append succeeds");
+    assert.equal(
+      appendA.response.status,
+      200,
+      `first concurrent append succeeds (${responseSummary(appendA)})`
+    );
+    assert.equal(
+      appendB.response.status,
+      200,
+      `second concurrent append succeeds (${responseSummary(appendB)})`
+    );
     assert.equal(await readQuestionCount(concurrentTest.id), 3, "concurrent appends preserve both writes");
 
     const passwordless = await createUser("critical-guard-passwordless@example.com", {
