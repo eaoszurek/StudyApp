@@ -36,13 +36,19 @@ export async function GET() {
             name: true,
             emailVerified: true,
             subscriptionStatus: true,
+            termsAcceptedAt: true,
+            termsVersion: true,
+            privacyAcceptedAt: true,
+            privacyVersion: true,
+            seenQuestionFingerprints: true,
+            skillWeaknesses: true,
             createdAt: true,
             updatedAt: true,
           },
         }),
-        prisma.practiceTest.findMany({ where: { userId: user.id }, take: 1000 }),
-        prisma.studyPlan.findMany({ where: { userId: user.id }, take: 1000 }),
-        prisma.microLesson.findMany({ where: { userId: user.id }, take: 1000 }),
+        prisma.practiceTest.findMany({ where: { userId: user.id } }),
+        prisma.studyPlan.findMany({ where: { userId: user.id } }),
+        prisma.microLesson.findMany({ where: { userId: user.id } }),
       ]);
 
     const exportData = {
