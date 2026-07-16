@@ -37,6 +37,15 @@ export async function POST(req: Request) {
     if (!accessContext.user) {
       return NextResponse.json({ error: "Sign in required" }, { status: 401 });
     }
+    const hasSubscription =
+      accessContext.user.subscriptionStatus === "ACTIVE" ||
+      accessContext.user.subscriptionStatus === "TRIALING";
+    if (!hasSubscription) {
+      return NextResponse.json(
+        { error: "Trail Buddy is a Plus feature. Unlock Plus for $5/month to continue." },
+        { status: 402 }
+      );
+    }
 
     const rl = rateLimit(`trail-buddy:${accessContext.user.id}`, { limit: 30, windowSeconds: 60 });
     if (!rl.allowed) {

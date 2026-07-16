@@ -99,9 +99,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (error: unknown) {
     console.error("Webhook error:", error);
-    // Return 200 to prevent Stripe from retrying on internal errors.
-    // Only signature verification failures (above) return non-200.
-    return NextResponse.json({ received: true });
+    // Return non-2xx for internal failures so Stripe retries critical
+    // subscription/entitlement updates instead of silently dropping them.
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
   }
 }
 
@@ -114,8 +117,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     : session.subscription?.id;
 
   if (!customerId || !subscriptionId) {
-    console.error("Missing customer or subscription ID in checkout session");
-    return;
+    throw new Error("Missing customer or subscription ID in checkout session");
   }
 
   // Get subscription details
@@ -123,8 +125,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.userId;
 
   if (!userId) {
-    console.error("Missing userId in checkout session metadata");
-    return;
+    throw new Error("Missing userId in checkout session metadata");
   }
 
   // Update user with subscription info
@@ -144,8 +145,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     : subscription.customer?.id;
 
   if (!customerId) {
-    console.error("Missing customer ID in subscription");
-    return;
+    throw new Error("Missing customer ID in subscription");
   }
 
   // Find user by Stripe customer ID
@@ -154,8 +154,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   });
 
   if (!user) {
-    console.error(`User not found for customer ${customerId}`);
-    return;
+    throw new Error(`User not found for customer ${customerId}`);
   }
 
   // Update subscription status
@@ -174,8 +173,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
     : subscription.customer?.id;
 
   if (!customerId) {
-    console.error("Missing customer ID in subscription");
-    return;
+    throw new Error("Missing customer ID in subscription");
   }
 
   // Find user by Stripe customer ID
@@ -184,8 +182,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 
   if (!user) {
-    console.error(`User not found for customer ${customerId}`);
-    return;
+    throw new Error(`User not found for customer ${customerId}`);
   }
 
   // Update user to remove subscription
@@ -204,8 +201,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
     : invoice.customer?.id;
   
   if (!customerId) {
-    console.error("Missing customer ID in invoice");
-    return;
+    throw new Error("Missing customer ID in invoice");
   }
   
   // Access subscription via indexed access since it's optional on Invoice type
@@ -224,8 +220,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   });
 
   if (!user) {
-    console.error(`User not found for customer ${customerId}`);
-    return;
+    throw new Error(`User not found for customer ${customerId}`);
   }
 
   // Get subscription to check status
@@ -246,8 +241,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     : invoice.customer?.id;
 
   if (!customerId) {
-    console.error("Missing customer ID in invoice");
-    return;
+    throw new Error("Missing customer ID in invoice");
   }
 
   // Find user by Stripe customer ID
@@ -256,8 +250,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   });
 
   if (!user) {
-    console.error(`User not found for customer ${customerId}`);
-    return;
+    throw new Error(`User not found for customer ${customerId}`);
   }
 
   // Update subscription status to past due
