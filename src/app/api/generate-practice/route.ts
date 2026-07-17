@@ -110,6 +110,7 @@ const PracticeRequestSchema = z.object({
   topic: z.string().max(200).optional(),
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
+  expectedQuestionOffset: z.number().int().min(0).max(50).optional(),
 });
 
 export async function POST(req: Request) {
@@ -129,7 +130,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    const {
+      section,
+      questionCount = 5,
+      topic,
+      difficulty,
+      existingTestId,
+      expectedQuestionOffset,
+    } = validationResult.data;
     const topicTrimmed = (topic ?? "").trim();
     const topicLocked = Boolean(topicTrimmed);
     const difficultyLocked = Boolean(difficulty && difficulty !== "Mixed");
@@ -150,18 +158,123 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    let existingPracticeTest: {
+      id: string;
+      questions: string | null;
+      passage: string | null;
+      section: string;
+      topic: string | null;
+      difficulty: string | null;
+      completedAt: Date | null;
+      createdAt: Date;
+    } | null = null;
+
+    const parseQuestionsJson = (questionsJson: string | null | undefined): any[] => {
+      try {
+        if (!questionsJson) return [];
+        const parsed = JSON.parse(questionsJson);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const normalizeConfigValue = (value: string | null | undefined) => {
+      const trimmed = (value ?? "").trim();
+      return trimmed === "Mixed" ? "" : trimmed;
+    };
+
+    const isActiveSubscriber =
+      accessContext.user.subscriptionStatus === "ACTIVE" ||
+      accessContext.user.subscriptionStatus === "TRIALING";
+
+    const getMonthStart = () => {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+      return monthStart;
+    };
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: {
+          id: true,
+          questions: true,
+          passage: true,
+          section: true,
+          topic: true,
+          difficulty: true,
+          completedAt: true,
+          createdAt: true,
+        },
       });
 
       if (!existingPracticeTest) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+
+      if (existingPracticeTest.completedAt) {
+        return NextResponse.json(
+          { error: "Completed practice tests cannot be extended." },
+          { status: 409 }
+        );
+      }
+
+      const existingTopic = normalizeConfigValue(existingPracticeTest.topic);
+      const requestedTopic = normalizeConfigValue(topicTrimmed);
+      const existingDifficulty = normalizeConfigValue(existingPracticeTest.difficulty);
+      const requestedDifficulty = normalizeConfigValue(difficulty);
+      if (
+        existingPracticeTest.section !== section ||
+        existingTopic !== requestedTopic ||
+        existingDifficulty !== requestedDifficulty
+      ) {
+        return NextResponse.json(
+          { error: "Append request does not match the existing practice test configuration." },
+          { status: 409 }
+        );
+      }
+
+      const existingQuestions = parseQuestionsJson(existingPracticeTest.questions);
+      const appendOffset = expectedQuestionOffset ?? existingQuestions.length;
+
+      if (appendOffset > existingQuestions.length) {
+        return NextResponse.json(
+          { error: "Append offset is ahead of the persisted practice test." },
+          { status: 409 }
+        );
+      }
+
+      if (appendOffset < existingQuestions.length) {
+        const replayedQuestions = existingQuestions.slice(
+          appendOffset,
+          Math.min(existingQuestions.length, appendOffset + questionCount)
+        );
+        if (replayedQuestions.length > 0) {
+          return NextResponse.json({
+            id: existingPracticeTest.id,
+            section,
+            passage: existingPracticeTest.passage,
+            questions: replayedQuestions,
+          });
+        }
+      }
+
+      if (existingQuestions.length + questionCount > 50) {
+        return NextResponse.json(
+          { error: "Practice tests cannot exceed 50 questions." },
+          { status: 400 }
+        );
+      }
+
+      if (!isActiveSubscriber && existingPracticeTest.createdAt < getMonthStart()) {
+        return NextResponse.json(
+          { error: "Start a new monthly practice test or unlock Plus to continue." },
+          { status: 402 }
         );
       }
     } else {
@@ -1328,15 +1441,7 @@ ${difficulty && difficulty !== "Mixed"
       return out;
     };
 
-    const existingQuestionsForGeneration: any[] = (() => {
-      try {
-        if (!existingPracticeTest?.questions) return [];
-        const parsed = JSON.parse(existingPracticeTest.questions);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    })();
+    const existingQuestionsForGeneration: any[] = parseQuestionsJson(existingPracticeTest?.questions);
 
     const existingRwSignatures = new Set<string>();
     if (isRwSection(section)) {
@@ -1936,34 +2041,94 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
+      const expectedAppendOffset = expectedQuestionOffset ?? existingQuestionsForGeneration.length;
+      const maxAppendAttempts = 3;
+      let latestQuestionsJson = existingPracticeTest.questions;
+      let latestPassage = existingPracticeTest.passage;
+
+      for (let appendAttempt = 0; appendAttempt < maxAppendAttempts; appendAttempt += 1) {
+        const latestQuestions = parseQuestionsJson(latestQuestionsJson);
+
+        if (expectedAppendOffset < latestQuestions.length) {
+          const replayedQuestions = latestQuestions.slice(
+            expectedAppendOffset,
+            Math.min(latestQuestions.length, expectedAppendOffset + questionCount)
+          );
+          if (replayedQuestions.length > 0) {
+            return NextResponse.json({
+              id: existingPracticeTest.id,
+              section,
+              passage: latestPassage,
+              questions: replayedQuestions,
+            });
+          }
         }
-      })();
 
-      const offset = existingQuestions.length;
-      const appended = normalizedQuestions.map((q: any, idx: number) => ({
-        ...q,
-        id: offset + idx + 1,
-      }));
-      const mergedQuestions = [...existingQuestions, ...appended];
-      const mergedPassage = existingPracticeTest.passage || passage || null;
+        if (expectedAppendOffset !== latestQuestions.length) {
+          return NextResponse.json(
+            { error: "Practice test changed before this batch could be appended. Please retry." },
+            { status: 409 }
+          );
+        }
 
-      await prisma.practiceTest.update({
-        where: { id: existingPracticeTest.id },
-        data: {
-          questions: JSON.stringify(mergedQuestions),
-          passage: mergedPassage,
-        },
-      });
-      practiceTestId = existingPracticeTest.id;
-      responseQuestions = appended;
-      responsePassage = mergedPassage || undefined;
+        if (latestQuestions.length + normalizedQuestions.length > 50) {
+          return NextResponse.json(
+            { error: "Practice tests cannot exceed 50 questions." },
+            { status: 400 }
+          );
+        }
+
+        const offset = latestQuestions.length;
+        const appended = normalizedQuestions.map((q: any, idx: number) => ({
+          ...q,
+          id: offset + idx + 1,
+        }));
+        const mergedQuestions = [...latestQuestions, ...appended];
+        const mergedPassage = latestPassage || passage || null;
+        const nextQuestionsJson = JSON.stringify(mergedQuestions);
+
+        const updated = await prisma.practiceTest.updateMany({
+          where: {
+            id: existingPracticeTest.id,
+            userId: accessContext.user.id,
+            questions: latestQuestionsJson ?? "",
+            completedAt: null,
+          },
+          data: {
+            questions: nextQuestionsJson,
+            passage: mergedPassage,
+          },
+        });
+
+        if (updated.count === 1) {
+          practiceTestId = existingPracticeTest.id;
+          responseQuestions = appended;
+          responsePassage = mergedPassage || undefined;
+          break;
+        }
+
+        const freshPracticeTest = await prisma.practiceTest.findFirst({
+          where: { id: existingPracticeTest.id, userId: accessContext.user.id },
+          select: { questions: true, passage: true, completedAt: true },
+        });
+
+        if (!freshPracticeTest || freshPracticeTest.completedAt) {
+          return NextResponse.json(
+            { error: "Completed practice tests cannot be extended." },
+            { status: 409 }
+          );
+        }
+
+        latestQuestionsJson = freshPracticeTest.questions;
+        latestPassage = freshPracticeTest.passage;
+      }
+
+      if (practiceTestId !== existingPracticeTest.id || responseQuestions === normalizedQuestions) {
+        return NextResponse.json(
+          { error: "Practice test changed before this batch could be appended. Please retry." },
+          { status: 409 }
+        );
+      }
     } else {
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({
