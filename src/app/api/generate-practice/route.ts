@@ -81,6 +81,7 @@ import { prisma } from "@/lib/prisma";
 
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
+const FREE_PRACTICE_TEST_MAX_QUESTIONS = 50;
 
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
@@ -111,6 +112,33 @@ const PracticeRequestSchema = z.object({
   difficulty: z.enum(["Easy", "Medium", "Hard", "Mixed"]).optional(),
   existingTestId: z.string().optional(),
 });
+
+class FreePracticeAppendLimitError extends Error {}
+class PracticeAppendTargetMissingError extends Error {}
+
+function parseStoredQuestions(questions: string | null): unknown[] {
+  try {
+    if (!questions) return [];
+    const parsed = JSON.parse(questions);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function wouldExceedFreePracticeAppendLimit(
+  existingQuestions: readonly unknown[],
+  appendCount: number
+): boolean {
+  return existingQuestions.length + appendCount > FREE_PRACTICE_TEST_MAX_QUESTIONS;
+}
+
+function isCurrentFreeTierMonth(date: Date): boolean {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  return date >= monthStart;
+}
 
 export async function POST(req: Request) {
   try {
@@ -150,12 +178,18 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    const gate = await checkPremiumGate(accessContext);
+    let existingPracticeTest: {
+      id: string;
+      questions: string | null;
+      passage: string | null;
+      createdAt: Date;
+    } | null = null;
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: { id: true, questions: true, passage: true, createdAt: true },
       });
 
       if (!existingPracticeTest) {
@@ -164,8 +198,22 @@ export async function POST(req: Request) {
           { status: 404 }
         );
       }
+
+      const existingQuestions = parseStoredQuestions(existingPracticeTest.questions);
+      if (
+        !gate.hasSubscription &&
+        (!isCurrentFreeTierMonth(existingPracticeTest.createdAt) ||
+          wouldExceedFreePracticeAppendLimit(existingQuestions, questionCount))
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Free starter practice checkpoints can include up to 50 questions. Unlock Plus for unlimited practice.",
+          },
+          { status: 402 }
+        );
+      }
     } else {
-      const gate = await checkPremiumGate(accessContext);
       if (!gate.allowed) {
         return NextResponse.json(
           { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
@@ -1328,15 +1376,9 @@ ${difficulty && difficulty !== "Mixed"
       return out;
     };
 
-    const existingQuestionsForGeneration: any[] = (() => {
-      try {
-        if (!existingPracticeTest?.questions) return [];
-        const parsed = JSON.parse(existingPracticeTest.questions);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    })();
+    const existingQuestionsForGeneration: any[] = parseStoredQuestions(
+      existingPracticeTest?.questions ?? null
+    );
 
     const existingRwSignatures = new Set<string>();
     if (isRwSection(section)) {
@@ -1936,34 +1978,49 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
+      const appendResult = await prisma.$transaction(async (tx) => {
+        const latestPracticeTest = await tx.practiceTest.findFirst({
+          where: { id: existingPracticeTest.id, userId: user.id },
+          select: { id: true, questions: true, passage: true, createdAt: true },
+        });
+
+        if (!latestPracticeTest) {
+          throw new PracticeAppendTargetMissingError();
         }
-      })();
 
-      const offset = existingQuestions.length;
-      const appended = normalizedQuestions.map((q: any, idx: number) => ({
-        ...q,
-        id: offset + idx + 1,
-      }));
-      const mergedQuestions = [...existingQuestions, ...appended];
-      const mergedPassage = existingPracticeTest.passage || passage || null;
+        const existingQuestions = parseStoredQuestions(latestPracticeTest.questions);
+        if (
+          !gate.hasSubscription &&
+          (!isCurrentFreeTierMonth(latestPracticeTest.createdAt) ||
+            wouldExceedFreePracticeAppendLimit(existingQuestions, normalizedQuestions.length))
+        ) {
+          throw new FreePracticeAppendLimitError();
+        }
 
-      await prisma.practiceTest.update({
-        where: { id: existingPracticeTest.id },
-        data: {
-          questions: JSON.stringify(mergedQuestions),
-          passage: mergedPassage,
-        },
+        const offset = existingQuestions.length;
+        const appended = normalizedQuestions.map((q: any, idx: number) => ({
+          ...q,
+          id: offset + idx + 1,
+        }));
+        const mergedQuestions = [...existingQuestions, ...appended];
+        const mergedPassage = latestPracticeTest.passage || passage || null;
+
+        await tx.practiceTest.update({
+          where: { id: latestPracticeTest.id },
+          data: {
+            questions: JSON.stringify(mergedQuestions),
+            passage: mergedPassage,
+          },
+        });
+
+        return {
+          appended,
+          mergedPassage,
+        };
       });
       practiceTestId = existingPracticeTest.id;
-      responseQuestions = appended;
-      responsePassage = mergedPassage || undefined;
+      responseQuestions = appendResult.appended;
+      responsePassage = appendResult.mergedPassage || undefined;
     } else {
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({
@@ -2006,6 +2063,23 @@ ${difficulty && difficulty !== "Mixed"
       ...(partialWarning && { warning: partialWarning }),
     });
   } catch (error: any) {
+    if (error instanceof FreePracticeAppendLimitError) {
+      return NextResponse.json(
+        {
+          error:
+            "Free starter practice checkpoints can include up to 50 questions. Unlock Plus for unlimited practice.",
+        },
+        { status: 402 }
+      );
+    }
+
+    if (error instanceof PracticeAppendTargetMissingError) {
+      return NextResponse.json(
+        { error: "Existing practice test not found for this user/session." },
+        { status: 404 }
+      );
+    }
+
     return handleApiError(error);
   }
 }
