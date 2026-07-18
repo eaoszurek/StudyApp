@@ -671,10 +671,25 @@ export default function PracticeTests() {
       const sectionScore = calculateSectionScore(testType, correct, questions.length);
       setSatScore(sectionScore);
       
+      const saveScoreLocally = () => {
+        const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
+        savePracticeSession({
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          section: testType,
+          score: sectionScore,
+          correct,
+          total: questions.length,
+          difficulty: config.difficulty,
+          skillDomains: skillDomains,
+          topic: config.topic || undefined,
+        });
+      };
+
       // Save score to backend if we have a test ID
       if (currentTestId) {
         try {
-          await fetch(`/api/practice-tests/${currentTestId}/score`, {
+          const response = await fetch(`/api/practice-tests/${currentTestId}/score`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -684,21 +699,13 @@ export default function PracticeTests() {
               answers: questions.map((_, idx) => userAnswers[idx] ?? null),
             }),
           });
+          if (!response.ok) {
+            throw new Error(`Score save failed with status ${response.status}`);
+          }
         } catch (error) {
           console.error("Failed to save score to backend:", error);
           // Fallback to localStorage for anonymous users or on error
-          const skillDomains = Array.from(new Set(questions.map(q => q.skillFocus)));
-          savePracticeSession({
-            id: Date.now().toString(),
-            date: new Date().toISOString(),
-            section: testType,
-            score: sectionScore,
-            correct,
-            total: questions.length,
-            difficulty: config.difficulty,
-            skillDomains: skillDomains,
-            topic: config.topic || undefined,
-          });
+          saveScoreLocally();
         }
       }
     }
