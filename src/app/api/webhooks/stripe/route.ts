@@ -99,9 +99,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true });
   } catch (error: unknown) {
     console.error("Webhook error:", error);
-    // Return 200 to prevent Stripe from retrying on internal errors.
-    // Only signature verification failures (above) return non-200.
-    return NextResponse.json({ received: true });
+    // Do not acknowledge failed processing. Stripe retries non-2xx responses,
+    // which prevents transient DB/app errors from permanently losing paid events.
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
   }
 }
 
