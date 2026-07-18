@@ -76,6 +76,21 @@ interface PracticeProgressSnapshot {
   targetQuestionCount: number;
 }
 
+const hasSavedInProgressPractice = (): boolean => {
+  try {
+    const saved = localStorage.getItem(PRACTICE_PROGRESS_KEY);
+    if (!saved) return false;
+    const parsed = JSON.parse(saved) as Partial<PracticeProgressSnapshot>;
+    return Boolean(
+      parsed.testType &&
+        parsed.practiceSet?.questions?.length &&
+        !parsed.showResults
+    );
+  } catch {
+    return false;
+  }
+};
+
 const splitIntoBullets = (text: string): string[] => {
   if (!text) return [];
   const byLine = text.split(/\n|•/).map((line) => line.trim()).filter(Boolean);
@@ -554,6 +569,7 @@ export default function PracticeTests() {
   };
 
   useEffect(() => {
+    if (!practiceHydrated) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("autostart") !== "1") return;
     const sectionParam = params.get("section");
@@ -565,6 +581,11 @@ export default function PracticeTests() {
           : null;
     if (!section) return;
 
+    if (hasSavedInProgressPractice()) {
+      window.history.replaceState({}, "", "/practice");
+      return;
+    }
+
     const parsedConfig: TestConfig = {
       questionCount: Math.max(5, Math.min(25, parseInt(params.get("questions") || "10", 10) || 10)),
       topic: params.get("topic") || "",
@@ -573,7 +594,7 @@ export default function PracticeTests() {
     window.history.replaceState({}, "", "/practice");
     void generateTest({ section, config: parsedConfig });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [practiceHydrated]);
 
   React.useEffect(() => {
     if (!isProgressiveMode || !practiceSet || !currentTestIdRef.current || !testType) return;
