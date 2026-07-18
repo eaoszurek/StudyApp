@@ -82,6 +82,8 @@ import { prisma } from "@/lib/prisma";
 // Allow longer-running generations in hosted environments (best effort; platform limits still apply)
 export const maxDuration = 300;
 
+const MAX_QUESTIONS_PER_PRACTICE_TEST = 50;
+
 // Validate API key on module load
 if (!process.env.OPENAI_API_KEY) {
   console.error("OPENAI_API_KEY is not set in environment variables");
@@ -129,7 +131,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const { section, questionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    const { section, questionCount: requestedQuestionCount = 5, topic, difficulty, existingTestId } = validationResult.data;
+    let questionCount = requestedQuestionCount;
     const topicTrimmed = (topic ?? "").trim();
     const topicLocked = Boolean(topicTrimmed);
     const difficultyLocked = Boolean(difficulty && difficulty !== "Mixed");
@@ -164,6 +167,24 @@ export async function POST(req: Request) {
           { status: 404 }
         );
       }
+
+      const existingQuestionCount = (() => {
+        try {
+          if (!existingPracticeTest?.questions) return 0;
+          const parsed = JSON.parse(existingPracticeTest.questions);
+          return Array.isArray(parsed) ? parsed.length : 0;
+        } catch {
+          return 0;
+        }
+      })();
+      const remainingSlots = MAX_QUESTIONS_PER_PRACTICE_TEST - existingQuestionCount;
+      if (remainingSlots <= 0) {
+        return NextResponse.json(
+          { error: "This practice test already has the maximum number of questions." },
+          { status: 400 }
+        );
+      }
+      questionCount = Math.min(questionCount, remainingSlots);
     } else {
       const gate = await checkPremiumGate(accessContext);
       if (!gate.allowed) {
@@ -1936,34 +1957,52 @@ ${difficulty && difficulty !== "Mixed"
     let responsePassage = passage;
 
     if (existingPracticeTest) {
-      const existingQuestions: any[] = (() => {
-        try {
-          if (!existingPracticeTest?.questions) return [];
-          const parsed = JSON.parse(existingPracticeTest.questions);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch {
-          return [];
+      const appendResult = await prisma.$transaction(async (tx) => {
+        const currentPracticeTest = await tx.practiceTest.findFirst({
+          where: { id: existingPracticeTest.id, userId: accessContext.user!.id },
+          select: { id: true, questions: true, passage: true },
+        });
+
+        if (!currentPracticeTest) {
+          throw new Error("Existing practice test not found for this user/session.");
         }
-      })();
 
-      const offset = existingQuestions.length;
-      const appended = normalizedQuestions.map((q: any, idx: number) => ({
-        ...q,
-        id: offset + idx + 1,
-      }));
-      const mergedQuestions = [...existingQuestions, ...appended];
-      const mergedPassage = existingPracticeTest.passage || passage || null;
+        const existingQuestions: any[] = (() => {
+          try {
+            if (!currentPracticeTest.questions) return [];
+            const parsed = JSON.parse(currentPracticeTest.questions);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        })();
 
-      await prisma.practiceTest.update({
-        where: { id: existingPracticeTest.id },
-        data: {
-          questions: JSON.stringify(mergedQuestions),
-          passage: mergedPassage,
-        },
+        const remainingSlots = MAX_QUESTIONS_PER_PRACTICE_TEST - existingQuestions.length;
+        if (remainingSlots <= 0) {
+          throw new Error("This practice test already has the maximum number of questions.");
+        }
+
+        const offset = existingQuestions.length;
+        const appended = normalizedQuestions.slice(0, remainingSlots).map((q: any, idx: number) => ({
+          ...q,
+          id: offset + idx + 1,
+        }));
+        const mergedQuestions = [...existingQuestions, ...appended];
+        const mergedPassage = currentPracticeTest.passage || passage || null;
+
+        await tx.practiceTest.update({
+          where: { id: currentPracticeTest.id },
+          data: {
+            questions: JSON.stringify(mergedQuestions),
+            passage: mergedPassage,
+          },
+        });
+
+        return { appended, mergedPassage };
       });
       practiceTestId = existingPracticeTest.id;
-      responseQuestions = appended;
-      responsePassage = mergedPassage || undefined;
+      responseQuestions = appendResult.appended;
+      responsePassage = appendResult.mergedPassage || undefined;
     } else {
       // Save to database for a new test
       const practiceTest = await prisma.practiceTest.create({
