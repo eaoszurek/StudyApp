@@ -150,18 +150,47 @@ export async function POST(req: Request) {
       );
     }
 
-    let existingPracticeTest: { id: string; questions: string | null; passage: string | null } | null = null;
+    let existingPracticeTest: {
+      id: string;
+      questions: string | null;
+      passage: string | null;
+      completedAt: Date | null;
+      createdAt: Date;
+    } | null = null;
 
     if (existingTestId) {
       existingPracticeTest = await prisma.practiceTest.findFirst({
         where: { id: existingTestId, userId: accessContext.user.id },
-        select: { id: true, questions: true, passage: true },
+        select: { id: true, questions: true, passage: true, completedAt: true, createdAt: true },
       });
 
       if (!existingPracticeTest) {
         return NextResponse.json(
           { error: "Existing practice test not found for this user/session." },
           { status: 404 }
+        );
+      }
+
+      if (existingPracticeTest.completedAt) {
+        return NextResponse.json(
+          { error: "Completed practice tests cannot be extended. Start a new practice test instead." },
+          { status: 409 }
+        );
+      }
+
+      const existingQuestionCount = countStoredQuestions(existingPracticeTest.questions);
+      if (existingQuestionCount + questionCount > 50) {
+        return NextResponse.json(
+          { error: "Practice tests are limited to 50 questions. Start a new practice test for more practice." },
+          { status: 400 }
+        );
+      }
+
+      const gate = await checkPremiumGate(accessContext);
+      if (!gate.hasSubscription && existingPracticeTest.createdAt < getMonthStart()) {
+        return NextResponse.json(
+          { error: "Free starter limit reached. Unlock Plus for $5/month to continue." },
+          { status: 402 }
         );
       }
     } else {
@@ -2007,6 +2036,23 @@ ${difficulty && difficulty !== "Mixed"
     });
   } catch (error: any) {
     return handleApiError(error);
+  }
+}
+
+function getMonthStart(): Date {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  return monthStart;
+}
+
+function countStoredQuestions(serializedQuestions: string | null): number {
+  if (!serializedQuestions) return 0;
+  try {
+    const parsed = JSON.parse(serializedQuestions);
+    return Array.isArray(parsed) ? parsed.length : 0;
+  } catch {
+    return 0;
   }
 }
 

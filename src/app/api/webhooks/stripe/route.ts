@@ -90,18 +90,24 @@ export async function POST(request: NextRequest) {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    await prisma.stripeWebhookEvent.create({
-      data: { eventId: event.id },
-    }).catch(() => {
-      // Race: another delivery already processed this event; ignore
-    });
+    try {
+      await prisma.stripeWebhookEvent.create({
+        data: { eventId: event.id },
+      });
+    } catch (error: unknown) {
+      // Race: another delivery already processed this event; acknowledge it.
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+    }
 
     return NextResponse.json({ received: true });
   } catch (error: unknown) {
     console.error("Webhook error:", error);
-    // Return 200 to prevent Stripe from retrying on internal errors.
-    // Only signature verification failures (above) return non-200.
-    return NextResponse.json({ received: true });
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
   }
 }
 
@@ -115,16 +121,24 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   if (!customerId || !subscriptionId) {
     console.error("Missing customer or subscription ID in checkout session");
-    return;
+    throw new Error("Missing customer or subscription ID in checkout session");
   }
 
   // Get subscription details
   const subscription = await stripe!.subscriptions.retrieve(subscriptionId);
-  const userId = session.metadata?.userId;
+  let userId = session.metadata?.userId;
 
   if (!userId) {
     console.error("Missing userId in checkout session metadata");
-    return;
+    const user = await prisma.user.findUnique({
+      where: { stripeCustomerId: customerId },
+      select: { id: true },
+    });
+    userId = user?.id;
+  }
+
+  if (!userId) {
+    throw new Error("Unable to resolve user for checkout session");
   }
 
   // Update user with subscription info
@@ -267,6 +281,15 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
       subscriptionStatus: "PAST_DUE",
     },
   });
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002"
+  );
 }
 
 function mapSubscriptionStatus(
