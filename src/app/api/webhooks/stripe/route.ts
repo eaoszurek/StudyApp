@@ -92,16 +92,15 @@ export async function POST(request: NextRequest) {
 
     await prisma.stripeWebhookEvent.create({
       data: { eventId: event.id },
-    }).catch(() => {
-      // Race: another delivery already processed this event; ignore
     });
 
     return NextResponse.json({ received: true });
   } catch (error: unknown) {
     console.error("Webhook error:", error);
-    // Return 200 to prevent Stripe from retrying on internal errors.
-    // Only signature verification failures (above) return non-200.
-    return NextResponse.json({ received: true });
+    return NextResponse.json(
+      { error: "Webhook processing failed" },
+      { status: 500 }
+    );
   }
 }
 
