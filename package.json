@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:generation-budget": "node --experimental-strip-types scripts/test-generation-budget.mjs",
     "ai:sample": "node scripts/ai-sample.mjs",
     "postinstall": "prisma generate"
   },
