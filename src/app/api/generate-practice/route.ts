@@ -75,6 +75,7 @@ const PracticeResponseSchema = z.object({
   questions: z.array(GeneratedQuestionSchema),
 });
 import { validateApiKey, handleApiError, withRetry, getCachedValue, setCachedValue } from "@/utils/apiHelpers";
+import { getBudgetedRetryTimeout } from "@/utils/generationBudget";
 import { rateLimit } from "@/lib/rate-limit";
 import { checkPremiumGate, getAccessContext } from "@/utils/premiumGate";
 import { prisma } from "@/lib/prisma";
@@ -611,6 +612,9 @@ ${difficulty && difficulty !== "Mixed"
     const isSmallSet = questionCount <= 5;
     const isAppendBatch = Boolean(existingPracticeTest);
     const generationStartedAt = Date.now();
+    // Preserve time to normalize and persist a partial result before the platform
+    // terminates this function at maxDuration.
+    const requestDeadlineAt = generationStartedAt + maxDuration * 1000 - 20_000;
     const generationDeadlineMs = isSmallSet
       ? 72000
       : strictConfigNoFallback
@@ -784,6 +788,15 @@ ${difficulty && difficulty !== "Mixed"
       const attempts = options.attempts ?? (isSmallSet ? 2 : requestedCount >= 15 ? 2 : 1);
       let lastModelError: unknown;
       for (const modelName of modelCandidates) {
+        const budgetedTimeoutMs = getBudgetedRetryTimeout({
+          deadlineAt: requestDeadlineAt,
+          requestedTimeoutMs: timeoutMs,
+          attempts,
+        });
+        if (budgetedTimeoutMs === null) {
+          throw new Error("Practice generation request budget exhausted.");
+        }
+
         try {
           const completion = await withRetry(
             () => getOpenAIClient().chat.completions.create({
@@ -807,7 +820,7 @@ ${difficulty && difficulty !== "Mixed"
       response_format: zodResponseFormat(PracticeResponseSchema, "practice_tests"),
             }),
             attempts,
-            timeoutMs
+            budgetedTimeoutMs
           );
           const data = (completion.choices[0].message as any).parsed ??
             JSON.parse(completion.choices[0].message?.content || "{}");
